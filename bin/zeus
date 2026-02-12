@@ -789,7 +789,8 @@ def cmd_dashboard(args):
             Binding("n", "new_agent", "New Agent"),
             Binding("s", "spawn_subagent", "Sub-Agent"),
             Binding("k", "kill_agent", "Kill Agent"),
-            Binding("r", "refresh", "Refresh", show=False),
+            Binding("r", "rename", "Rename"),
+            Binding("f5", "refresh", "Refresh", show=False),
         ]
 
         agents: list[AgentWindow] = []
@@ -817,7 +818,7 @@ def cmd_dashboard(args):
             table = self.query_one("#agent-table", DataTable)
             table.cursor_type = "row"
             table.zebra_stripes = True
-            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "CPU", "RAM", "GPU", "Net", "WS", "CWD")
+            table.add_columns("Name", "State", "Model", "Ctx", "CPU", "RAM", "GPU", "Net", "WS", "CWD", "Tokens")
             self.poll_and_update()
             self.set_interval(POLL_INTERVAL, self.poll_and_update)
             self.set_interval(1.0, self.update_clock)
@@ -913,13 +914,13 @@ def cmd_dashboard(args):
                     state_text,
                     a.model or "—",
                     ctx_str,
-                    tok_str,
                     cpu_text,
                     ram_text,
                     gpu_text,
                     net_text,
                     a.workspace or "?",
                     a.cwd,
+                    tok_str,
                     key=row_key,
                 )
 
@@ -946,9 +947,10 @@ def cmd_dashboard(args):
                         tmux_name,
                         tmux_age,
                         tmux_cmd,
-                        "", "", "", "", "", "",
+                        "", "", "", "", "",
                         "",
                         sess.cwd,
+                        "",
                         key=tmux_key,
                     )
 
@@ -1130,6 +1132,48 @@ def cmd_dashboard(args):
             else:
                 self.notify(f"Failed to fork session for {agent.name}", timeout=3)
 
+        def action_rename(self) -> None:
+            from textual.widgets import Input
+            if isinstance(self.focused, Input):
+                return
+            if len(self.screen_stack) > 1:
+                return
+            agent = self._get_selected_agent()
+            if agent:
+                self.push_screen(RenameScreen(agent))
+                return
+            tmux = self._get_selected_tmux()
+            if tmux:
+                self.push_screen(RenameTmuxScreen(tmux))
+
+        def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
+            """Rename an agent by updating AGENTMON_NAME env var in kitty."""
+            try:
+                kitty_cmd(agent.socket, "set-window-env",
+                          "--match", f"id:{agent.kitty_id}",
+                          "AGENTMON_NAME", new_name)
+                # Also update ZEUS_PARENT for any children
+                for a in self.agents:
+                    if a.parent_name == agent.name:
+                        kitty_cmd(a.socket, "set-window-env",
+                                  "--match", f"id:{a.kitty_id}",
+                                  "ZEUS_PARENT", new_name)
+                self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
+                self.poll_and_update()
+            except Exception as e:
+                self.notify(f"Rename failed: {e}", timeout=3)
+
+        def do_rename_tmux(self, sess: TmuxSession, new_name: str) -> None:
+            """Rename a tmux session."""
+            try:
+                subprocess.run(
+                    ["tmux", "rename-session", "-t", sess.name, new_name],
+                    capture_output=True, timeout=3)
+                self.notify(f"Renamed: {sess.name} → {new_name}", timeout=3)
+                self.poll_and_update()
+            except Exception as e:
+                self.notify(f"Rename failed: {e}", timeout=3)
+
         def action_refresh(self) -> None:
             self.poll_and_update()
 
@@ -1303,6 +1347,120 @@ def cmd_dashboard(args):
                 return
             self.dismiss()
             self.app.do_spawn_subagent(self.agent, name)
+
+    # ── Rename dialog ─────────────────────────────────────────────────
+
+    RENAME_CSS = """
+    RenameScreen, RenameTmuxScreen {
+        align: center middle;
+    }
+
+    #rename-dialog {
+        width: 60;
+        height: auto;
+        max-height: 10;
+        border: thick #00d7d7;
+        background: #0a0a0a;
+        padding: 1 2;
+    }
+
+    #rename-dialog Label {
+        margin: 1 0 0 0;
+        color: #00d7d7;
+    }
+
+    #rename-dialog Input {
+        margin: 0 0 1 0;
+    }
+
+    #rename-buttons {
+        height: 3;
+        align: right middle;
+        margin: 1 0 0 0;
+    }
+
+    #rename-buttons Button {
+        margin: 0 0 0 1;
+    }
+    """
+
+    class RenameScreen(ModalScreen):
+        CSS = RENAME_CSS
+        BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+
+        def __init__(self, agent: AgentWindow):
+            super().__init__()
+            self.agent = agent
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="rename-dialog"):
+                yield Label(f"Rename agent [bold]{self.agent.name}[/bold]")
+                yield Label("New name:")
+                yield Input(value=self.agent.name, id="rename-input")
+                with Horizontal(id="rename-buttons"):
+                    yield Button("Cancel", variant="default", id="cancel-btn")
+                    yield Button("Rename", variant="primary", id="rename-btn")
+
+        def on_mount(self) -> None:
+            inp = self.query_one("#rename-input", Input)
+            inp.focus()
+            inp.action_select_all()
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "rename-btn":
+                self._do_rename()
+            else:
+                self.dismiss()
+
+        def on_input_submitted(self, event: Input.Submitted) -> None:
+            self._do_rename()
+
+        def _do_rename(self) -> None:
+            new_name = self.query_one("#rename-input", Input).value.strip()
+            if not new_name or new_name == self.agent.name:
+                self.dismiss()
+                return
+            self.dismiss()
+            self.app.do_rename_agent(self.agent, new_name)
+
+    class RenameTmuxScreen(ModalScreen):
+        CSS = RENAME_CSS
+        BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+
+        def __init__(self, sess: TmuxSession):
+            super().__init__()
+            self.sess = sess
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="rename-dialog"):
+                yield Label(f"Rename tmux session [bold]{self.sess.name}[/bold]")
+                yield Label("New name:")
+                yield Input(value=self.sess.name, id="rename-input")
+                with Horizontal(id="rename-buttons"):
+                    yield Button("Cancel", variant="default", id="cancel-btn")
+                    yield Button("Rename", variant="primary", id="rename-btn")
+
+        def on_mount(self) -> None:
+            inp = self.query_one("#rename-input", Input)
+            inp.focus()
+            inp.action_select_all()
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "rename-btn":
+                self._do_rename()
+            else:
+                self.dismiss()
+
+        def on_input_submitted(self, event: Input.Submitted) -> None:
+            self._do_rename()
+
+        def _do_rename(self) -> None:
+            new_name = self.query_one("#rename-input", Input).value.strip()
+            if not new_name or new_name == self.sess.name:
+                self.dismiss()
+                return
+            self.dismiss()
+            self.app.do_rename_tmux(self.sess, new_name)
 
     # ── Kill confirmation dialog ─────────────────────────────────────
 
