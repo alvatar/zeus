@@ -1,0 +1,761 @@
+#!/usr/bin/env python3
+"""
+Zeus — Monitor and manage coding agents running in kitty windows.
+
+Usage:
+  zeus                              Live dashboard (default)
+  zeus new -n NAME [-d DIR]         Launch a new tracked kitty window
+  zeus ls                           One-shot text listing
+  zeus focus <ID>                   Focus a kitty window (sway)
+  zeus kill <ID>                    Close a kitty window
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from glob import glob
+from pathlib import Path
+from typing import Optional
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+POLL_INTERVAL = float(os.environ.get("ZEUS_POLL", "2"))
+USAGE_CACHE = Path("/tmp/claude-usage-cache.json")
+
+# Pi spinner frames (from pi-tui Loader component)
+SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\S")
+
+# Footer parsing (from usage-bars.ts extension output)
+MODEL_RE = re.compile(r"^(\S+?)(?:\s+\((\w+)\))?")
+CTX_RE = re.compile(r"Ctx\([^)]*\):[█░]+\((\d+\.?\d*)%\)")
+TOKENS_RE = re.compile(r"↑([\d.]+[kM]?)\s+↓([\d.]+[kM]?)")
+
+# ---------------------------------------------------------------------------
+# Data types
+# ---------------------------------------------------------------------------
+
+class State(str, Enum):
+    WORKING = "WORKING"
+    IDLE = "IDLE"
+    DONE = "DONE"
+
+@dataclass
+class AgentWindow:
+    kitty_id: int
+    socket: str
+    name: str
+    pid: int                    # shell PID inside kitty
+    kitty_pid: int              # kitty process PID (from socket name)
+    cwd: str
+    state: State = State.IDLE
+    model: str = ""
+    ctx_pct: float = 0.0
+    tokens_in: str = ""
+    tokens_out: str = ""
+    workspace: str = ""
+
+@dataclass
+class UsageData:
+    session_pct: float = 0.0
+    week_pct: float = 0.0
+    extra_pct: float = 0.0
+    extra_used: float = 0.0
+    extra_limit: float = 0.0
+    available: bool = False
+
+# ---------------------------------------------------------------------------
+# Kitty remote control
+# ---------------------------------------------------------------------------
+
+def kitty_cmd(socket: str, *args) -> Optional[str]:
+    cmd = ["kitty", "@", "--to", f"unix:{socket}"] + list(args)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            return r.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+    return None
+
+def discover_sockets() -> list[str]:
+    return glob("/tmp/kitty-*")
+
+def discover_agents() -> list[AgentWindow]:
+    agents = []
+    for socket in discover_sockets():
+        # Extract kitty PID from socket path: /tmp/kitty-{pid}
+        try:
+            kitty_pid = int(socket.rsplit("-", 1)[1])
+        except (IndexError, ValueError):
+            kitty_pid = 0
+        raw = kitty_cmd(socket, "ls")
+        if not raw:
+            continue
+        try:
+            os_windows = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        for os_win in os_windows:
+            for tab in os_win.get("tabs", []):
+                for win in tab.get("windows", []):
+                    env = win.get("env", {})
+                    name = env.get("AGENTMON_NAME")
+                    if not name:
+                        continue
+                    agents.append(AgentWindow(
+                        kitty_id=win["id"],
+                        socket=socket,
+                        name=name,
+                        pid=win.get("pid", 0),
+                        kitty_pid=kitty_pid,
+                        cwd=win.get("cwd", ""),
+                    ))
+    return agents
+
+def get_screen_text(agent: AgentWindow) -> str:
+    text = kitty_cmd(agent.socket, "get-text", "--match", f"id:{agent.kitty_id}")
+    return text or ""
+
+def focus_window(agent: AgentWindow):
+    subprocess.run(["swaymsg", f"[pid={agent.kitty_pid}]", "focus"],
+                   capture_output=True, timeout=3)
+
+def close_window(agent: AgentWindow):
+    kitty_cmd(agent.socket, "close-window", "--match", f"id:{agent.kitty_id}")
+
+# ---------------------------------------------------------------------------
+# Sway workspace discovery
+# ---------------------------------------------------------------------------
+
+def build_pid_workspace_map() -> dict[int, str]:
+    try:
+        r = subprocess.run(["swaymsg", "-t", "get_tree"],
+                           capture_output=True, text=True, timeout=3)
+        if r.returncode != 0:
+            return {}
+        tree = json.loads(r.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+        return {}
+
+    pid_ws: dict[int, str] = {}
+    def walk(node: dict, workspace: str = ""):
+        if node.get("type") == "workspace":
+            workspace = node.get("name", workspace)
+        pid = node.get("pid")
+        if pid:
+            pid_ws[pid] = workspace
+        for child in node.get("nodes", []) + node.get("floating_nodes", []):
+            walk(child, workspace)
+    walk(tree)
+    return pid_ws
+
+# ---------------------------------------------------------------------------
+# State detection
+# ---------------------------------------------------------------------------
+
+def detect_state(screen: str) -> State:
+    if SPINNER_RE.search(screen):
+        return State.WORKING
+    return State.IDLE
+
+def parse_footer(screen: str) -> tuple[str, float, str, str]:
+    model, ctx_pct, tokens_in, tokens_out = "", 0.0, "", ""
+    for line in reversed(screen.splitlines()):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        ctx_match = CTX_RE.search(stripped)
+        if ctx_match:
+            ctx_pct = float(ctx_match.group(1))
+            model_match = MODEL_RE.match(stripped)
+            if model_match:
+                m = model_match.group(1)
+                thinking = model_match.group(2) or ""
+                m = re.sub(r"-2025\d{4}|-2026\d{4}", "", m).replace("claude-", "")
+                model = f"{m} ({thinking})" if thinking else m
+            tok_match = TOKENS_RE.search(stripped)
+            if tok_match:
+                tokens_in = tok_match.group(1)
+                tokens_out = tok_match.group(2)
+            break
+    return model, ctx_pct, tokens_in, tokens_out
+
+# ---------------------------------------------------------------------------
+# Usage data
+# ---------------------------------------------------------------------------
+
+def read_usage() -> UsageData:
+    try:
+        data = json.loads(USAGE_CACHE.read_text())
+        return UsageData(
+            session_pct=data.get("five_hour", {}).get("utilization", 0),
+            week_pct=data.get("seven_day", {}).get("utilization", 0),
+            extra_pct=data.get("extra_usage", {}).get("utilization", 0),
+            extra_used=data.get("extra_usage", {}).get("used_credits", 0),
+            extra_limit=data.get("extra_usage", {}).get("monthly_limit", 0),
+            available=True,
+        )
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return UsageData()
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+def notify(title: str, body: str, urgency: str = "normal"):
+    try:
+        subprocess.run(["notify-send", f"--urgency={urgency}",
+                        "--app-name=zeus", "-i", "utilities-terminal",
+                        title, body], capture_output=True, timeout=5)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+# ---------------------------------------------------------------------------
+# CLI: new
+# ---------------------------------------------------------------------------
+
+def cmd_new(args):
+    name = args.name
+    directory = os.path.expanduser(args.directory or os.getcwd())
+    env = os.environ.copy()
+    env["AGENTMON_NAME"] = name
+    cmd = ["kitty"]
+    if directory:
+        cmd += ["--directory", directory]
+    subprocess.Popen(cmd, env=env, start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"✓ Launched \"{name}\" in {directory}")
+
+# ---------------------------------------------------------------------------
+# CLI: ls
+# ---------------------------------------------------------------------------
+
+def cmd_ls(args):
+    agents = discover_agents()
+    if not agents:
+        print("No tracked agents. Launch with: zeus new -n 'name'")
+        return
+    pid_ws = build_pid_workspace_map()
+    for a in agents:
+        screen = get_screen_text(a)
+        a.state = detect_state(screen)
+        a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
+        a.workspace = pid_ws.get(a.kitty_pid, "?")
+        cwd = a.cwd.replace(str(Path.home()), "~")
+        icon = {"WORKING": "⟳", "IDLE": "⏳", "DONE": "✓"}[a.state.value]
+        print(f"  {icon} [{a.kitty_id}] {a.name:16s} {a.state.value:7s}  "
+              f"{a.model or '—':20s} Ctx:{a.ctx_pct:.0f}%  WS:{a.workspace:3s}  {cwd}")
+
+# ---------------------------------------------------------------------------
+# CLI: focus / kill
+# ---------------------------------------------------------------------------
+
+def cmd_focus(args):
+    for a in discover_agents():
+        if str(a.kitty_id) == args.id or a.name == args.id:
+            focus_window(a)
+            print(f"✓ Focused \"{a.name}\"")
+            return
+    print(f"✗ \"{args.id}\" not found"); sys.exit(1)
+
+def cmd_kill(args):
+    for a in discover_agents():
+        if str(a.kitty_id) == args.id or a.name == args.id:
+            close_window(a)
+            print(f"✓ Closed \"{a.name}\"")
+            return
+    print(f"✗ \"{args.id}\" not found"); sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Dashboard (Textual TUI)
+# ---------------------------------------------------------------------------
+
+def cmd_dashboard(args):
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical
+    from textual.reactive import reactive
+    from textual.widgets import DataTable, Footer, Header, Static, Label, ProgressBar
+    from textual.timer import Timer
+    from textual import work
+    from rich.text import Text
+
+    # ── Usage bar widget ──────────────────────────────────────────────
+
+    class UsageBar(Static):
+        """A labeled progress bar showing a percentage."""
+        pct = reactive(0.0)
+        label_text = reactive("")
+        extra_text = reactive("")
+
+        def __init__(self, label: str, **kwargs):
+            super().__init__(**kwargs)
+            self.label_text = label
+
+        def render(self) -> Text:
+            pct = self.pct
+            width = 12
+            filled = round((min(100, max(0, pct)) / 100) * width)
+            bar = "█" * filled + "░" * (width - filled)
+            if pct >= 90:
+                color = "#ff3333"
+            elif pct >= 80:
+                color = "#ff8800"
+            else:
+                color = "#00d7d7"
+            bar_empty = "#555555"
+            t = Text()
+            t.append(f"{self.label_text} ", style="#447777")
+            t.append("█" * filled, style=color)
+            t.append("░" * (width - filled), style=bar_empty)
+            t.append(f" {pct:.0f}%", style=f"bold {color}")
+            if self.extra_text:
+                t.append(f" {self.extra_text}", style="#447777")
+            return t
+
+    # ── Main app ──────────────────────────────────────────────────────
+
+    CSS = """
+    Screen {
+        background: #000000;
+    }
+
+    #title-bar {
+        dock: top;
+        height: 1;
+        background: #0a1a2a;
+        color: #00d7d7;
+        padding: 0 1;
+    }
+
+    #title-text {
+        width: auto;
+        color: #00d7d7;
+        text-style: bold;
+    }
+
+    #title-clock {
+        color: #555555;
+    }
+
+    #usage-bar {
+        dock: top;
+        height: 1;
+        padding: 0 1;
+        background: #050f15;
+    }
+
+    .usage-item {
+        width: auto;
+        margin: 0 2 0 0;
+    }
+
+    #table-container {
+        background: #000000;
+    }
+
+    #agent-table {
+        height: 1fr;
+        margin: 1 1;
+        background: #000000;
+    }
+
+    DataTable {
+        height: 1fr;
+        background: #000000;
+    }
+
+    DataTable > .datatable--cursor {
+        background: #003a3a;
+        color: #00d7d7;
+        text-style: bold;
+    }
+
+    DataTable > .datatable--header {
+        background: #0a1a2a;
+        color: #00d7d7;
+        text-style: bold;
+    }
+
+    DataTable > .datatable--even-row {
+        background: #000000;
+    }
+
+    DataTable > .datatable--odd-row {
+        background: #000000;
+    }
+
+    #status-line {
+        dock: bottom;
+        height: 1;
+        padding: 0 1;
+        background: #0a1a2a;
+        color: #447777;
+    }
+
+    #empty-message {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin: 3 0;
+        color: #447777;
+    }
+    """
+
+    class ZeusApp(App):
+        TITLE = "Zeus"
+        DEFAULT_CSS = CSS
+        BINDINGS = [
+            Binding("q", "quit", "Quit"),
+            Binding("escape", "quit", "Quit", show=False),
+            Binding("enter", "focus_agent", "Focus Agent"),
+            Binding("n", "new_agent", "New Agent"),
+            Binding("k", "kill_agent", "Kill Agent"),
+            Binding("r", "refresh", "Refresh", show=False),
+        ]
+
+        agents: list[AgentWindow] = []
+        prev_states: dict[int, State] = {}
+
+        def compose(self) -> ComposeResult:
+            yield Horizontal(
+                Label("⚡ Zeus", id="title-text"),
+                Static("", id="title-clock"),
+                id="title-bar",
+            )
+            yield Horizontal(
+                UsageBar("Session:", classes="usage-item", id="usage-session"),
+                UsageBar("Week:", classes="usage-item", id="usage-week"),
+                UsageBar("Extra:", classes="usage-item", id="usage-extra"),
+                id="usage-bar",
+            )
+            yield Vertical(
+                DataTable(id="agent-table"),
+                id="table-container",
+            )
+            yield Static("", id="status-line")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#agent-table", DataTable)
+            table.cursor_type = "row"
+            table.zebra_stripes = True
+            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "WS", "CWD")
+            self.poll_and_update()
+            self.set_interval(POLL_INTERVAL, self.poll_and_update)
+            self.set_interval(1.0, self.update_clock)
+
+        def update_clock(self) -> None:
+            clock = self.query_one("#title-clock", Static)
+            clock.update(f"  {time.strftime('%H:%M:%S')}")
+
+        def poll_and_update(self) -> None:
+            self.agents = discover_agents()
+            pid_ws = build_pid_workspace_map()
+
+            for a in self.agents:
+                screen = get_screen_text(a)
+                a.state = detect_state(screen)
+                a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
+                a.workspace = pid_ws.get(a.kitty_pid, "?")
+
+                # Notifications
+                old = self.prev_states.get(a.kitty_id)
+                if old is not None and old != a.state and a.state == State.IDLE:
+                    notify("Agent ready", f"[{a.name}] needs attention", "critical")
+                self.prev_states[a.kitty_id] = a.state
+
+            # Update usage bars
+            usage = read_usage()
+            if usage.available:
+                self.query_one("#usage-session", UsageBar).pct = usage.session_pct
+                self.query_one("#usage-week", UsageBar).pct = usage.week_pct
+                extra_bar = self.query_one("#usage-extra", UsageBar)
+                extra_bar.pct = usage.extra_pct
+                if usage.extra_limit > 0:
+                    extra_bar.extra_text = f"${usage.extra_used / 100:.2f}/${usage.extra_limit / 100:.2f}"
+
+            # Update table
+            table = self.query_one("#agent-table", DataTable)
+            table.clear()
+
+            if not self.agents:
+                status = self.query_one("#status-line", Static)
+                status.update("  No tracked agents — press [bold]n[/] to create one, or open a terminal with $mod+Return and type a name")
+                return
+
+            for a in self.agents:
+                icon = {"WORKING": "⟳", "IDLE": "⏳", "DONE": "✓"}[a.state.value]
+                state_color = {"WORKING": "#00d7d7", "IDLE": "#d7af00", "DONE": "#00d787"}[a.state.value]
+
+                state_text = Text(f"{icon} {a.state.value}", style=f"bold {state_color}")
+                ctx_str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
+                tok_str = f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
+                cwd = a.cwd.replace(str(Path.home()), "~")
+
+                # Unique key: socket path + kitty window id
+                row_key = f"{a.socket}:{a.kitty_id}"
+                table.add_row(
+                    a.name,
+                    state_text,
+                    a.model or "—",
+                    ctx_str,
+                    tok_str,
+                    a.workspace or "?",
+                    cwd,
+                    key=row_key,
+                )
+
+            n_working = sum(1 for a in self.agents if a.state == State.WORKING)
+            n_idle = sum(1 for a in self.agents if a.state == State.IDLE)
+            status = self.query_one("#status-line", Static)
+            status.update(
+                f"  {len(self.agents)} agents  │  "
+                f"[bold #00d7d7]{n_working} working[/]  "
+                f"[bold #d7af00]{n_idle} idle[/]  │  "
+                f"Poll: {POLL_INTERVAL}s"
+            )
+
+        def _get_selected_agent(self) -> Optional[AgentWindow]:
+            table = self.query_one("#agent-table", DataTable)
+            if not self.agents or table.row_count == 0:
+                return None
+            try:
+                row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+                # Key format: "socket:kitty_id"
+                key_val = row_key.value
+                for a in self.agents:
+                    if f"{a.socket}:{a.kitty_id}" == key_val:
+                        return a
+            except Exception:
+                pass
+            return None
+
+        def action_focus_agent(self) -> None:
+            agent = self._get_selected_agent()
+            if agent:
+                focus_window(agent)
+
+        def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+            """Enter pressed on a table row."""
+            agent = self._get_selected_agent()
+            if agent:
+                focus_window(agent)
+                self.notify(f"Focused: {agent.name}", timeout=2)
+
+        def action_kill_agent(self) -> None:
+            from textual.widgets import Input
+            if isinstance(self.focused, Input):
+                return  # Don't intercept k when typing in an input
+            if len(self.screen_stack) > 1:
+                return  # Don't fire when a modal is open
+            agent = self._get_selected_agent()
+            if agent:
+                self.push_screen(ConfirmKillScreen(agent))
+
+        def do_kill_agent(self, agent: AgentWindow) -> None:
+            close_window(agent)
+            notify("Agent closed", f"[{agent.name}] terminated")
+            self.notify(f"Killed: {agent.name}", timeout=2)
+            self.poll_and_update()
+
+        def action_new_agent(self) -> None:
+            self.push_screen(NewAgentScreen())
+
+        def action_refresh(self) -> None:
+            self.poll_and_update()
+
+    # ── New agent dialog ──────────────────────────────────────────────
+
+    from textual.screen import ModalScreen
+    from textual.widgets import Input, Button
+
+    NEW_AGENT_CSS = """
+    NewAgentScreen {
+        align: center middle;
+    }
+
+    #new-agent-dialog {
+        width: 60;
+        height: auto;
+        max-height: 16;
+        border: thick #00d7d7;
+        background: #0a0a0a;
+        padding: 1 2;
+    }
+
+    #new-agent-dialog Label {
+        margin: 1 0 0 0;
+        color: #00d7d7;
+    }
+
+    #new-agent-dialog Input {
+        margin: 0 0 1 0;
+    }
+
+    #new-agent-buttons {
+        height: 3;
+        align: right middle;
+        margin: 1 0 0 0;
+    }
+
+    #new-agent-buttons Button {
+        margin: 0 0 0 1;
+    }
+    """
+
+    class NewAgentScreen(ModalScreen):
+        CSS = NEW_AGENT_CSS
+        BINDINGS = [
+            Binding("escape", "dismiss", "Cancel", show=False),
+        ]
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="new-agent-dialog"):
+                yield Label("New Agent")
+                yield Label("Name:")
+                yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
+                yield Label("Directory:")
+                yield Input(placeholder="e.g. ~/projects/backend", value=".", id="agent-dir")
+                with Horizontal(id="new-agent-buttons"):
+                    yield Button("Cancel", variant="default", id="cancel-btn")
+                    yield Button("Launch", variant="primary", id="launch-btn")
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "launch-btn":
+                self._launch()
+            else:
+                self.dismiss()
+
+        def on_input_submitted(self, event: Input.Submitted) -> None:
+            if event.input.id == "agent-name":
+                self.query_one("#agent-dir", Input).focus()
+            elif event.input.id == "agent-dir":
+                self._launch()
+
+        def _launch(self) -> None:
+            name = self.query_one("#agent-name", Input).value.strip()
+            directory = self.query_one("#agent-dir", Input).value.strip() or "."
+            if not name:
+                self.query_one("#agent-name", Input).focus()
+                return
+            directory = os.path.expanduser(directory)
+            env = os.environ.copy()
+            env["AGENTMON_NAME"] = name
+            subprocess.Popen(
+                ["kitty", "--directory", directory],
+                env=env, start_new_session=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self.dismiss()
+            self.app.notify(f"Launched: {name}", timeout=3)
+            # Delay refresh to let kitty start
+            self.app.set_timer(1.5, self.app.poll_and_update)
+
+    # ── Kill confirmation dialog ─────────────────────────────────────
+
+    CONFIRM_KILL_CSS = """
+    ConfirmKillScreen {
+        align: center middle;
+    }
+
+    #confirm-kill-dialog {
+        width: 50;
+        height: auto;
+        max-height: 10;
+        border: thick #ff3366;
+        background: #0a0a0a;
+        padding: 1 2;
+    }
+
+    #confirm-kill-dialog Label {
+        width: 100%;
+        content-align: center middle;
+        margin: 0 0 1 0;
+        color: #cccccc;
+    }
+
+    #confirm-kill-buttons {
+        height: 3;
+        align: center middle;
+    }
+
+    #confirm-kill-buttons Button {
+        margin: 0 1;
+    }
+    """
+
+    class ConfirmKillScreen(ModalScreen):
+        CSS = CONFIRM_KILL_CSS
+        BINDINGS = [
+            Binding("escape", "dismiss", "Cancel", show=False),
+            Binding("y", "confirm", "Yes", show=False),
+            Binding("n", "dismiss", "No", show=False),
+        ]
+
+        def __init__(self, agent: AgentWindow):
+            super().__init__()
+            self.agent = agent
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="confirm-kill-dialog"):
+                yield Label(f"Kill agent [bold]{self.agent.name}[/bold]?")
+                with Horizontal(id="confirm-kill-buttons"):
+                    yield Button("No", variant="default", id="no-btn")
+                    yield Button("Yes, kill", variant="error", id="yes-btn")
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "yes-btn":
+                self.app.do_kill_agent(self.agent)
+            self.dismiss()
+
+        def action_confirm(self) -> None:
+            self.app.do_kill_agent(self.agent)
+            self.dismiss()
+
+    app = ZeusApp()
+    app.run()
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(prog="zeus",
+        description="Monitor and manage coding agents in kitty windows")
+    sub = parser.add_subparsers(dest="cmd")
+
+    p_new = sub.add_parser("new", help="Launch a new tracked agent window")
+    p_new.add_argument("-n", "--name", required=True, help="Agent name")
+    p_new.add_argument("-d", "--directory", help="Working directory")
+    p_new.set_defaults(func=cmd_new)
+
+    p_ls = sub.add_parser("ls", help="List tracked agent windows")
+    p_ls.set_defaults(func=cmd_ls)
+
+    p_focus = sub.add_parser("focus", help="Focus an agent window")
+    p_focus.add_argument("id", help="Window ID or name")
+    p_focus.set_defaults(func=cmd_focus)
+
+    p_kill = sub.add_parser("kill", help="Close an agent window")
+    p_kill.add_argument("id", help="Window ID or name")
+    p_kill.set_defaults(func=cmd_kill)
+
+    p_dash = sub.add_parser("dashboard", aliases=["d"], help="Live dashboard")
+    p_dash.set_defaults(func=cmd_dashboard)
+
+    args = parser.parse_args()
+    if hasattr(args, "func"):
+        args.func(args)
+    else:
+        cmd_dashboard(args)
+
+if __name__ == "__main__":
+    main()

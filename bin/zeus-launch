@@ -1,0 +1,12 @@
+#!/bin/bash
+# Zeus launcher — prompts for agent name via bemenu.
+# If a name is given, the kitty window is tracked by zeus.
+# If Enter is pressed with no name, a normal untracked kitty opens.
+
+name=$(echo "" | bemenu -p "Agent name (Enter=skip):" -l 0 --fn "monospace 12")
+
+if [ -n "$name" ]; then
+    AGENTMON_NAME="$name" kitty
+else
+    kitty
+fi
