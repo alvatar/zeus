@@ -1157,14 +1157,14 @@ def cmd_dashboard(args):
             )
             yield Vertical(
                 Horizontal(
-                    UsageBar("Session:", classes="usage-item", id="usage-session"),
-                    UsageBar("Week:", classes="usage-item", id="usage-week"),
-                    UsageBar("Extra:", classes="usage-item", id="usage-extra"),
+                    UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
+                    UsageBar("Claude Week:", classes="usage-item", id="usage-week"),
+                    UsageBar("Claude Extra:", classes="usage-item", id="usage-extra"),
                     id="usage-bar",
                 ),
                 Horizontal(
                     UsageBar("OpenAI Session:", classes="usage-item", id="openai-session"),
-                    UsageBar("OpenAI Week:", classes="usage-item", id="openai-week"),
+                    UsageBar("Week:", classes="usage-item", id="openai-week"),
                     id="openai-usage-bar",
                 ),
                 id="top-bars",
