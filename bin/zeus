@@ -1104,9 +1104,15 @@ def cmd_dashboard(args):
     }
 
     DataTable > .datatable--cursor {
-        background: #003a3a;
-        color: #00d7d7;
-        text-style: bold;
+        background: #1a1a1a;
+        color: auto;
+        text-style: none;
+    }
+
+    DataTable:focus > .datatable--cursor {
+        background: #1a1a1a;
+        color: auto;
+        text-style: none;
     }
 
     DataTable > .datatable--header {
@@ -1186,7 +1192,11 @@ def cmd_dashboard(args):
                 id="top-bars",
             )
             yield Vertical(
-                DataTable(id="agent-table"),
+                DataTable(
+                    id="agent-table",
+                    cursor_foreground_priority="renderable",
+                    cursor_background_priority="css",
+                ),
                 id="table-container",
             )
             yield Static("", id="status-line")
