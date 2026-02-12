@@ -405,8 +405,16 @@ def discover_agents() -> list[AgentWindow]:
                 for win in tab.get("windows", []):
                     env = win.get("env", {})
                     name = env.get("AGENTMON_NAME")
+
                     if not name:
-                        continue
+                        # Auto-track plain pi windows without AGENTMON_NAME
+                        cmdline = win.get("cmdline") or []
+                        title = (win.get("title") or "").lower()
+                        cmd_str = " ".join(str(x) for x in cmdline).lower()
+                        looks_like_pi = (" pi" in f" {cmd_str} ") or (" pi" in title) or title.startswith("π")
+                        if not looks_like_pi:
+                            continue
+                        name = f"pi-{win['id']}"
                     agent_key = f"{socket}:{win['id']}"
                     agents.append(AgentWindow(
                         kitty_id=win["id"],
