@@ -1250,6 +1250,7 @@ def cmd_dashboard(args):
             self.poll_and_update()
             self.set_interval(POLL_INTERVAL, self.poll_and_update)
             self.set_interval(1.0, self.update_clock)
+            self.set_interval(1.0, self._update_log_panel)
 
         def update_clock(self) -> None:
             clock = self.query_one("#title-clock", Static)
@@ -1681,10 +1682,31 @@ def cmd_dashboard(args):
                 panel.remove_class("visible")
 
         def _update_log_panel(self) -> None:
-            """Update the log panel with the last 20 lines of the selected agent's screen."""
+            """Update the log panel with the last 20 lines of the selected agent or tmux session."""
             panel = self.query_one("#log-panel", Static)
             if not self._log_visible:
                 return
+
+            # Check if a tmux session is selected
+            tmux = self._get_selected_tmux()
+            if tmux:
+                try:
+                    r = subprocess.run(
+                        ["tmux", "capture-pane", "-t", tmux.name, "-p", "-S", "-20"],
+                        capture_output=True, text=True, timeout=3)
+                    if r.returncode == 0 and r.stdout.strip():
+                        lines = r.stdout.splitlines()
+                        recent = [l for l in lines if l.strip()][-20:]
+                        header = f"[bold #00d787]── tmux: {tmux.name} ──[/]"
+                        content = "\n".join(f"  {line.rstrip()}" for line in recent)
+                        panel.update(f"{header}\n{content}")
+                        return
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
+                panel.update(f"  [tmux: {tmux.name}] (no output)")
+                return
+
+            # Otherwise show the selected agent's screen
             agent = self._get_selected_agent()
             if not agent:
                 panel.update("  No agent selected")
