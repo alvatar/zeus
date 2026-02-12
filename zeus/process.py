@@ -374,23 +374,21 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
             gpu_pct += sm
             gpu_mem += mem
 
-    # Network I/O: delta-based
-    # Prefer tcp_diag (accurate per-socket byte counters) when available,
-    # fall back to rchar-read_bytes filtered to TCP-socket PIDs.
+    # Network I/O: delta-based via tcp_diag (accurate per-socket counters).
+    # If tcp_diag is unavailable, leave at 0 — the rchar heuristic is too
+    # inaccurate for processes doing heavy disk/pipe work.
+    io_read: float = 0.0
+    io_write: float = 0.0
     diag: tuple[float, float] | None = _net_io_tcp_diag(pids)
     if diag is not None:
         net_recv, net_sent = diag
-    else:
-        net_recv, net_sent = _net_io_rchar_fallback(pids)
-    io_read: float = 0.0
-    io_write: float = 0.0
-    prev_io = _prev_proc_io.get(kitty_pid)
-    if prev_io is not None:
-        dt = now - prev_io[2]
-        if dt > 0:
-            io_read = max(0, (net_recv - prev_io[0]) / dt)
-            io_write = max(0, (net_sent - prev_io[1]) / dt)
-    _prev_proc_io[kitty_pid] = (net_recv, net_sent, now)
+        prev_io = _prev_proc_io.get(kitty_pid)
+        if prev_io is not None:
+            dt = now - prev_io[2]
+            if dt > 0:
+                io_read = max(0, (net_recv - prev_io[0]) / dt)
+                io_write = max(0, (net_sent - prev_io[1]) / dt)
+        _prev_proc_io[kitty_pid] = (net_recv, net_sent, now)
 
     return ProcessMetrics(
         cpu_pct=cpu_pct, ram_mb=ram_mb,
