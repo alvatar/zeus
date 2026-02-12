@@ -70,6 +70,7 @@ class AgentWindow:
     tokens_out: str = ""
     workspace: str = ""
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
+    proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)
     _screen_text: str = ""     # cached for tmux matching
 
 @dataclass
@@ -95,12 +96,22 @@ class SystemMetrics:
     net_up_bps: float = 0.0      # bytes per second
     net_down_bps: float = 0.0
 
+@dataclass
+class ProcessMetrics:
+    cpu_pct: float = 0.0
+    ram_mb: float = 0.0
+    gpu_pct: float = 0.0
+    gpu_mem_mb: float = 0.0
+
 # ---------------------------------------------------------------------------
 # System metrics (proc-based, no dependencies)
 # ---------------------------------------------------------------------------
 
 _prev_cpu: Optional[tuple[float, float]] = None   # (idle, total)
 _prev_net: Optional[tuple[float, float, float]] = None  # (rx, tx, time)
+# Per-process CPU tracking: pid -> (utime+stime, timestamp)
+_prev_proc_cpu: dict[int, tuple[float, float]] = {}
+_NUM_CPUS = os.cpu_count() or 1
 
 def _read_cpu() -> float:
     """Read CPU usage % from /proc/stat (delta between calls)."""
@@ -214,6 +225,141 @@ def _fmt_bytes(bps: float) -> str:
     if bps >= 1024:
         return f"{bps / 1024:.0f}K"
     return f"{bps:.0f}B"
+
+# ---------------------------------------------------------------------------
+# Per-process metrics
+# ---------------------------------------------------------------------------
+
+def _get_process_tree(root_pid: int) -> list[int]:
+    """Get all PIDs in the tree rooted at root_pid (inclusive)."""
+    pids = [root_pid]
+    try:
+        children = subprocess.run(
+            ["pgrep", "-P", str(root_pid)],
+            capture_output=True, text=True, timeout=2)
+        if children.returncode == 0:
+            for line in children.stdout.strip().splitlines():
+                try:
+                    child = int(line.strip())
+                    pids.extend(_get_process_tree(child))
+                except ValueError:
+                    pass
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return pids
+
+def _clk_tck() -> int:
+    try:
+        return os.sysconf("SC_CLK_TCK")
+    except (ValueError, OSError):
+        return 100
+
+_CLK_TCK = _clk_tck()
+
+def _read_proc_cpu(pids: list[int]) -> float:
+    """Read total CPU ticks (utime+stime) for a set of PIDs."""
+    total = 0.0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/stat") as f:
+                parts = f.read().split()
+            total += float(parts[13]) + float(parts[14])  # utime + stime
+        except (FileNotFoundError, IndexError, ValueError):
+            pass
+    return total
+
+def _read_proc_ram(pids: list[int]) -> float:
+    """Read total RSS in MB for a set of PIDs."""
+    total = 0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/statm") as f:
+                pages = int(f.read().split()[1])  # RSS in pages
+            total += pages
+        except (FileNotFoundError, IndexError, ValueError):
+            pass
+    page_size = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+    return total * page_size / 1048576  # MB
+
+# Cache GPU pmon output per poll cycle
+_gpu_pmon_cache: Optional[dict[int, tuple[float, float]]] = None
+_gpu_pmon_ts: float = 0.0
+
+def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
+    """Read nvidia-smi pmon, return {pid: (sm%, mem_mb)}. Cached per second."""
+    global _gpu_pmon_cache, _gpu_pmon_ts
+    now = time.time()
+    if _gpu_pmon_cache is not None and now - _gpu_pmon_ts < 1.5:
+        return _gpu_pmon_cache
+    result: dict[int, tuple[float, float]] = {}
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "pmon", "-c", "1", "-s", "u"],
+            capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) >= 4:
+                    try:
+                        pid = int(parts[1])
+                        sm = float(parts[3]) if parts[3] != "-" else 0.0
+                        result[pid] = (sm, 0.0)
+                    except (ValueError, IndexError):
+                        pass
+        # Also get per-process memory via compute-apps
+        r2 = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,used_gpu_memory",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=3)
+        if r2.returncode == 0:
+            for line in r2.stdout.strip().splitlines():
+                parts = line.split(",")
+                if len(parts) >= 2:
+                    try:
+                        pid = int(parts[0].strip())
+                        mem = float(parts[1].strip())
+                        sm = result.get(pid, (0.0, 0.0))[0]
+                        result[pid] = (sm, mem)
+                    except (ValueError, IndexError):
+                        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    _gpu_pmon_cache = result
+    _gpu_pmon_ts = now
+    return result
+
+def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
+    """Read CPU%, RAM, GPU% for an agent's process tree."""
+    global _prev_proc_cpu
+    pids = _get_process_tree(kitty_pid)
+    now = time.time()
+
+    # CPU: delta-based
+    ticks = _read_proc_cpu(pids)
+    cpu_pct = 0.0
+    prev = _prev_proc_cpu.get(kitty_pid)
+    if prev is not None:
+        dt = now - prev[1]
+        if dt > 0:
+            cpu_pct = ((ticks - prev[0]) / _CLK_TCK / dt) * 100
+    _prev_proc_cpu[kitty_pid] = (ticks, now)
+
+    # RAM
+    ram_mb = _read_proc_ram(pids)
+
+    # GPU: match any PID in tree
+    gpu_data = _read_gpu_pmon()
+    gpu_pct = 0.0
+    gpu_mem = 0.0
+    pid_set = set(pids)
+    for pid, (sm, mem) in gpu_data.items():
+        if pid in pid_set:
+            gpu_pct += sm
+            gpu_mem += mem
+
+    return ProcessMetrics(cpu_pct=cpu_pct, ram_mb=ram_mb, gpu_pct=gpu_pct, gpu_mem_mb=gpu_mem)
 
 # ---------------------------------------------------------------------------
 # Session forking (for sub-agents)
@@ -774,7 +920,7 @@ def cmd_dashboard(args):
             table = self.query_one("#agent-table", DataTable)
             table.cursor_type = "row"
             table.zebra_stripes = True
-            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "WS", "CWD")
+            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "CPU", "RAM", "GPU", "WS", "CWD")
             self.poll_and_update()
             self.set_interval(POLL_INTERVAL, self.poll_and_update)
             self.set_interval(1.0, self.update_clock)
@@ -794,6 +940,7 @@ def cmd_dashboard(args):
                 a.state = detect_state(screen)
                 a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
                 a.workspace = pid_ws.get(a.kitty_pid, "?")
+                a.proc_metrics = read_process_metrics(a.kitty_pid)
 
                 # Notifications
                 old = self.prev_states.get(a.kitty_id)
@@ -866,6 +1013,17 @@ def cmd_dashboard(args):
                 tok_str = f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
                 cwd = a.cwd
 
+                # Per-process metrics
+                pm = a.proc_metrics
+                cpu_c = "#ff3333" if pm.cpu_pct >= 90 else "#ff8800" if pm.cpu_pct >= 50 else "#00d7d7"
+                cpu_text = Text(f"{pm.cpu_pct:.0f}%", style=cpu_c)
+                ram_text = Text(f"{pm.ram_mb:.0f}M", style="#00d7d7")
+                gpu_c = "#ff3333" if pm.gpu_pct >= 90 else "#ff8800" if pm.gpu_pct >= 50 else "#00d7d7"
+                gpu_str = f"{pm.gpu_pct:.0f}%"
+                if pm.gpu_mem_mb > 0:
+                    gpu_str += f" {pm.gpu_mem_mb:.0f}M"
+                gpu_text = Text(gpu_str, style=gpu_c)
+
                 # Unique key: socket path + kitty window id
                 row_key = f"{a.socket}:{a.kitty_id}"
                 table.add_row(
@@ -874,6 +1032,9 @@ def cmd_dashboard(args):
                     a.model or "—",
                     ctx_str,
                     tok_str,
+                    cpu_text,
+                    ram_text,
+                    gpu_text,
                     a.workspace or "?",
                     cwd,
                     key=row_key,
@@ -903,7 +1064,8 @@ def cmd_dashboard(args):
                         tmux_name,
                         tmux_age,
                         tmux_cmd,
-                        "", "", "",
+                        "", "", "", "", "",
+                        "",
                         tmux_cwd,
                         key=tmux_key,
                     )
@@ -1108,7 +1270,7 @@ def cmd_dashboard(args):
                 yield Label("Name:")
                 yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
                 yield Label("Directory:")
-                yield Input(placeholder="e.g. ~/projects/backend", value=".", id="agent-dir")
+                yield Input(placeholder="e.g. /home/user/projects/backend", value=os.getcwd(), id="agent-dir")
                 with Horizontal(id="new-agent-buttons"):
                     yield Button("Cancel", variant="default", id="cancel-btn")
                     yield Button("Launch", variant="primary", id="launch-btn")
