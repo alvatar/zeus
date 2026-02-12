@@ -78,6 +78,7 @@ class AgentWindow:
     tokens_in: str = ""
     tokens_out: str = ""
     workspace: str = ""
+    parent_name: str = ""         # ZEUS_PARENT env var (empty = top-level)
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)
     _screen_text: str = ""     # cached for tmux matching
@@ -389,6 +390,7 @@ def discover_agents() -> list[AgentWindow]:
                         pid=win.get("pid", 0),
                         kitty_pid=kitty_pid,
                         cwd=win.get("cwd", ""),
+                        parent_name=env.get("ZEUS_PARENT", ""),
                     ))
     return agents
 
@@ -415,6 +417,7 @@ def spawn_subagent(agent: AgentWindow, name: str) -> Optional[str]:
         return None
     env = os.environ.copy()
     env["AGENTMON_NAME"] = name
+    env["ZEUS_PARENT"] = agent.name
     subprocess.Popen(
         ["kitty", "--directory", cwd, "--hold",
          "bash", "-lc", f"pi --session {forked}"],
@@ -870,16 +873,26 @@ def cmd_dashboard(args):
                 status.update("  No tracked agents — press [bold]n[/] to create one, or open a terminal with $mod+Return and type a name")
                 return
 
+            # Separate top-level agents from sub-agents
+            parent_names = {a.name for a in self.agents}
+            top_level = [a for a in self.agents
+                         if not a.parent_name or a.parent_name not in parent_names]
+            children_of: dict[str, list[AgentWindow]] = {}
             for a in self.agents:
+                if a.parent_name and a.parent_name in parent_names:
+                    children_of.setdefault(a.parent_name, []).append(a)
+
+            def _add_agent_row(a: AgentWindow, indent: str = ""):
                 icon = {"WORKING": "⟳", "IDLE": "⏳", "DONE": "✓"}[a.state.value]
                 state_color = {"WORKING": "#00d7d7", "IDLE": "#d7af00", "DONE": "#00d787"}[a.state.value]
-
+                if indent:
+                    name_text = Text(f"{indent}🧬 {a.name}", style="#00d7d7")
+                else:
+                    name_text = a.name
                 state_text = Text(f"{icon} {a.state.value}", style=f"bold {state_color}")
                 ctx_str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
                 tok_str = f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
-                cwd = a.cwd
 
-                # Per-process metrics
                 pm = a.proc_metrics
                 cpu_c = "#ff3333" if pm.cpu_pct >= 90 else "#ff8800" if pm.cpu_pct >= 50 else "#00d7d7"
                 cpu_text = Text(f"{pm.cpu_pct:.0f}%", style=cpu_c)
@@ -892,10 +905,9 @@ def cmd_dashboard(args):
                 net_str = f"↓{_fmt_bytes(pm.io_read_bps)} ↑{_fmt_bytes(pm.io_write_bps)}"
                 net_text = Text(net_str, style="#00d7d7")
 
-                # Unique key: socket path + kitty window id
                 row_key = f"{a.socket}:{a.kitty_id}"
                 table.add_row(
-                    a.name,
+                    name_text,
                     state_text,
                     a.model or "—",
                     ctx_str,
@@ -905,11 +917,11 @@ def cmd_dashboard(args):
                     gpu_text,
                     net_text,
                     a.workspace or "?",
-                    cwd,
+                    a.cwd,
                     key=row_key,
                 )
 
-                # Tmux sub-rows
+            def _add_tmux_rows(a: AgentWindow):
                 for sess in a.tmux_sessions:
                     age_s = int(time.time()) - sess.created if sess.created else 0
                     if age_s >= 3600:
@@ -927,7 +939,6 @@ def cmd_dashboard(args):
                         tmux_name = Text(f"  └ 🔍 {sess.name}", style="#00d787")
                         tmux_cmd = Text(sess.command[:30] or "—", style="#557755")
                         tmux_age = Text(f"⏱ {age_str}", style="#557755")
-                    tmux_cwd = sess.cwd
                     tmux_key = f"tmux:{sess.name}"
                     table.add_row(
                         tmux_name,
@@ -935,9 +946,18 @@ def cmd_dashboard(args):
                         tmux_cmd,
                         "", "", "", "", "", "",
                         "",
-                        tmux_cwd,
+                        sess.cwd,
                         key=tmux_key,
                     )
+
+            for a in top_level:
+                _add_agent_row(a)
+                # Sub-agents under parent
+                for child in children_of.get(a.name, []):
+                    _add_agent_row(child, indent="  └ ")
+                    _add_tmux_rows(child)
+                # Tmux sessions of parent
+                _add_tmux_rows(a)
 
             n_working = sum(1 for a in self.agents if a.state == State.WORKING)
             n_idle = sum(1 for a in self.agents if a.state == State.IDLE)
