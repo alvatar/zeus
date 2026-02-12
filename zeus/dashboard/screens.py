@@ -1,7 +1,10 @@
 """Modal screens: new agent, sub-agent, rename, confirm kill."""
 
+from __future__ import annotations
+
 import os
 import subprocess
+from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,10 +20,21 @@ from .css import (
     CONFIRM_KILL_CSS,
 )
 
+if TYPE_CHECKING:
+    from .app import ZeusApp
+
 
 # ── New agent ─────────────────────────────────────────────────────────
 
-class NewAgentScreen(ModalScreen):
+class _ZeusScreenMixin:
+    """Mixin providing typed access to the ZeusApp instance."""
+
+    @property
+    def zeus(self) -> ZeusApp:
+        return self.app  # type: ignore[attr-defined]
+
+
+class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     CSS = NEW_AGENT_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
@@ -52,13 +66,15 @@ class NewAgentScreen(ModalScreen):
             self._launch()
 
     def _launch(self) -> None:
-        name = self.query_one("#agent-name", Input).value.strip()
-        directory = self.query_one("#agent-dir", Input).value.strip() or "."
+        name: str = self.query_one("#agent-name", Input).value.strip()
+        directory: str = (
+            self.query_one("#agent-dir", Input).value.strip() or "."
+        )
         if not name:
             self.query_one("#agent-name", Input).focus()
             return
         directory = os.path.expanduser(directory)
-        env = os.environ.copy()
+        env: dict[str, str] = os.environ.copy()
         env["AGENTMON_NAME"] = name
         subprocess.Popen(
             ["kitty", "--directory", directory, "--hold",
@@ -67,17 +83,17 @@ class NewAgentScreen(ModalScreen):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         self.dismiss()
-        self.app.notify(f"Launched: {name} (pi)", timeout=3)
-        self.app.set_timer(1.5, self.app.poll_and_update)
+        self.zeus.notify(f"Launched: {name} (pi)", timeout=3)
+        self.zeus.set_timer(1.5, self.zeus.poll_and_update)
 
 
 # ── Sub-agent ─────────────────────────────────────────────────────────
 
-class SubAgentScreen(ModalScreen):
+class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
     CSS = SUBAGENT_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
-    def __init__(self, agent: AgentWindow):
+    def __init__(self, agent: AgentWindow) -> None:
         super().__init__()
         self.agent = agent
 
@@ -107,21 +123,21 @@ class SubAgentScreen(ModalScreen):
         self._fork()
 
     def _fork(self) -> None:
-        name = self.query_one("#subagent-name", Input).value.strip()
+        name: str = self.query_one("#subagent-name", Input).value.strip()
         if not name:
             self.query_one("#subagent-name", Input).focus()
             return
         self.dismiss()
-        self.app.do_spawn_subagent(self.agent, name)
+        self.zeus.do_spawn_subagent(self.agent, name)
 
 
 # ── Rename ────────────────────────────────────────────────────────────
 
-class RenameScreen(ModalScreen):
+class RenameScreen(_ZeusScreenMixin, ModalScreen):
     CSS = RENAME_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
-    def __init__(self, agent: AgentWindow):
+    def __init__(self, agent: AgentWindow) -> None:
         super().__init__()
         self.agent = agent
 
@@ -149,19 +165,19 @@ class RenameScreen(ModalScreen):
         self._do_rename()
 
     def _do_rename(self) -> None:
-        new_name = self.query_one("#rename-input", Input).value.strip()
+        new_name: str = self.query_one("#rename-input", Input).value.strip()
         if not new_name or new_name == self.agent.name:
             self.dismiss()
             return
         self.dismiss()
-        self.app.do_rename_agent(self.agent, new_name)
+        self.zeus.do_rename_agent(self.agent, new_name)
 
 
-class RenameTmuxScreen(ModalScreen):
+class RenameTmuxScreen(_ZeusScreenMixin, ModalScreen):
     CSS = RENAME_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
-    def __init__(self, sess: TmuxSession):
+    def __init__(self, sess: TmuxSession) -> None:
         super().__init__()
         self.sess = sess
 
@@ -191,17 +207,17 @@ class RenameTmuxScreen(ModalScreen):
         self._do_rename()
 
     def _do_rename(self) -> None:
-        new_name = self.query_one("#rename-input", Input).value.strip()
+        new_name: str = self.query_one("#rename-input", Input).value.strip()
         if not new_name or new_name == self.sess.name:
             self.dismiss()
             return
         self.dismiss()
-        self.app.do_rename_tmux(self.sess, new_name)
+        self.zeus.do_rename_tmux(self.sess, new_name)
 
 
 # ── Kill confirmation ─────────────────────────────────────────────────
 
-class ConfirmKillScreen(ModalScreen):
+class ConfirmKillScreen(_ZeusScreenMixin, ModalScreen):
     CSS = CONFIRM_KILL_CSS
     BINDINGS = [
         Binding("escape", "dismiss", "Cancel", show=False),
@@ -209,7 +225,7 @@ class ConfirmKillScreen(ModalScreen):
         Binding("n", "dismiss", "No", show=False),
     ]
 
-    def __init__(self, agent: AgentWindow):
+    def __init__(self, agent: AgentWindow) -> None:
         super().__init__()
         self.agent = agent
 
@@ -222,23 +238,23 @@ class ConfirmKillScreen(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "yes-btn":
-            self.app.do_kill_agent(self.agent)
+            self.zeus.do_kill_agent(self.agent)
         self.dismiss()
         event.stop()
 
-    def on_key(self, event) -> None:
-        if event.key == "enter":
-            self.app.do_kill_agent(self.agent)
+    def on_key(self, event: object) -> None:
+        if getattr(event, "key", None) == "enter":
+            self.zeus.do_kill_agent(self.agent)
             self.dismiss()
-            event.stop()
-            event.prevent_default()
+            event.stop()  # type: ignore[attr-defined]
+            event.prevent_default()  # type: ignore[attr-defined]
 
     def action_confirm(self) -> None:
-        self.app.do_kill_agent(self.agent)
+        self.zeus.do_kill_agent(self.agent)
         self.dismiss()
 
 
-class ConfirmKillTmuxScreen(ModalScreen):
+class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
     CSS = CONFIRM_KILL_CSS
     BINDINGS = [
         Binding("escape", "dismiss", "Cancel", show=False),
@@ -246,14 +262,15 @@ class ConfirmKillTmuxScreen(ModalScreen):
         Binding("n", "dismiss", "No", show=False),
     ]
 
-    def __init__(self, sess: TmuxSession):
+    def __init__(self, sess: TmuxSession) -> None:
         super().__init__()
         self.sess = sess
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-kill-dialog"):
             yield Label(
-                f"Detach and close window for [bold]{self.sess.name}[/bold]?"
+                f"Detach and close window for "
+                f"[bold]{self.sess.name}[/bold]?"
             )
             with Horizontal(id="confirm-kill-buttons"):
                 yield Button("Yes, close", variant="error", id="yes-btn")
@@ -261,17 +278,17 @@ class ConfirmKillTmuxScreen(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "yes-btn":
-            self.app.do_kill_tmux(self.sess)
+            self.zeus.do_kill_tmux(self.sess)
         self.dismiss()
         event.stop()
 
-    def on_key(self, event) -> None:
-        if event.key == "enter":
-            self.app.do_kill_tmux(self.sess)
+    def on_key(self, event: object) -> None:
+        if getattr(event, "key", None) == "enter":
+            self.zeus.do_kill_tmux(self.sess)
             self.dismiss()
-            event.stop()
-            event.prevent_default()
+            event.stop()  # type: ignore[attr-defined]
+            event.prevent_default()  # type: ignore[attr-defined]
 
     def action_confirm(self) -> None:
-        self.app.do_kill_tmux(self.sess)
+        self.zeus.do_kill_tmux(self.sess)
         self.dismiss()

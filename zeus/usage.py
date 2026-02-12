@@ -1,5 +1,7 @@
 """Claude and OpenAI usage tracking."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -8,7 +10,6 @@ import sys
 import time
 from glob import glob
 from pathlib import Path
-from typing import Optional
 
 from .config import USAGE_CACHE, OPENAI_USAGE_CACHE
 from .models import UsageData, OpenAIUsageData
@@ -22,12 +23,12 @@ def _time_left(value: str) -> str:
     """Convert a reset timestamp or duration to a human-readable countdown."""
     if not value:
         return ""
-    raw = value.strip()
+    raw: str = value.strip()
 
     duration = re.match(r"^(\d+(?:\.\d+)?)(ms|s|m|h)?$", raw)
     if duration and "T" not in raw:
-        amount = float(duration.group(1))
-        unit = duration.group(2) or "s"
+        amount: float = float(duration.group(1))
+        unit: str = duration.group(2) or "s"
         if unit == "ms":
             secs = int(round(amount / 1000))
         elif unit == "m":
@@ -68,7 +69,7 @@ def _time_left(value: str) -> str:
 
 def read_usage() -> UsageData:
     try:
-        data = json.loads(USAGE_CACHE.read_text())
+        data: dict = json.loads(USAGE_CACHE.read_text())
         return UsageData(
             session_pct=data.get("five_hour", {}).get("utilization", 0),
             week_pct=data.get("seven_day", {}).get("utilization", 0),
@@ -89,7 +90,7 @@ def read_usage() -> UsageData:
 
 def _openai_log(msg: str) -> None:
     try:
-        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        ts: str = time.strftime("%Y-%m-%d %H:%M:%S")
         with open("/tmp/zeus-openai.log", "a") as f:
             f.write(f"[{ts}] {msg}\n")
     except Exception:
@@ -97,12 +98,12 @@ def _openai_log(msg: str) -> None:
 
 
 def _load_openai_access_token() -> str:
-    auth_path = Path.home() / ".pi" / "agent" / "auth.json"
+    auth_path: Path = Path.home() / ".pi" / "agent" / "auth.json"
     try:
-        data = json.loads(auth_path.read_text())
-        token_info = data.get("openai-codex", {})
-        token = token_info.get("access", "")
-        expires = token_info.get("expires", 0)
+        data: dict = json.loads(auth_path.read_text())
+        token_info: dict = data.get("openai-codex", {})
+        token: str = token_info.get("access", "")
+        expires: int = token_info.get("expires", 0)
         if token:
             _openai_log(
                 f"loaded openai-codex oauth access token from {auth_path} "
@@ -122,7 +123,7 @@ def _load_openai_access_token() -> str:
 def _spawn_openai_fetch() -> None:
     """Spawn a helper process to fetch OpenAI usage."""
     try:
-        zeus_path = str(Path(sys.argv[0]).expanduser().resolve())
+        zeus_path: str = str(Path(sys.argv[0]).expanduser().resolve())
         subprocess.Popen(
             ["python3", zeus_path, "fetch-openai-usage"],
             stdout=subprocess.DEVNULL,
@@ -134,18 +135,18 @@ def _spawn_openai_fetch() -> None:
 
 def fetch_openai_usage() -> None:
     """Fetch OpenAI usage via WHAM endpoint, falling back to API headers."""
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key: str | None = os.environ.get("OPENAI_API_KEY")
     if api_key:
         _openai_log("auth source: OPENAI_API_KEY env")
 
     if not api_key:
         try:
             for socket in glob("/tmp/kitty-*"):
-                raw = subprocess.run(
+                raw: str = subprocess.run(
                     ["kitty", "@", "--to", f"unix:{socket}", "ls"],
                     capture_output=True, text=True, timeout=2,
                 ).stdout
-                data = json.loads(raw) if raw else []
+                data: list[dict] = json.loads(raw) if raw else []
                 for os_win in data:
                     for tab in os_win.get("tabs", []):
                         for win in tab.get("windows", []):
@@ -153,7 +154,8 @@ def fetch_openai_usage() -> None:
                             if key:
                                 api_key = key
                                 _openai_log(
-                                    f"auth source: kitty window env (socket={socket})"
+                                    f"auth source: kitty window env "
+                                    f"(socket={socket})"
                                 )
                                 break
                         if api_key:
@@ -182,13 +184,13 @@ def fetch_openai_usage() -> None:
         import urllib.request
         import urllib.error
 
-        token = api_key
-        base_urls = [
+        token: str = api_key
+        base_urls: list[str] = [
             "https://chatgpt.com/backend-api",
             "https://chat.openai.com/backend-api",
         ]
         for base in base_urls:
-            url = f"{base}/wham/usage"
+            url: str = f"{base}/wham/usage"
             _openai_log(f"requesting {url}")
             req = urllib.request.Request(
                 url,
@@ -201,12 +203,12 @@ def fetch_openai_usage() -> None:
             )
             try:
                 with urllib.request.urlopen(req, timeout=5) as response:
-                    body = response.read().decode(errors="replace")
-                    data = json.loads(body)
+                    body: str = response.read().decode(errors="replace")
+                    data_resp: dict = json.loads(body)
 
-                    rl = data.get("rate_limit") or {}
-                    primary = rl.get("primary_window") or {}
-                    secondary = rl.get("secondary_window") or {}
+                    rl: dict = data_resp.get("rate_limit") or {}
+                    primary: dict = rl.get("primary_window") or {}
+                    secondary: dict = rl.get("secondary_window") or {}
 
                     def _pct(win: dict) -> float:
                         try:
@@ -219,20 +221,22 @@ def fetch_openai_usage() -> None:
                         if ra is None:
                             return ""
                         try:
-                            secs = int(ra)
+                            secs_val: int = int(ra)
                             from datetime import datetime, timezone
                             return datetime.fromtimestamp(
-                                secs, tz=timezone.utc
+                                secs_val, tz=timezone.utc
                             ).isoformat()
                         except Exception:
                             return str(ra)
 
-                    cache_data = {
+                    cache_data: dict = {
                         "requests_limit": int(primary.get("limit", 0) or 0),
                         "requests_remaining": int(
                             primary.get("remaining", 0) or 0
                         ),
-                        "tokens_limit": int(secondary.get("limit", 0) or 0),
+                        "tokens_limit": int(
+                            secondary.get("limit", 0) or 0
+                        ),
                         "tokens_remaining": int(
                             secondary.get("remaining", 0) or 0
                         ),
@@ -247,10 +251,12 @@ def fetch_openai_usage() -> None:
                     _openai_log(f"cached wham usage to {OPENAI_USAGE_CACHE}")
                     return
             except urllib.error.HTTPError as e:
-                err_body = e.read(500).decode(errors="replace")
+                err_body: str = e.read(500).decode(errors="replace")
                 _openai_log(f"HTTPError {e.code} from {url}: {err_body}")
             except Exception as e:
-                _openai_log(f"fetch failed for {url}: {type(e).__name__}: {e}")
+                _openai_log(
+                    f"fetch failed for {url}: {type(e).__name__}: {e}"
+                )
 
     except Exception as e:
         _openai_log(f"wham usage attempt failed: {type(e).__name__}: {e}")
@@ -261,7 +267,7 @@ def fetch_openai_usage() -> None:
         import urllib.error
 
         url = "https://api.openai.com/v1/chat/completions"
-        payload = {
+        payload: dict = {
             "model": "gpt-3.5-turbo",
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
@@ -305,8 +311,8 @@ def fetch_openai_usage() -> None:
         try:
             import urllib.error
             if isinstance(e, urllib.error.HTTPError):
-                body = e.read(500).decode(errors="replace")
-                _openai_log(f"fallback HTTPError {e.code}: {body}")
+                body_err: str = e.read(500).decode(errors="replace")
+                _openai_log(f"fallback HTTPError {e.code}: {body_err}")
             else:
                 _openai_log(
                     f"fallback fetch failed: {type(e).__name__}: {e}"
@@ -328,7 +334,7 @@ def read_openai_usage() -> OpenAIUsageData:
 
     def _maybe_fetch(reason: str, min_interval_s: float = 5.0) -> None:
         global _last_openai_fetch_attempt
-        now = time.time()
+        now: float = time.time()
         if now - _last_openai_fetch_attempt >= min_interval_s:
             _openai_log(f"triggering background fetch ({reason})")
             _last_openai_fetch_attempt = now
@@ -341,15 +347,16 @@ def read_openai_usage() -> OpenAIUsageData:
         _maybe_fetch("cache-missing")
         return OpenAIUsageData()
 
-    age = time.time() - data.get("timestamp", 0)
+    age: float = time.time() - data.get("timestamp", 0)
     if age > 10:
         _maybe_fetch(f"cache-stale age={age:.1f}s")
 
-    req_limit = int(data.get("requests_limit", 0) or 0)
-    req_remaining = int(data.get("requests_remaining", 0) or 0)
-    tok_limit = int(data.get("tokens_limit", 0) or 0)
-    tok_remaining = int(data.get("tokens_remaining", 0) or 0)
+    req_limit: int = int(data.get("requests_limit", 0) or 0)
+    req_remaining: int = int(data.get("requests_remaining", 0) or 0)
+    tok_limit: int = int(data.get("tokens_limit", 0) or 0)
+    tok_remaining: int = int(data.get("tokens_remaining", 0) or 0)
 
+    req_pct: float
     if "requests_pct" in data:
         req_pct = float(data.get("requests_pct") or 0.0)
     else:
@@ -359,6 +366,7 @@ def read_openai_usage() -> OpenAIUsageData:
             else 0.0
         )
 
+    tok_pct: float
     if "tokens_pct" in data:
         tok_pct = float(data.get("tokens_pct") or 0.0)
     else:
@@ -368,7 +376,9 @@ def read_openai_usage() -> OpenAIUsageData:
             else 0.0
         )
 
-    available = req_limit > 0 or tok_limit > 0 or req_pct > 0 or tok_pct > 0
+    available: bool = (
+        req_limit > 0 or tok_limit > 0 or req_pct > 0 or tok_pct > 0
+    )
     if not available:
         _maybe_fetch("cache-present-but-empty")
 

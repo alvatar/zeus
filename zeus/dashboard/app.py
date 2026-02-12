@@ -1,10 +1,12 @@
 """Zeus TUI dashboard — main App class."""
 
+from __future__ import annotations
+
+import argparse
 import os
 import subprocess
 import time
 import threading
-from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -24,7 +26,6 @@ from ..sway import build_pid_workspace_map
 from ..tmux import discover_tmux_sessions, match_tmux_to_agents
 from ..state import detect_state, parse_footer
 from ..usage import read_usage, read_openai_usage, _time_left
-from ..notify import notify
 
 from .css import APP_CSS
 from .widgets import ZeusDataTable, UsageBar
@@ -106,35 +107,28 @@ class ZeusApp(App):
 
     def poll_and_update(self) -> None:
         self.agents = discover_agents()
-        pid_ws = build_pid_workspace_map()
-        tmux_sessions = discover_tmux_sessions()
+        pid_ws: dict[int, str] = build_pid_workspace_map()
+        tmux_sessions: list[TmuxSession] = discover_tmux_sessions()
 
         # Proactively populate OpenAI cache (throttled)
         _ = read_openai_usage()
 
         for a in self.agents:
-            screen = get_screen_text(a)
+            screen: str = get_screen_text(a)
             a._screen_text = screen
             a.state = detect_state(screen)
-            a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
+            a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(
+                screen
+            )
             a.workspace = pid_ws.get(a.kitty_pid, "?")
             a.proc_metrics = read_process_metrics(a.kitty_pid)
 
-            # Notifications — only after 4s of continuous idle
-            old = self.prev_states.get(a.kitty_id)
+            # Track state transitions
+            old: State | None = self.prev_states.get(a.kitty_id)
             if a.state == State.IDLE:
                 if old == State.WORKING:
                     self.idle_since[a.kitty_id] = time.time()
                     self.idle_notified.discard(a.kitty_id)
-                elif (a.kitty_id in self.idle_since
-                      and a.kitty_id not in self.idle_notified):
-                    if time.time() - self.idle_since[a.kitty_id] >= 4.0:
-                        notify(
-                            "Agent ready",
-                            f"[{a.name}] needs attention",
-                            "critical",
-                        )
-                        self.idle_notified.add(a.kitty_id)
             else:
                 self.idle_since.pop(a.kitty_id, None)
                 self.idle_notified.discard(a.kitty_id)
@@ -147,7 +141,7 @@ class ZeusApp(App):
         if usage.available:
             sess_bar = self.query_one("#usage-session", UsageBar)
             sess_bar.pct = usage.session_pct
-            sess_left = _time_left(usage.session_resets_at)
+            sess_left: str = _time_left(usage.session_resets_at)
             sess_bar.extra_text = f"({sess_left})" if sess_left else ""
 
             week_bar = self.query_one("#usage-week", UsageBar)
@@ -167,7 +161,7 @@ class ZeusApp(App):
         o_week = self.query_one("#openai-week", UsageBar)
         if openai.available:
             o_sess.pct = openai.requests_pct
-            left = _time_left(openai.requests_resets_at)
+            left: str = _time_left(openai.requests_resets_at)
             o_sess.extra_text = f"({left})" if left else ""
             o_week.pct = openai.tokens_pct
             o_week.extra_text = ""
@@ -179,7 +173,7 @@ class ZeusApp(App):
 
         # Update table
         table = self.query_one("#agent-table", DataTable)
-        _saved_key = self._get_selected_row_key()
+        _saved_key: str | None = self._get_selected_row_key()
         table.clear()
 
         if not self.agents:
@@ -191,8 +185,8 @@ class ZeusApp(App):
             return
 
         # Separate top-level agents from sub-agents
-        parent_names = {a.name for a in self.agents}
-        top_level = [
+        parent_names: set[str] = {a.name for a in self.agents}
+        top_level: list[AgentWindow] = [
             a for a in self.agents
             if not a.parent_name or a.parent_name not in parent_names
         ]
@@ -201,42 +195,44 @@ class ZeusApp(App):
             if a.parent_name and a.parent_name in parent_names:
                 children_of.setdefault(a.parent_name, []).append(a)
 
-        def _add_agent_row(a: AgentWindow, indent: str = ""):
-            icon = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
-            state_color = {"WORKING": "#00d700", "IDLE": "#ff3333"}[a.state.value]
-            name_text = f"{indent}🧬 {a.name}" if indent else a.name
+        def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
+            icon: str = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
+            state_color: str = {
+                "WORKING": "#00d700", "IDLE": "#ff3333"
+            }[a.state.value]
+            name_text: str = f"{indent}🧬 {a.name}" if indent else a.name
             state_text = Text(
                 f"{icon} {a.state.value}", style=f"bold {state_color}"
             )
-            ctx_str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
-            tok_str = (
+            ctx_str: str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
+            tok_str: str = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
             )
 
             pm = a.proc_metrics
-            cpu_c = (
+            cpu_c: str = (
                 "#ff3333" if pm.cpu_pct >= 90
                 else "#ff8800" if pm.cpu_pct >= 50
                 else "#00d7d7"
             )
             cpu_text = Text(f"{pm.cpu_pct:.0f}%", style=cpu_c)
             ram_text = Text(f"{pm.ram_mb:.0f}M", style="#00d7d7")
-            gpu_c = (
+            gpu_c: str = (
                 "#ff3333" if pm.gpu_pct >= 90
                 else "#ff8800" if pm.gpu_pct >= 50
                 else "#00d7d7"
             )
-            gpu_str = f"{pm.gpu_pct:.0f}%"
+            gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
             gpu_text = Text(gpu_str, style=gpu_c)
-            net_str = (
+            net_str: str = (
                 f"↓{_fmt_bytes(pm.io_read_bps)} "
                 f"↑{_fmt_bytes(pm.io_write_bps)}"
             )
             net_text = Text(net_str, style="#00d7d7")
 
-            row_key = f"{a.socket}:{a.kitty_id}"
+            row_key: str = f"{a.socket}:{a.kitty_id}"
             table.add_row(
                 name_text, state_text, a.model or "—", ctx_str,
                 cpu_text, ram_text, gpu_text, net_text,
@@ -244,9 +240,9 @@ class ZeusApp(App):
                 key=row_key,
             )
 
-        def _add_tmux_rows(a: AgentWindow):
+        def _add_tmux_rows(a: AgentWindow) -> None:
             for sess in a.tmux_sessions:
-                age_s = (
+                age_s: int = (
                     int(time.time()) - sess.created if sess.created else 0
                 )
                 if age_s >= 3600:
@@ -255,16 +251,19 @@ class ZeusApp(App):
                     age_str = f"{age_s // 60}m"
                 else:
                     age_str = f"{age_s}s"
+                tmux_name: str | Text
+                tmux_cmd: str | Text
+                tmux_age: str | Text
                 if sess.attached:
                     tmux_name = f"  └ 🔍 {sess.name}"
                     tmux_cmd = sess.command[:30] or "—"
                     tmux_age = f"⏱ {age_str} ●"
                 else:
-                    dim = "#555555"
+                    dim: str = "#555555"
                     tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
                     tmux_cmd = Text(sess.command[:30] or "—", style=dim)
                     tmux_age = Text(f"⏱ {age_str}", style=dim)
-                tmux_key = f"tmux:{sess.name}"
+                tmux_key: str = f"tmux:{sess.name}"
                 table.add_row(
                     tmux_name, tmux_age, tmux_cmd,
                     "", "", "", "", "", "", sess.cwd, "",
@@ -285,8 +284,12 @@ class ZeusApp(App):
                     table.move_cursor(row=idx)
                     break
 
-        n_working = sum(1 for a in self.agents if a.state == State.WORKING)
-        n_idle = sum(1 for a in self.agents if a.state == State.IDLE)
+        n_working: int = sum(
+            1 for a in self.agents if a.state == State.WORKING
+        )
+        n_idle: int = sum(
+            1 for a in self.agents if a.state == State.IDLE
+        )
         status = self.query_one("#status-line", Static)
         status.update(
             f"  {len(self.agents)} agents  │  "
@@ -299,7 +302,7 @@ class ZeusApp(App):
 
     # ── Selection helpers ─────────────────────────────────────────────
 
-    def _get_selected_row_key(self) -> Optional[str]:
+    def _get_selected_row_key(self) -> str | None:
         table = self.query_one("#agent-table", DataTable)
         if table.row_count == 0:
             return None
@@ -311,8 +314,8 @@ class ZeusApp(App):
         except Exception:
             return None
 
-    def _get_selected_agent(self) -> Optional[AgentWindow]:
-        key_val = self._get_selected_row_key()
+    def _get_selected_agent(self) -> AgentWindow | None:
+        key_val: str | None = self._get_selected_row_key()
         if not key_val or key_val.startswith("tmux:"):
             return None
         for a in self.agents:
@@ -320,11 +323,11 @@ class ZeusApp(App):
                 return a
         return None
 
-    def _get_selected_tmux(self) -> Optional[TmuxSession]:
-        key_val = self._get_selected_row_key()
+    def _get_selected_tmux(self) -> TmuxSession | None:
+        key_val: str | None = self._get_selected_row_key()
         if not key_val or not key_val.startswith("tmux:"):
             return None
-        sess_name = key_val[5:]
+        sess_name: str = key_val[5:]
         for a in self.agents:
             for sess in a.tmux_sessions:
                 if sess.name == sess_name:
@@ -347,18 +350,18 @@ class ZeusApp(App):
                 capture_output=True, text=True, timeout=2)
             if r.returncode != 0 or not r.stdout.strip():
                 return False
-            client_pid = int(r.stdout.strip().splitlines()[0])
-            pid = client_pid
+            client_pid: int = int(r.stdout.strip().splitlines()[0])
+            pid: int = client_pid
             for _ in range(15):
                 try:
                     with open(f"/proc/{pid}/comm") as f:
-                        comm = f.read().strip()
+                        comm: str = f.read().strip()
                     if comm == "kitty":
                         subprocess.run(
                             ["swaymsg", f"[pid={pid}]", "focus"],
                             capture_output=True, timeout=3)
                         return True
-                    ppid = None
+                    ppid: int | None = None
                     with open(f"/proc/{pid}/status") as f:
                         for line in f:
                             if line.startswith("PPid:"):
@@ -376,7 +379,7 @@ class ZeusApp(App):
 
     def _find_agent_for_tmux(
         self, sess: TmuxSession
-    ) -> Optional[AgentWindow]:
+    ) -> AgentWindow | None:
         for a in self.agents:
             for s in a.tmux_sessions:
                 if s.name == sess.name:
@@ -393,15 +396,15 @@ class ZeusApp(App):
                     f"Could not find window for {sess.name}", timeout=2
                 )
         else:
-            parent = self._find_agent_for_tmux(sess)
-            parent_ws = parent.workspace if parent else ""
+            parent: AgentWindow | None = self._find_agent_for_tmux(sess)
+            parent_ws: str = parent.workspace if parent else ""
             proc = subprocess.Popen(
                 ["kitty", "tmux", "attach", "-t", sess.name],
                 start_new_session=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             if parent_ws and parent_ws != "?":
-                def _move_and_focus():
+                def _move_and_focus() -> None:
                     time.sleep(0.5)
                     try:
                         subprocess.run(
@@ -447,15 +450,15 @@ class ZeusApp(App):
             focus_window(agent)
             self.notify(f"Focused: {agent.name}", timeout=2)
 
-    _last_click_row: Optional[int] = None
+    _last_click_row: int | None = None
     _last_click_time: float = 0.0
 
-    def on_click(self, event) -> None:
-        if event.chain < 2:
+    def on_click(self, event: object) -> None:
+        if getattr(event, "chain", 0) < 2:
             return
         table = self.query_one("#agent-table", DataTable)
-        w = event.widget
-        if w is not table and table not in w.ancestors:
+        w = getattr(event, "widget", None)
+        if w is not table and table not in getattr(w, "ancestors", []):
             return
         self.set_timer(0.05, self._activate_selected_row)
 
@@ -476,7 +479,6 @@ class ZeusApp(App):
 
     def do_kill_agent(self, agent: AgentWindow) -> None:
         close_window(agent)
-        notify("Agent closed", f"[{agent.name}] terminated")
         self.notify(f"Killed: {agent.name}", timeout=2)
         self.poll_and_update()
 
@@ -484,23 +486,25 @@ class ZeusApp(App):
         """Detach tmux session and close the kitty window hosting it."""
         self._last_kill_time = time.time()
         try:
-            kitty_pid = None
+            kitty_pid: int | None = None
             try:
                 r = subprocess.run(
                     ["tmux", "list-clients", "-t", sess.name,
                      "-F", "#{client_pid}"],
                     capture_output=True, text=True, timeout=2)
                 if r.returncode == 0 and r.stdout.strip():
-                    client_pid = int(r.stdout.strip().splitlines()[0])
-                    pid = client_pid
+                    client_pid: int = int(
+                        r.stdout.strip().splitlines()[0]
+                    )
+                    pid: int = client_pid
                     for _ in range(15):
                         try:
                             with open(f"/proc/{pid}/comm") as f:
-                                comm = f.read().strip()
+                                comm: str = f.read().strip()
                             if comm == "kitty":
                                 kitty_pid = pid
                                 break
-                            ppid = None
+                            ppid: int | None = None
                             with open(f"/proc/{pid}/status") as f:
                                 for line in f:
                                     if line.startswith("PPid:"):
@@ -527,10 +531,6 @@ class ZeusApp(App):
                     ["swaymsg", f"[pid={kitty_pid}]", "kill"],
                     capture_output=True, timeout=3)
 
-            notify(
-                "Tmux detached",
-                f"[{sess.name}] detached & window closed",
-            )
             self.notify(f"Detached: {sess.name}", timeout=2)
         except Exception as e:
             self.notify(f"Detach failed: {e}", timeout=3)
@@ -550,7 +550,7 @@ class ZeusApp(App):
         if not agent:
             self.notify("No agent selected", timeout=2)
             return
-        session = find_current_session(agent.cwd)
+        session: str | None = find_current_session(agent.cwd)
         if not session:
             self.notify(
                 f"No session found for {agent.name}", timeout=3
@@ -559,12 +559,10 @@ class ZeusApp(App):
         self.push_screen(SubAgentScreen(agent))
 
     def do_spawn_subagent(self, agent: AgentWindow, name: str) -> None:
-        result = spawn_subagent(agent, name, workspace=agent.workspace)
+        result: str | None = spawn_subagent(
+            agent, name, workspace=agent.workspace
+        )
         if result:
-            notify(
-                "Sub-agent spawned",
-                f"🧬 [{name}] forked from [{agent.name}]",
-            )
             self.notify(f"🧬 Spawned: {name}", timeout=3)
             self.set_timer(1.5, self.poll_and_update)
         else:
@@ -586,8 +584,8 @@ class ZeusApp(App):
             self.push_screen(RenameTmuxScreen(tmux))
 
     def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
-        overrides = _load_names()
-        key = f"{agent.socket}:{agent.kitty_id}"
+        overrides: dict[str, str] = _load_names()
+        key: str = f"{agent.socket}:{agent.kitty_id}"
         overrides[key] = new_name
         _save_names(overrides)
         self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
@@ -632,10 +630,14 @@ class ZeusApp(App):
                      "-p", "-S", "-20"],
                     capture_output=True, text=True, timeout=3)
                 if r.returncode == 0 and r.stdout.strip():
-                    lines = r.stdout.splitlines()
-                    recent = [l for l in lines if l.strip()][-20:]
-                    header = f"[bold #00d787]── tmux: {tmux.name} ──[/]"
-                    content = "\n".join(
+                    lines: list[str] = r.stdout.splitlines()
+                    recent: list[str] = [
+                        l for l in lines if l.strip()
+                    ][-20:]
+                    header: str = (
+                        f"[bold #00d787]── tmux: {tmux.name} ──[/]"
+                    )
+                    content: str = "\n".join(
                         f"  {line.rstrip()}" for line in recent
                     )
                     panel.update(f"{header}\n{content}")
@@ -662,6 +664,6 @@ class ZeusApp(App):
         self.poll_and_update()
 
 
-def cmd_dashboard(args):
+def cmd_dashboard(args: argparse.Namespace | None = None) -> None:
     app = ZeusApp()
     app.run()

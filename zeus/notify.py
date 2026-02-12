@@ -1,14 +1,6 @@
-"""Desktop notifications."""
-
-import subprocess
+"""Desktop notifications (currently disabled)."""
 
 
-def notify(title: str, body: str, urgency: str = "normal"):
-    try:
-        subprocess.run(
-            ["notify-send", f"--urgency={urgency}",
-             "--app-name=zeus", "-i", "utilities-terminal",
-             title, body],
-            capture_output=True, timeout=5)
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+def notify(title: str, body: str, urgency: str = "normal") -> None:
+    """No-op — desktop notifications are disabled."""
+    pass

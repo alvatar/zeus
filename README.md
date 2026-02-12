@@ -75,8 +75,12 @@ Bound to `$mod+Return`. Opens a bemenu prompt:
 # Dev install (symlinks — changes take effect immediately)
 bash install.sh --dev
 
-# Run tests
-python3 -m pytest tests/ -v
+# Run all checks (mypy + pytest)
+bash check.sh
+
+# Or individually:
+mypy zeus/                    # Type checking
+python3 -m pytest tests/ -v  # Tests
 ```
 
 ## How it works
