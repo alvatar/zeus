@@ -35,7 +35,7 @@ USAGE_CACHE = Path("/tmp/claude-usage-cache.json")
 SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\S")
 
 # Footer parsing (from usage-bars.ts extension output)
-MODEL_RE = re.compile(r"^(\S+?)(?:\s+\((\w+)\))?")
+MODEL_RE = re.compile(r"^(\S+)\s*(?:\((\w+)\))?")
 CTX_RE = re.compile(r"Ctx\([^)]*\):[█░]+\((\d+\.?\d*)%\)")
 TOKENS_RE = re.compile(r"↑([\d.]+[kM]?)\s+↓([\d.]+[kM]?)")
 
