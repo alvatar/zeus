@@ -1012,12 +1012,12 @@ def cmd_dashboard(args):
         """DataTable subclass that overrides the cursor styling."""
         DEFAULT_CSS = """
         ZeusDataTable > .datatable--cursor {
-            background: #ffffff;
+            background: #cccccc;
             color: auto;
             text-style: none;
         }
         ZeusDataTable:focus > .datatable--cursor {
-            background: #ffffff;
+            background: #cccccc;
             color: auto;
             text-style: none;
         }
@@ -1355,14 +1355,14 @@ def cmd_dashboard(args):
                     else:
                         age_str = f"{age_s}s"
                     if sess.attached:
-                        dim = "#334433"
+                        dim = "#558855"
                         tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
                         tmux_cmd = Text(sess.command[:30] or "—", style=dim)
                         tmux_age = Text(f"⏱ {age_str} ●", style=dim)
                     else:
                         tmux_name = Text(f"  └ 🔍 {sess.name}", style="#00d787")
-                        tmux_cmd = Text(sess.command[:30] or "—", style="#557755")
-                        tmux_age = Text(f"⏱ {age_str}", style="#557755")
+                        tmux_cmd = Text(sess.command[:30] or "—", style="#77aa77")
+                        tmux_age = Text(f"⏱ {age_str}", style="#77aa77")
                     tmux_key = f"tmux:{sess.name}"
                     table.add_row(
                         tmux_name,
@@ -1446,9 +1446,10 @@ def cmd_dashboard(args):
                 if r.returncode != 0 or not r.stdout.strip():
                     return False
                 client_pid = int(r.stdout.strip().splitlines()[0])
-                # Walk up ppid chain to find kitty process
+                # Walk up ppid chain to find kitty process.
+                # Use /proc/pid/status for ppid (robust against comm with spaces).
                 pid = client_pid
-                for _ in range(10):
+                for _ in range(15):
                     try:
                         with open(f"/proc/{pid}/comm") as f:
                             comm = f.read().strip()
@@ -1456,16 +1457,29 @@ def cmd_dashboard(args):
                             subprocess.run(["swaymsg", f"[pid={pid}]", "focus"],
                                            capture_output=True, timeout=3)
                             return True
-                        with open(f"/proc/{pid}/stat") as f:
-                            ppid = int(f.read().split()[3])
-                        if ppid <= 1:
+                        # Parse PPid from /proc/pid/status (handles comm with spaces)
+                        ppid = None
+                        with open(f"/proc/{pid}/status") as f:
+                            for line in f:
+                                if line.startswith("PPid:"):
+                                    ppid = int(line.split()[1])
+                                    break
+                        if ppid is None or ppid <= 1:
                             break
                         pid = ppid
-                    except (FileNotFoundError, ValueError, IndexError):
+                    except (FileNotFoundError, ValueError, IndexError, PermissionError):
                         break
             except (subprocess.TimeoutExpired, ValueError):
                 pass
             return False
+
+        def _find_agent_for_tmux(self, sess: TmuxSession) -> Optional[AgentWindow]:
+            """Find the agent that owns a tmux session."""
+            for a in self.agents:
+                for s in a.tmux_sessions:
+                    if s.name == sess.name:
+                        return a
+            return None
 
         def _attach_tmux(self, sess: TmuxSession) -> None:
             """Handle Enter on a tmux row: focus if attached, open if detached."""
@@ -1475,11 +1489,30 @@ def cmd_dashboard(args):
                 else:
                     self.notify(f"Could not find window for {sess.name}", timeout=2)
             else:
-                subprocess.Popen(
+                # Find parent agent's workspace so we can move the new window there.
+                parent = self._find_agent_for_tmux(sess)
+                parent_ws = parent.workspace if parent else ""
+
+                proc = subprocess.Popen(
                     ["kitty", "tmux", "attach", "-t", sess.name],
                     start_new_session=True,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
+                # Move the new kitty window to the parent's workspace.
+                if parent_ws and parent_ws != "?":
+                    # Give kitty a moment to create the window, then move it.
+                    def _move_to_ws():
+                        time.sleep(0.5)
+                        try:
+                            # Find the newest kitty window and move it
+                            subprocess.run(
+                                ["swaymsg", f'[pid={proc.pid}]', "move", "workspace", parent_ws],
+                                capture_output=True, timeout=3)
+                        except Exception:
+                            pass
+                    import threading
+                    threading.Thread(target=_move_to_ws, daemon=True).start()
+
                 self.notify(f"Attached: {sess.name}", timeout=2)
 
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
