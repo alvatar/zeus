@@ -48,6 +48,14 @@ class State(str, Enum):
     DONE = "DONE"
 
 @dataclass
+class TmuxSession:
+    name: str
+    command: str
+    cwd: str
+    created: int = 0           # unix timestamp
+    attached: bool = False
+
+@dataclass
 class AgentWindow:
     kitty_id: int
     socket: str
@@ -61,6 +69,8 @@ class AgentWindow:
     tokens_in: str = ""
     tokens_out: str = ""
     workspace: str = ""
+    tmux_sessions: list[TmuxSession] = field(default_factory=list)
+    _screen_text: str = ""     # cached for tmux matching
 
 @dataclass
 class UsageData:
@@ -69,7 +79,82 @@ class UsageData:
     extra_pct: float = 0.0
     extra_used: float = 0.0
     extra_limit: float = 0.0
+    session_resets_at: str = ""
+    week_resets_at: str = ""
     available: bool = False
+
+# ---------------------------------------------------------------------------
+# Session forking (for sub-agents)
+# ---------------------------------------------------------------------------
+
+AGENT_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
+
+def _encode_session_dir(cwd: str) -> str:
+    """Encode a cwd into pi's session directory name."""
+    return f"--{cwd.lstrip('/').replace('/', '-').replace(':', '-')}--"
+
+def find_current_session(cwd: str) -> Optional[str]:
+    """Find the most recent session file for a given cwd."""
+    session_dir = AGENT_SESSIONS_DIR / _encode_session_dir(cwd)
+    if not session_dir.is_dir():
+        return None
+    files = sorted(
+        [f for f in session_dir.iterdir() if f.suffix == ".jsonl"],
+        key=lambda f: f.name, reverse=True)
+    return str(files[0]) if files else None
+
+def fork_session(source_path: str, target_cwd: str) -> Optional[str]:
+    """Fork a pi session file into a new independent session (like pi's forkFrom).
+    Returns the path to the new session file."""
+    import uuid
+    from datetime import datetime, timezone
+
+    source = Path(source_path)
+    if not source.exists():
+        return None
+
+    entries = []
+    with open(source) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    if not entries:
+        return None
+
+    # Find header
+    header = next((e for e in entries if e.get("type") == "session"), None)
+    if not header:
+        return None
+
+    # Create new session file
+    session_dir = AGENT_SESSIONS_DIR / _encode_session_dir(target_cwd)
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    new_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    ts = now.strftime("%Y-%m-%dT%H-%M-%S-") + f"{now.microsecond // 1000:03d}Z"
+    new_file = session_dir / f"{ts}_{new_id}.jsonl"
+
+    new_header = {
+        "type": "session",
+        "version": header.get("version", 3),
+        "id": new_id,
+        "timestamp": now.isoformat(),
+        "cwd": target_cwd,
+        "parentSession": source_path,
+    }
+
+    with open(new_file, "w") as f:
+        f.write(json.dumps(new_header) + "\n")
+        for entry in entries:
+            if entry.get("type") != "session":
+                f.write(json.dumps(entry) + "\n")
+
+    return str(new_file)
 
 # ---------------------------------------------------------------------------
 # Kitty remote control
@@ -131,6 +216,26 @@ def focus_window(agent: AgentWindow):
 def close_window(agent: AgentWindow):
     kitty_cmd(agent.socket, "close-window", "--match", f"id:{agent.kitty_id}")
 
+def spawn_subagent(agent: AgentWindow, name: str) -> Optional[str]:
+    """Fork the agent's session and launch a sub-agent in a new kitty window.
+    Returns the forked session path, or None on failure."""
+    cwd = agent.cwd
+    source = find_current_session(cwd)
+    if not source:
+        return None
+    forked = fork_session(source, cwd)
+    if not forked:
+        return None
+    env = os.environ.copy()
+    env["AGENTMON_NAME"] = name
+    subprocess.Popen(
+        ["kitty", "--directory", cwd, "--hold",
+         "bash", "-lc", f"pi --session {forked}"],
+        env=env, start_new_session=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return forked
+
 # ---------------------------------------------------------------------------
 # Sway workspace discovery
 # ---------------------------------------------------------------------------
@@ -156,6 +261,61 @@ def build_pid_workspace_map() -> dict[int, str]:
             walk(child, workspace)
     walk(tree)
     return pid_ws
+
+# ---------------------------------------------------------------------------
+# Tmux session discovery
+# ---------------------------------------------------------------------------
+
+def discover_tmux_sessions() -> list[TmuxSession]:
+    """Get all detached tmux sessions."""
+    try:
+        r = subprocess.run(
+            ["tmux", "list-sessions", "-F",
+             "#{session_name}\t#{session_attached}\t#{session_created}"],
+            capture_output=True, text=True, timeout=3)
+        if r.returncode != 0:
+            return []
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return []
+
+    sessions = []
+    for line in r.stdout.strip().splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        name, attached, created = parts[0], parts[1], parts[2]
+        is_attached = attached != "0"
+
+        # Get pane info for this session
+        cmd_str, cwd = "", ""
+        try:
+            p = subprocess.run(
+                ["tmux", "list-panes", "-t", name, "-F",
+                 "#{pane_start_command}\t#{pane_current_path}"],
+                capture_output=True, text=True, timeout=3)
+            if p.returncode == 0 and p.stdout.strip():
+                pinfo = p.stdout.strip().splitlines()[0].split("\t")
+                cmd_str = pinfo[0] if len(pinfo) > 0 else ""
+                cwd = pinfo[1] if len(pinfo) > 1 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+        sessions.append(TmuxSession(
+            name=name,
+            command=cmd_str,
+            cwd=cwd,
+            created=int(created) if created.isdigit() else 0,
+            attached=is_attached,
+        ))
+    return sessions
+
+def match_tmux_to_agents(agents: list[AgentWindow], tmux_sessions: list[TmuxSession]):
+    """Match detached tmux sessions to agents by checking screen text."""
+    for sess in tmux_sessions:
+        for agent in agents:
+            if sess.name in agent._screen_text:
+                agent.tmux_sessions.append(sess)
+                break  # each session matches at most one agent
 
 # ---------------------------------------------------------------------------
 # State detection
@@ -192,6 +352,25 @@ def parse_footer(screen: str) -> tuple[str, float, str, str]:
 # Usage data
 # ---------------------------------------------------------------------------
 
+def _time_left(iso_str: str) -> str:
+    """Convert an ISO reset timestamp to a human-readable countdown."""
+    if not iso_str:
+        return ""
+    try:
+        from datetime import datetime, timezone
+        resets = datetime.fromisoformat(iso_str)
+        now = datetime.now(timezone.utc)
+        delta = resets - now
+        secs = int(delta.total_seconds())
+        if secs <= 0:
+            return "now"
+        h, m = secs // 3600, (secs % 3600) // 60
+        if h > 0:
+            return f"{h}h{m:02d}m"
+        return f"{m}m"
+    except Exception:
+        return ""
+
 def read_usage() -> UsageData:
     try:
         data = json.loads(USAGE_CACHE.read_text())
@@ -201,6 +380,8 @@ def read_usage() -> UsageData:
             extra_pct=data.get("extra_usage", {}).get("utilization", 0),
             extra_used=data.get("extra_usage", {}).get("used_credits", 0),
             extra_limit=data.get("extra_usage", {}).get("monthly_limit", 0),
+            session_resets_at=data.get("five_hour", {}).get("resets_at", ""),
+            week_resets_at=data.get("seven_day", {}).get("resets_at", ""),
             available=True,
         )
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
@@ -227,12 +408,10 @@ def cmd_new(args):
     directory = os.path.expanduser(args.directory or os.getcwd())
     env = os.environ.copy()
     env["AGENTMON_NAME"] = name
-    cmd = ["kitty"]
-    if directory:
-        cmd += ["--directory", directory]
+    cmd = ["kitty", "--directory", directory, "--hold", "bash", "-lc", "pi"]
     subprocess.Popen(cmd, env=env, start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"✓ Launched \"{name}\" in {directory}")
+    print(f"✓ Launched \"{name}\" with pi in {directory}")
 
 # ---------------------------------------------------------------------------
 # CLI: ls
@@ -418,6 +597,7 @@ def cmd_dashboard(args):
             Binding("escape", "quit", "Quit", show=False),
             Binding("enter", "focus_agent", "Focus Agent"),
             Binding("n", "new_agent", "New Agent"),
+            Binding("s", "spawn_subagent", "Sub-Agent"),
             Binding("k", "kill_agent", "Kill Agent"),
             Binding("r", "refresh", "Refresh", show=False),
         ]
@@ -459,9 +639,11 @@ def cmd_dashboard(args):
         def poll_and_update(self) -> None:
             self.agents = discover_agents()
             pid_ws = build_pid_workspace_map()
+            tmux_sessions = discover_tmux_sessions()
 
             for a in self.agents:
                 screen = get_screen_text(a)
+                a._screen_text = screen
                 a.state = detect_state(screen)
                 a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
                 a.workspace = pid_ws.get(a.kitty_pid, "?")
@@ -472,11 +654,20 @@ def cmd_dashboard(args):
                     notify("Agent ready", f"[{a.name}] needs attention", "critical")
                 self.prev_states[a.kitty_id] = a.state
 
+            match_tmux_to_agents(self.agents, tmux_sessions)
+
             # Update usage bars
             usage = read_usage()
             if usage.available:
-                self.query_one("#usage-session", UsageBar).pct = usage.session_pct
-                self.query_one("#usage-week", UsageBar).pct = usage.week_pct
+                sess_bar = self.query_one("#usage-session", UsageBar)
+                sess_bar.pct = usage.session_pct
+                sess_left = _time_left(usage.session_resets_at)
+                sess_bar.extra_text = f"({sess_left})" if sess_left else ""
+
+                week_bar = self.query_one("#usage-week", UsageBar)
+                week_bar.pct = usage.week_pct
+
+
                 extra_bar = self.query_one("#usage-extra", UsageBar)
                 extra_bar.pct = usage.extra_pct
                 if usage.extra_limit > 0:
@@ -513,6 +704,35 @@ def cmd_dashboard(args):
                     key=row_key,
                 )
 
+                # Tmux sub-rows
+                for sess in a.tmux_sessions:
+                    age_s = int(time.time()) - sess.created if sess.created else 0
+                    if age_s >= 3600:
+                        age_str = f"{age_s // 3600}h{(age_s % 3600) // 60}m"
+                    elif age_s >= 60:
+                        age_str = f"{age_s // 60}m"
+                    else:
+                        age_str = f"{age_s}s"
+                    if sess.attached:
+                        dim = "#334433"
+                        tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
+                        tmux_cmd = Text(sess.command[:30] or "—", style=dim)
+                        tmux_age = Text(f"⏱ {age_str} ●", style=dim)
+                    else:
+                        tmux_name = Text(f"  └ 🔍 {sess.name}", style="#00d787")
+                        tmux_cmd = Text(sess.command[:30] or "—", style="#557755")
+                        tmux_age = Text(f"⏱ {age_str}", style="#557755")
+                    tmux_cwd = sess.cwd.replace(str(Path.home()), "~")
+                    tmux_key = f"tmux:{sess.name}"
+                    table.add_row(
+                        tmux_name,
+                        tmux_age,
+                        tmux_cmd,
+                        "", "", "",
+                        tmux_cwd,
+                        key=tmux_key,
+                    )
+
             n_working = sum(1 for a in self.agents if a.state == State.WORKING)
             n_idle = sum(1 for a in self.agents if a.state == State.IDLE)
             status = self.query_one("#status-line", Static)
@@ -523,19 +743,34 @@ def cmd_dashboard(args):
                 f"Poll: {POLL_INTERVAL}s"
             )
 
-        def _get_selected_agent(self) -> Optional[AgentWindow]:
+        def _get_selected_row_key(self) -> Optional[str]:
             table = self.query_one("#agent-table", DataTable)
-            if not self.agents or table.row_count == 0:
+            if table.row_count == 0:
                 return None
             try:
                 row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
-                # Key format: "socket:kitty_id"
-                key_val = row_key.value
-                for a in self.agents:
-                    if f"{a.socket}:{a.kitty_id}" == key_val:
-                        return a
+                return row_key.value
             except Exception:
-                pass
+                return None
+
+        def _get_selected_agent(self) -> Optional[AgentWindow]:
+            key_val = self._get_selected_row_key()
+            if not key_val or key_val.startswith("tmux:"):
+                return None
+            for a in self.agents:
+                if f"{a.socket}:{a.kitty_id}" == key_val:
+                    return a
+            return None
+
+        def _get_selected_tmux(self) -> Optional[TmuxSession]:
+            key_val = self._get_selected_row_key()
+            if not key_val or not key_val.startswith("tmux:"):
+                return None
+            sess_name = key_val[5:]  # strip "tmux:" prefix
+            for a in self.agents:
+                for sess in a.tmux_sessions:
+                    if sess.name == sess_name:
+                        return sess
             return None
 
         def action_focus_agent(self) -> None:
@@ -543,8 +778,21 @@ def cmd_dashboard(args):
             if agent:
                 focus_window(agent)
 
+        def _attach_tmux(self, sess: TmuxSession) -> None:
+            """Open a new kitty window attached to a tmux session."""
+            subprocess.Popen(
+                ["kitty", "tmux", "attach", "-t", sess.name],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            self.notify(f"Attached: {sess.name}", timeout=2)
+
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
             """Enter pressed on a table row."""
+            tmux = self._get_selected_tmux()
+            if tmux:
+                self._attach_tmux(tmux)
+                return
             agent = self._get_selected_agent()
             if agent:
                 focus_window(agent)
@@ -568,6 +816,31 @@ def cmd_dashboard(args):
 
         def action_new_agent(self) -> None:
             self.push_screen(NewAgentScreen())
+
+        def action_spawn_subagent(self) -> None:
+            from textual.widgets import Input
+            if isinstance(self.focused, Input):
+                return
+            if len(self.screen_stack) > 1:
+                return
+            agent = self._get_selected_agent()
+            if not agent:
+                self.notify("No agent selected", timeout=2)
+                return
+            session = find_current_session(agent.cwd)
+            if not session:
+                self.notify(f"No session found for {agent.name}", timeout=3)
+                return
+            self.push_screen(SubAgentScreen(agent))
+
+        def do_spawn_subagent(self, agent: AgentWindow, name: str) -> None:
+            result = spawn_subagent(agent, name)
+            if result:
+                notify("Sub-agent spawned", f"🧬 [{name}] forked from [{agent.name}]")
+                self.notify(f"🧬 Spawned: {name}", timeout=3)
+                self.set_timer(1.5, self.poll_and_update)
+            else:
+                self.notify(f"Failed to fork session for {agent.name}", timeout=3)
 
         def action_refresh(self) -> None:
             self.poll_and_update()
@@ -649,15 +922,99 @@ def cmd_dashboard(args):
             directory = os.path.expanduser(directory)
             env = os.environ.copy()
             env["AGENTMON_NAME"] = name
+            # Launch kitty and auto-start pi inside it
             subprocess.Popen(
-                ["kitty", "--directory", directory],
+                ["kitty", "--directory", directory, "--hold",
+                 "bash", "-lc", "pi"],
                 env=env, start_new_session=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             self.dismiss()
-            self.app.notify(f"Launched: {name}", timeout=3)
+            self.app.notify(f"Launched: {name} (pi)", timeout=3)
             # Delay refresh to let kitty start
             self.app.set_timer(1.5, self.app.poll_and_update)
+
+    # ── Sub-agent dialog ────────────────────────────────────────────
+
+    SUBAGENT_CSS = """
+    SubAgentScreen {
+        align: center middle;
+    }
+
+    #subagent-dialog {
+        width: 60;
+        height: auto;
+        max-height: 12;
+        border: thick #00d7d7;
+        background: #0a0a0a;
+        padding: 1 2;
+    }
+
+    #subagent-dialog Label {
+        margin: 1 0 0 0;
+        color: #00d7d7;
+    }
+
+    #subagent-dialog .dim-label {
+        color: #447777;
+        margin: 0;
+    }
+
+    #subagent-dialog Input {
+        margin: 0 0 1 0;
+    }
+
+    #subagent-buttons {
+        height: 3;
+        align: right middle;
+        margin: 1 0 0 0;
+    }
+
+    #subagent-buttons Button {
+        margin: 0 0 0 1;
+    }
+    """
+
+    class SubAgentScreen(ModalScreen):
+        CSS = SUBAGENT_CSS
+        BINDINGS = [
+            Binding("escape", "dismiss", "Cancel", show=False),
+        ]
+
+        def __init__(self, agent: AgentWindow):
+            super().__init__()
+            self.agent = agent
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="subagent-dialog"):
+                yield Label(f"🧬 Fork sub-agent from [bold]{self.agent.name}[/bold]")
+                yield Label(f"CWD: {self.agent.cwd}", classes="dim-label")
+                yield Label("Name:")
+                yield Input(
+                    placeholder=f"e.g. {self.agent.name}-sub",
+                    value=f"{self.agent.name}-sub",
+                    id="subagent-name",
+                )
+                with Horizontal(id="subagent-buttons"):
+                    yield Button("Cancel", variant="default", id="cancel-btn")
+                    yield Button("🧬 Fork", variant="primary", id="fork-btn")
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            if event.button.id == "fork-btn":
+                self._fork()
+            else:
+                self.dismiss()
+
+        def on_input_submitted(self, event: Input.Submitted) -> None:
+            self._fork()
+
+        def _fork(self) -> None:
+            name = self.query_one("#subagent-name", Input).value.strip()
+            if not name:
+                self.query_one("#subagent-name", Input).focus()
+                return
+            self.dismiss()
+            self.app.do_spawn_subagent(self.agent, name)
 
     # ── Kill confirmation dialog ─────────────────────────────────────
 
