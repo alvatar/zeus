@@ -1006,6 +1006,23 @@ def cmd_dashboard(args):
     from textual import work
     from rich.text import Text
 
+    # ── Custom DataTable with dimmed cursor ───────────────────────────
+
+    class ZeusDataTable(DataTable):
+        """DataTable subclass that overrides the cursor styling."""
+        DEFAULT_CSS = """
+        ZeusDataTable > .datatable--cursor {
+            background: #ffffff;
+            color: auto;
+            text-style: none;
+        }
+        ZeusDataTable:focus > .datatable--cursor {
+            background: #ffffff;
+            color: auto;
+            text-style: none;
+        }
+        """
+
     # ── Usage bar widget ──────────────────────────────────────────────
 
     class UsageBar(Static):
@@ -1103,18 +1120,6 @@ def cmd_dashboard(args):
         background: #000000;
     }
 
-    DataTable > .datatable--cursor {
-        background: #1a1a1a;
-        color: auto;
-        text-style: none;
-    }
-
-    DataTable:focus > .datatable--cursor {
-        background: #1a1a1a;
-        color: auto;
-        text-style: none;
-    }
-
     DataTable > .datatable--header {
         background: #0a1a2a;
         color: #00d7d7;
@@ -1192,7 +1197,7 @@ def cmd_dashboard(args):
                 id="top-bars",
             )
             yield Vertical(
-                DataTable(
+                ZeusDataTable(
                     id="agent-table",
                     cursor_foreground_priority="renderable",
                     cursor_background_priority="css",
