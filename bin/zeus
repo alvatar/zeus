@@ -1051,7 +1051,10 @@ def cmd_dashboard(args):
                 self.notify(f"Attached: {sess.name}", timeout=2)
 
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-            """Enter pressed on a table row."""
+            """Enter or click on a table row."""
+            self._activate_selected_row()
+
+        def _activate_selected_row(self) -> None:
             tmux = self._get_selected_tmux()
             if tmux:
                 self._attach_tmux(tmux)
@@ -1060,6 +1063,17 @@ def cmd_dashboard(args):
             if agent:
                 focus_window(agent)
                 self.notify(f"Focused: {agent.name}", timeout=2)
+
+        _last_click_row: Optional[int] = None
+        _last_click_time: float = 0.0
+
+        def on_click(self, event) -> None:
+            """Single click on a table row focuses the agent."""
+            table = self.query_one("#agent-table", DataTable)
+            if not table.is_ancestor_of(event.widget) and event.widget is not table:
+                return
+            # Small delay to let DataTable update cursor_row
+            self.set_timer(0.05, self._activate_selected_row)
 
         def action_kill_agent(self) -> None:
             from textual.widgets import Input
