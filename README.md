@@ -19,6 +19,19 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - Python 3.11+ with [textual](https://textual.textualize.io/) (`pip install textual`)
 - [pi coding agent](https://github.com/mariozechner/pi-coding-agent) with the `usage-bars` extension
 - [bemenu](https://github.com/Cloudef/bemenu) (for the launcher prompt)
+- `tcp_diag` kernel module (for per-process network I/O tracking)
+
+### Kernel module setup
+
+Zeus uses the `tcp_diag` kernel module for accurate per-process network bandwidth
+tracking via netlink `SOCK_DIAG`. Without it, the Net column will be blank.
+
+Load it now and enable it on boot:
+
+```bash
+sudo modprobe tcp_diag
+echo tcp_diag | sudo tee /etc/modules-load.d/tcp_diag.conf
+```
 
 ## Install
 
