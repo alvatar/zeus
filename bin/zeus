@@ -1415,9 +1415,10 @@ def cmd_dashboard(args):
                         tmux_cmd = sess.command[:30] or "—"
                         tmux_age = f"⏱ {age_str} ●"
                     else:
-                        tmux_name = f"  └ 🔍 {sess.name}"
-                        tmux_cmd = sess.command[:30] or "—"
-                        tmux_age = f"⏱ {age_str}"
+                        dim = "#555555"
+                        tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
+                        tmux_cmd = Text(sess.command[:30] or "—", style=dim)
+                        tmux_age = Text(f"⏱ {age_str}", style=dim)
                     tmux_key = f"tmux:{sess.name}"
                     table.add_row(
                         tmux_name,
@@ -1585,7 +1586,12 @@ def cmd_dashboard(args):
             """Enter or click on a table row."""
             self._activate_selected_row()
 
+        _last_kill_time: float = 0.0
+
         def _activate_selected_row(self) -> None:
+            # Don't re-open a tmux session right after killing/detaching it
+            if time.time() - self._last_kill_time < 1.0:
+                return
             tmux = self._get_selected_tmux()
             if tmux:
                 self._attach_tmux(tmux)
@@ -1629,18 +1635,56 @@ def cmd_dashboard(args):
             self.poll_and_update()
 
         def do_kill_tmux(self, sess: TmuxSession) -> None:
-            """Detach all clients from the tmux session (keeps session alive)."""
+            """Detach tmux session and close the kitty window hosting it."""
+            self._last_kill_time = time.time()
             try:
-                # Detach all clients viewing this session
+                # Find the kitty window hosting this tmux client before detaching
+                # by looking up the client PID and walking to kitty
+                kitty_pid = None
+                try:
+                    r = subprocess.run(
+                        ["tmux", "list-clients", "-t", sess.name, "-F", "#{client_pid}"],
+                        capture_output=True, text=True, timeout=2)
+                    if r.returncode == 0 and r.stdout.strip():
+                        client_pid = int(r.stdout.strip().splitlines()[0])
+                        pid = client_pid
+                        for _ in range(15):
+                            try:
+                                with open(f"/proc/{pid}/comm") as f:
+                                    comm = f.read().strip()
+                                if comm == "kitty":
+                                    kitty_pid = pid
+                                    break
+                                ppid = None
+                                with open(f"/proc/{pid}/status") as f:
+                                    for line in f:
+                                        if line.startswith("PPid:"):
+                                            ppid = int(line.split()[1])
+                                            break
+                                if ppid is None or ppid <= 1:
+                                    break
+                                pid = ppid
+                            except (FileNotFoundError, ValueError, IndexError, PermissionError):
+                                break
+                except Exception:
+                    pass
+
+                # Detach all clients
                 subprocess.run(
                     ["tmux", "detach-client", "-s", sess.name, "-a"],
                     capture_output=True, timeout=3)
-                # Also detach the last remaining client
                 subprocess.run(
                     ["tmux", "detach-client", "-s", sess.name],
                     capture_output=True, timeout=3)
-                notify("Tmux detached", f"[{sess.name}] detached")
-                self.notify(f"Detached tmux: {sess.name}", timeout=2)
+
+                # Close the kitty window that was hosting it
+                if kitty_pid:
+                    subprocess.run(
+                        ["swaymsg", f"[pid={kitty_pid}]", "kill"],
+                        capture_output=True, timeout=3)
+
+                notify("Tmux detached", f"[{sess.name}] detached & window closed")
+                self.notify(f"Detached: {sess.name}", timeout=2)
             except Exception as e:
                 self.notify(f"Detach failed: {e}", timeout=3)
             self.poll_and_update()
@@ -2049,17 +2093,17 @@ def cmd_dashboard(args):
     # ── Kill confirmation dialog ─────────────────────────────────────
 
     CONFIRM_KILL_CSS = """
-    ConfirmKillScreen {
+    ConfirmKillScreen, ConfirmKillTmuxScreen {
         align: center middle;
     }
 
     #confirm-kill-dialog {
-        width: 50;
+        width: 60;
         height: auto;
-        max-height: 10;
+        max-height: 12;
         border: thick #ff3366;
         background: #0a0a0a;
-        padding: 1 2;
+        padding: 2 3;
     }
 
     #confirm-kill-dialog Label {
@@ -2095,21 +2139,21 @@ def cmd_dashboard(args):
             with Vertical(id="confirm-kill-dialog"):
                 yield Label(f"Kill agent [bold]{self.agent.name}[/bold]?")
                 with Horizontal(id="confirm-kill-buttons"):
-                    yield Button("No", variant="default", id="no-btn")
                     yield Button("Yes, kill", variant="error", id="yes-btn")
-
-        def on_mount(self) -> None:
-            self.query_one("#yes-btn", Button).focus()
+                    yield Button("No", variant="default", id="no-btn")
 
         def on_button_pressed(self, event: Button.Pressed) -> None:
             if event.button.id == "yes-btn":
                 self.app.do_kill_agent(self.agent)
             self.dismiss()
+            event.stop()
 
         def on_key(self, event) -> None:
             if event.key == "enter":
                 self.app.do_kill_agent(self.agent)
                 self.dismiss()
+                event.stop()
+                event.prevent_default()
 
         def action_confirm(self) -> None:
             self.app.do_kill_agent(self.agent)
@@ -2129,23 +2173,23 @@ def cmd_dashboard(args):
 
         def compose(self) -> ComposeResult:
             with Vertical(id="confirm-kill-dialog"):
-                yield Label(f"Kill tmux session [bold]{self.sess.name}[/bold]?")
+                yield Label(f"Detach and close window for [bold]{self.sess.name}[/bold]?")
                 with Horizontal(id="confirm-kill-buttons"):
+                    yield Button("Yes, close", variant="error", id="yes-btn")
                     yield Button("No", variant="default", id="no-btn")
-                    yield Button("Yes, kill", variant="error", id="yes-btn")
-
-        def on_mount(self) -> None:
-            self.query_one("#yes-btn", Button).focus()
 
         def on_button_pressed(self, event: Button.Pressed) -> None:
             if event.button.id == "yes-btn":
                 self.app.do_kill_tmux(self.sess)
             self.dismiss()
+            event.stop()
 
         def on_key(self, event) -> None:
             if event.key == "enter":
                 self.app.do_kill_tmux(self.sess)
                 self.dismiss()
+                event.stop()
+                event.prevent_default()
 
         def action_confirm(self) -> None:
             self.app.do_kill_tmux(self.sess)
