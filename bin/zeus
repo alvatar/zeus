@@ -1347,10 +1347,18 @@ def cmd_dashboard(args):
                     yield Button("No", variant="default", id="no-btn")
                     yield Button("Yes, kill", variant="error", id="yes-btn")
 
+        def on_mount(self) -> None:
+            self.query_one("#yes-btn", Button).focus()
+
         def on_button_pressed(self, event: Button.Pressed) -> None:
             if event.button.id == "yes-btn":
                 self.app.do_kill_agent(self.agent)
             self.dismiss()
+
+        def on_key(self, event) -> None:
+            if event.key == "enter":
+                self.app.do_kill_agent(self.agent)
+                self.dismiss()
 
         def action_confirm(self) -> None:
             self.app.do_kill_agent(self.agent)
