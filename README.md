@@ -2,7 +2,6 @@
 
 TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechner/pi-coding-agent) coding agents running in [kitty](https://sw.kovidgoyal.net/kitty/) terminal windows on Linux (sway WM).
 
-![Zeus monitors your agents so you don't have to.](https://img.shields.io/badge/status-alpha-00d7d7)
 
 ## Features
 
