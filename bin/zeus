@@ -1068,13 +1068,13 @@ def cmd_dashboard(args):
         _last_click_time: float = 0.0
 
         def on_click(self, event) -> None:
-            """Single click on a table row focuses the agent."""
+            """Double click on a table row focuses the agent."""
+            if event.chain < 2:
+                return
             table = self.query_one("#agent-table", DataTable)
-            # Check if click was on the table
             w = event.widget
             if w is not table and table not in w.ancestors:
                 return
-            # Small delay to let DataTable update cursor_row
             self.set_timer(0.05, self._activate_selected_row)
 
         def action_kill_agent(self) -> None:
