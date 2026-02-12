@@ -1034,18 +1034,17 @@ def cmd_dashboard(args):
             pct_str = f"{pct:.0f}%"
             pct_field = pct_str.rjust(4)  # "  0%" .. "100%"
 
-            extra_width = 8
+            extra_width = 7
             extra = (self.extra_text or "")
-            if extra:
-                extra = f" {extra.ljust(extra_width)}"
+            # Always reserve space so rows don't shift when extra info is missing.
+            extra = f"{extra.ljust(extra_width)}"
 
             t = Text()
             t.append(f"{self.label_text} ", style="#447777")
             t.append("█" * filled, style=color)
             t.append("░" * (width - filled), style=bar_empty)
-            t.append(f" {pct_field}", style=f"bold {color}")
-            if extra:
-                t.append(extra, style="#447777")
+            t.append(f"{pct_field}", style=f"bold {color}")
+            t.append(extra, style="#447777")
             return t
 
     # ── Main app ──────────────────────────────────────────────────────
