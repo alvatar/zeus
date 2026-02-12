@@ -28,6 +28,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 POLL_INTERVAL = float(os.environ.get("ZEUS_POLL", "2"))
+NAMES_FILE = Path("/tmp/zeus-names.json")  # persisted rename overrides
 USAGE_CACHE = Path("/tmp/claude-usage-cache.json")
 
 # Pi spinner frames (from pi-tui Loader component)
@@ -358,6 +359,16 @@ def kitty_cmd(socket: str, *args) -> Optional[str]:
         pass
     return None
 
+def _load_names() -> dict[str, str]:
+    """Load rename overrides: {original_name: new_name}."""
+    try:
+        return json.loads(NAMES_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_names(names: dict[str, str]) -> None:
+    NAMES_FILE.write_text(json.dumps(names))
+
 def discover_sockets() -> list[str]:
     return glob("/tmp/kitty-*")
 
@@ -383,6 +394,7 @@ def discover_agents() -> list[AgentWindow]:
                     name = env.get("AGENTMON_NAME")
                     if not name:
                         continue
+                    agent_key = f"{socket}:{win['id']}"
                     agents.append(AgentWindow(
                         kitty_id=win["id"],
                         socket=socket,
@@ -392,6 +404,19 @@ def discover_agents() -> list[AgentWindow]:
                         cwd=win.get("cwd", ""),
                         parent_name=env.get("ZEUS_PARENT", ""),
                     ))
+    # Apply name overrides and fix parent refs
+    overrides = _load_names()
+    # Build map: original_name -> new_name (for parent resolution)
+    orig_to_new: dict[str, str] = {}
+    for a in agents:
+        key = f"{a.socket}:{a.kitty_id}"
+        if key in overrides:
+            orig_to_new[a.name] = overrides[key]
+            a.name = overrides[key]
+    # Resolve parent names through renames
+    for a in agents:
+        if a.parent_name and a.parent_name in orig_to_new:
+            a.parent_name = orig_to_new[a.parent_name]
     return agents
 
 def get_screen_text(agent: AgentWindow) -> str:
@@ -1147,21 +1172,13 @@ def cmd_dashboard(args):
                 self.push_screen(RenameTmuxScreen(tmux))
 
         def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
-            """Rename an agent by updating AGENTMON_NAME env var in kitty."""
-            try:
-                kitty_cmd(agent.socket, "set-window-env",
-                          "--match", f"id:{agent.kitty_id}",
-                          "AGENTMON_NAME", new_name)
-                # Also update ZEUS_PARENT for any children
-                for a in self.agents:
-                    if a.parent_name == agent.name:
-                        kitty_cmd(a.socket, "set-window-env",
-                                  "--match", f"id:{a.kitty_id}",
-                                  "ZEUS_PARENT", new_name)
-                self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
-                self.poll_and_update()
-            except Exception as e:
-                self.notify(f"Rename failed: {e}", timeout=3)
+            """Rename an agent via persistent name overrides."""
+            overrides = _load_names()
+            key = f"{agent.socket}:{agent.kitty_id}"
+            overrides[key] = new_name
+            _save_names(overrides)
+            self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
+            self.poll_and_update()
 
         def do_rename_tmux(self, sess: TmuxSession, new_name: str) -> None:
             """Rename a tmux session."""
@@ -1356,27 +1373,25 @@ def cmd_dashboard(args):
     }
 
     #rename-dialog {
-        width: 60;
+        width: 55;
         height: auto;
-        max-height: 10;
-        border: thick #00d7d7;
+        border: solid #00d7d7;
         background: #0a0a0a;
         padding: 1 2;
     }
 
     #rename-dialog Label {
-        margin: 1 0 0 0;
+        margin: 0;
         color: #00d7d7;
     }
 
     #rename-dialog Input {
-        margin: 0 0 1 0;
+        margin: 1 0;
     }
 
     #rename-buttons {
         height: 3;
         align: right middle;
-        margin: 1 0 0 0;
     }
 
     #rename-buttons Button {
