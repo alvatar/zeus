@@ -93,7 +93,7 @@ class ZeusApp(App):
         table.cursor_type = "row"
         table.zebra_stripes = True
         table.add_columns(
-            "Name", "State", "Model", "Ctx", "CPU", "RAM",
+            "Name", "State", "Model/Cmd", "Ctx", "CPU", "RAM",
             "GPU", "Net", "WS", "CWD", "Tokens",
         )
         self.poll_and_update()
@@ -240,6 +240,14 @@ class ZeusApp(App):
                 key=row_key,
             )
 
+        def _clean_tmux_cmd(cmd: str) -> str:
+            """Strip 'cd ... &&' prefix and surrounding quotes."""
+            import re
+            c: str = cmd.strip().strip('"').strip("'")
+            # Remove leading "cd /path &&" or "cd /path;"
+            c = re.sub(r'^cd\s+\S+\s*(?:&&|;)\s*', '', c)
+            return c[:40] or "—"
+
         def _add_tmux_rows(a: AgentWindow) -> None:
             for sess in a.tmux_sessions:
                 age_s: int = (
@@ -254,14 +262,15 @@ class ZeusApp(App):
                 tmux_name: str | Text
                 tmux_cmd: str | Text
                 tmux_age: str | Text
+                cleaned_cmd: str = _clean_tmux_cmd(sess.command)
                 if sess.attached:
                     tmux_name = f"  └ 🔍 {sess.name}"
-                    tmux_cmd = sess.command[:30] or "—"
+                    tmux_cmd = cleaned_cmd
                     tmux_age = f"⏱ {age_str} ●"
                 else:
                     dim: str = "#555555"
                     tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
-                    tmux_cmd = Text(sess.command[:30] or "—", style=dim)
+                    tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(f"⏱ {age_str}", style=dim)
                 tmux_key: str = f"tmux:{sess.name}"
                 table.add_row(
