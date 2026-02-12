@@ -866,6 +866,8 @@ def cmd_dashboard(args):
 
             # Update table
             table = self.query_one("#agent-table", DataTable)
+            # Save selected row key before clearing
+            _saved_key = self._get_selected_row_key()
             table.clear()
 
             if not self.agents:
@@ -958,6 +960,13 @@ def cmd_dashboard(args):
                     _add_tmux_rows(child)
                 # Tmux sessions of parent
                 _add_tmux_rows(a)
+
+            # Restore selected row
+            if _saved_key:
+                for idx, row_key in enumerate(table.rows):
+                    if str(row_key) == _saved_key:
+                        table.move_cursor(row=idx)
+                        break
 
             n_working = sum(1 for a in self.agents if a.state == State.WORKING)
             n_idle = sum(1 for a in self.agents if a.state == State.IDLE)
