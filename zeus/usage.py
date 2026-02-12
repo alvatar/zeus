@@ -71,13 +71,13 @@ def read_usage() -> UsageData:
     try:
         data: dict = json.loads(USAGE_CACHE.read_text())
         return UsageData(
-            session_pct=data.get("five_hour", {}).get("utilization", 0),
-            week_pct=data.get("seven_day", {}).get("utilization", 0),
-            extra_pct=data.get("extra_usage", {}).get("utilization", 0),
-            extra_used=data.get("extra_usage", {}).get("used_credits", 0),
-            extra_limit=data.get("extra_usage", {}).get("monthly_limit", 0),
-            session_resets_at=data.get("five_hour", {}).get("resets_at", ""),
-            week_resets_at=data.get("seven_day", {}).get("resets_at", ""),
+            session_pct=data.get("five_hour", {}).get("utilization") or 0,
+            week_pct=data.get("seven_day", {}).get("utilization") or 0,
+            extra_pct=data.get("extra_usage", {}).get("utilization") or 0,
+            extra_used=data.get("extra_usage", {}).get("used_credits") or 0,
+            extra_limit=data.get("extra_usage", {}).get("monthly_limit") or 0,
+            session_resets_at=data.get("five_hour", {}).get("resets_at") or "",
+            week_resets_at=data.get("seven_day", {}).get("resets_at") or "",
             available=True,
         )
     except (FileNotFoundError, json.JSONDecodeError, KeyError):

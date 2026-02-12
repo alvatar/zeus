@@ -29,15 +29,18 @@ def discover_tmux_sessions() -> list[TmuxSession]:
 
         cmd_str: str = ""
         cwd: str = ""
+        pane_pid: int = 0
         try:
             p = subprocess.run(
                 ["tmux", "list-panes", "-t", name, "-F",
-                 "#{pane_start_command}\t#{pane_current_path}"],
+                 "#{pane_start_command}\t#{pane_current_path}\t#{pane_pid}"],
                 capture_output=True, text=True, timeout=3)
             if p.returncode == 0 and p.stdout.strip():
                 pinfo: list[str] = p.stdout.strip().splitlines()[0].split("\t")
                 cmd_str = pinfo[0] if len(pinfo) > 0 else ""
                 cwd = pinfo[1] if len(pinfo) > 1 else ""
+                if len(pinfo) > 2 and pinfo[2].isdigit():
+                    pane_pid = int(pinfo[2])
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
@@ -47,6 +50,7 @@ def discover_tmux_sessions() -> list[TmuxSession]:
             cwd=cwd,
             created=int(created) if created.isdigit() else 0,
             attached=is_attached,
+            pane_pid=pane_pid,
         ))
     return sessions
 

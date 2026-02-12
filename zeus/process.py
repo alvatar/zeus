@@ -128,6 +128,39 @@ def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
     return result
 
 
+def _has_tcp_socket(pid: int) -> bool:
+    """Check if a process has at least one TCP/TCP6 socket open."""
+    try:
+        # Read TCP inode set once per PID
+        tcp_inodes: set[str] = set()
+        for proto in ("tcp", "tcp6"):
+            try:
+                with open(f"/proc/{pid}/net/{proto}") as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 10 and parts[0] != "sl":
+                            tcp_inodes.add(parts[9])
+            except FileNotFoundError:
+                pass
+        if not tcp_inodes:
+            return False
+        # Check if any FD points to a TCP socket
+        import os as _os
+        fd_dir: str = f"/proc/{pid}/fd"
+        for entry in _os.listdir(fd_dir):
+            try:
+                link: str = _os.readlink(f"{fd_dir}/{entry}")
+                if link.startswith("socket:["):
+                    inode: str = link[8:-1]
+                    if inode in tcp_inodes:
+                        return True
+            except (OSError, ValueError):
+                pass
+    except (FileNotFoundError, PermissionError):
+        pass
+    return False
+
+
 def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     """Read CPU%, RAM, GPU% for an agent's process tree."""
     global _prev_proc_cpu, _prev_proc_io
@@ -157,17 +190,33 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
             gpu_pct += sm
             gpu_mem += mem
 
-    # I/O: delta-based from /proc/<pid>/io
-    rchar: float = 0.0
-    wchar: float = 0.0
+    # Network I/O: delta-based from /proc/<pid>/io
+    # Only count PIDs that have at least one TCP socket open,
+    # to exclude pipe/internal I/O from bash, tee, npm, etc.
+    # net_read ≈ rchar - read_bytes (total reads minus disk reads)
+    # net_write ≈ wchar - write_bytes (total writes minus disk writes)
+    net_rchar: float = 0.0
+    net_wchar: float = 0.0
     for pid in pids:
+        if not _has_tcp_socket(pid):
+            continue
         try:
+            rchar: float = 0.0
+            wchar: float = 0.0
+            read_bytes: float = 0.0
+            write_bytes: float = 0.0
             with open(f"/proc/{pid}/io") as f:
                 for line in f:
                     if line.startswith("rchar:"):
-                        rchar += float(line.split()[1])
+                        rchar = float(line.split()[1])
                     elif line.startswith("wchar:"):
-                        wchar += float(line.split()[1])
+                        wchar = float(line.split()[1])
+                    elif line.startswith("read_bytes:"):
+                        read_bytes = float(line.split()[1])
+                    elif line.startswith("write_bytes:"):
+                        write_bytes = float(line.split()[1])
+            net_rchar += max(0, rchar - read_bytes)
+            net_wchar += max(0, wchar - write_bytes)
         except (FileNotFoundError, PermissionError, IndexError, ValueError):
             pass
     io_read: float = 0.0
@@ -176,9 +225,9 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     if prev_io is not None:
         dt = now - prev_io[2]
         if dt > 0:
-            io_read = max(0, (rchar - prev_io[0]) / dt)
-            io_write = max(0, (wchar - prev_io[1]) / dt)
-    _prev_proc_io[kitty_pid] = (rchar, wchar, now)
+            io_read = max(0, (net_rchar - prev_io[0]) / dt)
+            io_write = max(0, (net_wchar - prev_io[1]) / dt)
+    _prev_proc_io[kitty_pid] = (net_rchar, net_wchar, now)
 
     return ProcessMetrics(
         cpu_pct=cpu_pct, ram_mb=ram_mb,
