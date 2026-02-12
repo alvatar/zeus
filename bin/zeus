@@ -45,7 +45,7 @@ TOKENS_RE = re.compile(r"↑([\d.]+[kM]?)\s+↓([\d.]+[kM]?)")
 class State(str, Enum):
     WORKING = "WORKING"
     IDLE = "IDLE"
-    DONE = "DONE"
+
 
 @dataclass
 class TmuxSession:
@@ -619,7 +619,7 @@ def cmd_ls(args):
         a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
         a.workspace = pid_ws.get(a.kitty_pid, "?")
         cwd = a.cwd
-        icon = {"WORKING": "▶", "IDLE": "⏹", "DONE": "✓"}[a.state.value]
+        icon = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
         print(f"  {icon} [{a.kitty_id}] {a.name:16s} {a.state.value:7s}  "
               f"{a.model or '—':20s} Ctx:{a.ctx_pct:.0f}%  WS:{a.workspace:3s}  {cwd}")
 
@@ -883,8 +883,8 @@ def cmd_dashboard(args):
                     children_of.setdefault(a.parent_name, []).append(a)
 
             def _add_agent_row(a: AgentWindow, indent: str = ""):
-                icon = {"WORKING": "▶", "IDLE": "⏹", "DONE": "✓"}[a.state.value]
-                state_color = {"WORKING": "#00d7d7", "IDLE": "#ff3333", "DONE": "#00d787"}[a.state.value]
+                icon = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
+                state_color = {"WORKING": "#00d7d7", "IDLE": "#ff3333"}[a.state.value]
                 if indent:
                     name_text = Text(f"{indent}🧬 {a.name}", style="#00d7d7")
                 else:
