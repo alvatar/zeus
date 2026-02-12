@@ -1158,8 +1158,8 @@ def cmd_dashboard(args):
             yield Vertical(
                 Horizontal(
                     UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
-                    UsageBar("Claude Week:", classes="usage-item", id="usage-week"),
-                    UsageBar("Claude Extra:", classes="usage-item", id="usage-extra"),
+                    UsageBar("Week:", classes="usage-item", id="usage-week"),
+                    UsageBar("Extra:", classes="usage-item", id="usage-extra"),
                     id="usage-bar",
                 ),
                 Horizontal(
