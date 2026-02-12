@@ -30,6 +30,7 @@ from typing import Optional
 POLL_INTERVAL = float(os.environ.get("ZEUS_POLL", "2"))
 NAMES_FILE = Path("/tmp/zeus-names.json")  # persisted rename overrides
 USAGE_CACHE = Path("/tmp/claude-usage-cache.json")
+OPENAI_USAGE_CACHE = Path("/tmp/openai-usage-cache.json")
 
 # Pi spinner frames (from pi-tui Loader component)
 SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\S")
@@ -93,6 +94,18 @@ class UsageData:
     extra_limit: float = 0.0
     session_resets_at: str = ""
     week_resets_at: str = ""
+    available: bool = False
+
+@dataclass
+class OpenAIUsageData:
+    requests_pct: float = 0.0  # best-effort "session" approximation
+    tokens_pct: float = 0.0    # best-effort "week" approximation
+    requests_limit: int = 0
+    requests_remaining: int = 0
+    tokens_limit: int = 0
+    tokens_remaining: int = 0
+    requests_resets_at: str = ""
+    tokens_resets_at: str = ""
     available: bool = False
 
 # ---------------------------------------------------------------------------
@@ -567,13 +580,37 @@ def parse_footer(screen: str) -> tuple[str, float, str, str]:
 # Usage data
 # ---------------------------------------------------------------------------
 
-def _time_left(iso_str: str) -> str:
-    """Convert an ISO reset timestamp to a human-readable countdown."""
-    if not iso_str:
+def _time_left(value: str) -> str:
+    """Convert a reset timestamp or duration to a human-readable countdown."""
+    if not value:
         return ""
+    raw = value.strip()
+
+    duration = re.match(r"^(\d+(?:\.\d+)?)(ms|s|m|h)?$", raw)
+    if duration and "T" not in raw:
+        amount = float(duration.group(1))
+        unit = duration.group(2) or "s"
+        if unit == "ms":
+            secs = int(round(amount / 1000))
+        elif unit == "m":
+            secs = int(round(amount * 60))
+        elif unit == "h":
+            secs = int(round(amount * 3600))
+        else:
+            secs = int(round(amount))
+        if secs <= 0:
+            return "now"
+        h, rem = divmod(secs, 3600)
+        m, s = divmod(rem, 60)
+        if h > 0:
+            return f"{h}h{m:02d}m"
+        if m > 0:
+            return f"{m}m"
+        return f"{s}s"
+
     try:
         from datetime import datetime, timezone
-        resets = datetime.fromisoformat(iso_str)
+        resets = datetime.fromisoformat(raw)
         now = datetime.now(timezone.utc)
         delta = resets - now
         secs = int(delta.total_seconds())
@@ -601,6 +638,285 @@ def read_usage() -> UsageData:
         )
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         return UsageData()
+
+
+def _spawn_openai_fetch() -> None:
+    """Spawn a helper process to fetch OpenAI usage.
+
+    We don't exec() a partial copy of this file anymore (too brittle).
+    Instead, call this script with a hidden CLI command.
+    """
+    try:
+        zeus_path = str(Path(sys.argv[0]).expanduser().resolve())
+        subprocess.Popen(
+            ["python3", zeus_path, "fetch-openai-usage"],
+            stdout=subprocess.DEVNULL,
+            stderr=open("/tmp/zeus-openai-fetch.err", "a"),
+        )
+    except Exception as e:
+        _openai_log(f"failed to spawn openai fetch helper: {e}")
+
+
+def _openai_log(msg: str) -> None:
+    try:
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open("/tmp/zeus-openai.log", "a") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
+
+def _load_openai_access_token() -> str:
+    auth_path = Path.home() / ".pi" / "agent" / "auth.json"
+    try:
+        data = json.loads(auth_path.read_text())
+        token_info = data.get("openai-codex", {})
+        token = token_info.get("access", "")
+        expires = token_info.get("expires", 0)
+        if token:
+            _openai_log(
+                f"loaded openai-codex oauth access token from {auth_path} (expires_ms={expires})"
+            )
+        if token and (not expires or expires > int(time.time() * 1000)):
+            return token
+        if token:
+            _openai_log("oauth access token appears expired, trying anyway")
+            return token
+        _openai_log("no openai-codex access token present in auth.json")
+    except Exception as e:
+        _openai_log(f"failed to read {auth_path}: {e}")
+    return ""
+
+
+def fetch_openai_usage() -> None:
+    """Fetch OpenAI usage.
+
+    Prefer ChatGPT backend WHAM usage endpoint (Codex-style) which works for Plus.
+    Fallback to api.openai.com rate-limit headers if an API key is present.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key:
+        _openai_log("auth source: OPENAI_API_KEY env")
+
+    if not api_key:
+        try:
+            for socket in glob("/tmp/kitty-*"):
+                raw = subprocess.run(
+                    ["kitty", "@", "--to", f"unix:{socket}", "ls"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                ).stdout
+                data = json.loads(raw) if raw else []
+                for os_win in data:
+                    for tab in os_win.get("tabs", []):
+                        for win in tab.get("windows", []):
+                            key = win.get("env", {}).get("OPENAI_API_KEY")
+                            if key:
+                                api_key = key
+                                _openai_log(f"auth source: kitty window env (socket={socket})")
+                                break
+                        if api_key:
+                            break
+                    if api_key:
+                        break
+                if api_key:
+                    break
+        except Exception as e:
+            _openai_log(f"failed to scan kitty env for OPENAI_API_KEY: {e}")
+
+    if not api_key:
+        api_key = _load_openai_access_token()
+        if api_key:
+            _openai_log("auth source: pi oauth token (~/.pi/agent/auth.json openai-codex.access)")
+
+    if not api_key:
+        _openai_log("no auth found (OPENAI_API_KEY or pi oauth)")
+        return
+
+    # 1) Try ChatGPT backend usage endpoint (Codex-style):
+    #    https://chatgpt.com/backend-api/wham/usage
+    #    https://chat.openai.com/backend-api/wham/usage
+    try:
+        import urllib.request
+        import urllib.error
+
+        token = api_key
+        base_urls = [
+            "https://chatgpt.com/backend-api",
+            "https://chat.openai.com/backend-api",
+        ]
+        for base in base_urls:
+            url = f"{base}/wham/usage"
+            _openai_log(f"requesting {url}")
+            req = urllib.request.Request(
+                url,
+                method="GET",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "zeus",
+                    "Content-Type": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    body = response.read().decode(errors="replace")
+                    data = json.loads(body)
+
+                    # Best-effort parse. We only care about two windows.
+                    rl = (data.get("rate_limit") or {})
+                    primary = (rl.get("primary_window") or {})
+                    secondary = (rl.get("secondary_window") or {})
+
+                    def _pct(win: dict) -> float:
+                        try:
+                            return float(win.get("used_percent", 0.0))
+                        except Exception:
+                            return 0.0
+
+                    def _reset_at(win: dict) -> str:
+                        # codex uses int seconds epoch under reset_at.
+                        ra = win.get("reset_at")
+                        if ra is None:
+                            return ""
+                        try:
+                            secs = int(ra)
+                            # store as ISO for _time_left
+                            from datetime import datetime, timezone
+                            return datetime.fromtimestamp(secs, tz=timezone.utc).isoformat()
+                        except Exception:
+                            return str(ra)
+
+                    cache_data = {
+                        # map primary->"session" and secondary->"week" approximation
+                        "requests_limit": int(primary.get("limit", 0) or 0),
+                        "requests_remaining": int(primary.get("remaining", 0) or 0),
+                        "tokens_limit": int(secondary.get("limit", 0) or 0),
+                        "tokens_remaining": int(secondary.get("remaining", 0) or 0),
+                        "requests_pct": _pct(primary),
+                        "tokens_pct": _pct(secondary),
+                        "requests_resets_at": _reset_at(primary),
+                        "tokens_resets_at": _reset_at(secondary),
+                        "timestamp": time.time(),
+                        "source": url,
+                    }
+                    OPENAI_USAGE_CACHE.write_text(json.dumps(cache_data))
+                    _openai_log(f"cached wham usage to {OPENAI_USAGE_CACHE}")
+                    return
+            except urllib.error.HTTPError as e:
+                err_body = e.read(500).decode(errors="replace")
+                _openai_log(f"HTTPError {e.code} from {url}: {err_body}")
+            except Exception as e:
+                _openai_log(f"fetch failed for {url}: {type(e).__name__}: {e}")
+
+    except Exception as e:
+        _openai_log(f"wham usage attempt failed: {type(e).__name__}: {e}")
+
+    # 2) Fallback: API platform rate-limit headers (requires billed API key)
+    try:
+        import urllib.request
+        import urllib.error
+
+        url = "https://api.openai.com/v1/chat/completions"
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+        }
+        _openai_log(f"fallback requesting {url} to read rate limit headers")
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode(),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            headers = response.headers
+            req_limit = headers.get("x-ratelimit-limit-requests", "")
+            tok_limit = headers.get("x-ratelimit-limit-tokens", "")
+            cache_data = {
+                "requests_limit": int(req_limit or 0),
+                "requests_remaining": int(headers.get("x-ratelimit-remaining-requests", 0) or 0),
+                "tokens_limit": int(tok_limit or 0),
+                "tokens_remaining": int(headers.get("x-ratelimit-remaining-tokens", 0) or 0),
+                "requests_resets_at": headers.get("x-ratelimit-reset-requests", ""),
+                "tokens_resets_at": headers.get("x-ratelimit-reset-tokens", ""),
+                "timestamp": time.time(),
+                "source": url,
+            }
+            OPENAI_USAGE_CACHE.write_text(json.dumps(cache_data))
+            _openai_log(f"cached api rate limits to {OPENAI_USAGE_CACHE}")
+    except Exception as e:
+        try:
+            import urllib.error
+            if isinstance(e, urllib.error.HTTPError):
+                body = e.read(500).decode(errors="replace")
+                _openai_log(f"fallback HTTPError {e.code}: {body}")
+            else:
+                _openai_log(f"fallback fetch failed: {type(e).__name__}: {e}")
+        except Exception:
+            _openai_log(f"fallback fetch failed: {type(e).__name__}: {e}")
+
+
+_last_openai_fetch_attempt: float = 0.0
+
+
+def read_openai_usage() -> OpenAIUsageData:
+    """Read cached OpenAI usage. Cache is populated by background fetch."""
+    global _last_openai_fetch_attempt
+
+    def _maybe_fetch(reason: str, min_interval_s: float = 5.0) -> None:
+        global _last_openai_fetch_attempt
+        now = time.time()
+        if now - _last_openai_fetch_attempt >= min_interval_s:
+            _openai_log(f"triggering background fetch ({reason})")
+            _last_openai_fetch_attempt = now
+            _spawn_openai_fetch()
+
+    try:
+        data = json.loads(OPENAI_USAGE_CACHE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        _openai_log(f"openai cache read failed: {type(e).__name__}: {e}")
+        _maybe_fetch("cache-missing")
+        return OpenAIUsageData()
+
+    age = time.time() - data.get("timestamp", 0)
+    if age > 10:
+        _maybe_fetch(f"cache-stale age={age:.1f}s")
+
+    req_limit = int(data.get("requests_limit", 0) or 0)
+    req_remaining = int(data.get("requests_remaining", 0) or 0)
+    tok_limit = int(data.get("tokens_limit", 0) or 0)
+    tok_remaining = int(data.get("tokens_remaining", 0) or 0)
+
+    # If wham/usage already provides percent fields, prefer those.
+    if "requests_pct" in data:
+        req_pct = float(data.get("requests_pct") or 0.0)
+    else:
+        req_pct = ((req_limit - req_remaining) / req_limit * 100) if req_limit > 0 else 0.0
+
+    if "tokens_pct" in data:
+        tok_pct = float(data.get("tokens_pct") or 0.0)
+    else:
+        tok_pct = ((tok_limit - tok_remaining) / tok_limit * 100) if tok_limit > 0 else 0.0
+
+    available = (req_limit > 0 or tok_limit > 0 or req_pct > 0 or tok_pct > 0)
+    if not available:
+        _maybe_fetch("cache-present-but-empty")
+
+    return OpenAIUsageData(
+        requests_pct=req_pct,
+        tokens_pct=tok_pct,
+        requests_limit=req_limit,
+        requests_remaining=req_remaining,
+        tokens_limit=tok_limit,
+        tokens_remaining=tok_remaining,
+        requests_resets_at=data.get("requests_resets_at", ""),
+        tokens_resets_at=data.get("tokens_resets_at", ""),
+        available=available,
+    )
 
 # ---------------------------------------------------------------------------
 # Notifications
@@ -740,8 +1056,12 @@ def cmd_dashboard(args):
         color: #555555;
     }
 
-    #usage-bar {
+    #top-bars {
         dock: top;
+        height: 2;
+    }
+
+    #usage-bar {
         height: 1;
         padding: 0 1;
         background: #050f15;
@@ -795,6 +1115,12 @@ def cmd_dashboard(args):
         color: #447777;
     }
 
+    #openai-usage-bar {
+        height: 1;
+        padding: 0 1;
+        background: #050f15;
+    }
+
     #empty-message {
         width: 100%;
         height: auto;
@@ -829,11 +1155,19 @@ def cmd_dashboard(args):
                 Static("", id="title-clock"),
                 id="title-bar",
             )
-            yield Horizontal(
-                UsageBar("Session:", classes="usage-item", id="usage-session"),
-                UsageBar("Week:", classes="usage-item", id="usage-week"),
-                UsageBar("Extra:", classes="usage-item", id="usage-extra"),
-                id="usage-bar",
+            yield Vertical(
+                Horizontal(
+                    UsageBar("Session:", classes="usage-item", id="usage-session"),
+                    UsageBar("Week:", classes="usage-item", id="usage-week"),
+                    UsageBar("Extra:", classes="usage-item", id="usage-extra"),
+                    id="usage-bar",
+                ),
+                Horizontal(
+                    UsageBar("OpenAI Session:", classes="usage-item", id="openai-session"),
+                    UsageBar("OpenAI Week:", classes="usage-item", id="openai-week"),
+                    id="openai-usage-bar",
+                ),
+                id="top-bars",
             )
             yield Vertical(
                 DataTable(id="agent-table"),
@@ -858,6 +1192,9 @@ def cmd_dashboard(args):
             self.agents = discover_agents()
             pid_ws = build_pid_workspace_map()
             tmux_sessions = discover_tmux_sessions()
+
+            # Proactively try to populate OpenAI cache early (throttled in read_openai_usage)
+            _ = read_openai_usage()
 
             for a in self.agents:
                 screen = get_screen_text(a)
@@ -900,6 +1237,23 @@ def cmd_dashboard(args):
                 extra_bar.pct = usage.extra_pct
                 if usage.extra_limit > 0:
                     extra_bar.extra_text = f"${usage.extra_used / 100:.2f}/${usage.extra_limit / 100:.2f}"
+
+            # Update OpenAI usage bars (Codex-style /wham/usage)
+            openai = read_openai_usage()
+            o_sess = self.query_one("#openai-session", UsageBar)
+            o_week = self.query_one("#openai-week", UsageBar)
+            if openai.available:
+                o_sess.pct = openai.requests_pct
+                left = _time_left(openai.requests_resets_at)
+                o_sess.extra_text = f"({left})" if left else ""
+
+                o_week.pct = openai.tokens_pct
+                o_week.extra_text = ""
+            else:
+                o_sess.pct = 0
+                o_sess.extra_text = "(unavailable)"
+                o_week.pct = 0
+                o_week.extra_text = ""
 
             # Update table
             table = self.query_one("#agent-table", DataTable)
@@ -1584,6 +1938,10 @@ def main():
     p_kill = sub.add_parser("kill", help="Close an agent window")
     p_kill.add_argument("id", help="Window ID or name")
     p_kill.set_defaults(func=cmd_kill)
+
+    # Hidden/internal command: used by the dashboard to refresh OpenAI limits
+    p_fetch = sub.add_parser("fetch-openai-usage", help=argparse.SUPPRESS)
+    p_fetch.set_defaults(func=lambda _args: fetch_openai_usage())
 
     p_dash = sub.add_parser("dashboard", aliases=["d"], help="Live dashboard")
     p_dash.set_defaults(func=cmd_dashboard)
