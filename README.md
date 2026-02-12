@@ -69,6 +69,16 @@ Bound to `$mod+Return`. Opens a bemenu prompt:
 - **Type a name** → launches a tracked kitty window (visible in the zeus dashboard)
 - **Press Enter empty** → launches a normal untracked kitty
 
+## Development
+
+```bash
+# Dev install (symlinks — changes take effect immediately)
+bash install.sh --dev
+
+# Run tests
+python3 -m pytest tests/ -v
+```
+
 ## How it works
 
 1. **Kitty remote control** — each kitty instance creates a Unix socket at `/tmp/kitty-{pid}`, enabling `kitty @ ls` and `kitty @ get-text` queries
