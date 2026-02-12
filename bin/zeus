@@ -61,6 +61,8 @@ class ProcessMetrics:
     ram_mb: float = 0.0
     gpu_pct: float = 0.0
     gpu_mem_mb: float = 0.0
+    io_read_bps: float = 0.0    # bytes/sec read (includes network)
+    io_write_bps: float = 0.0   # bytes/sec write (includes network)
 
 @dataclass
 class AgentWindow:
@@ -91,132 +93,14 @@ class UsageData:
     week_resets_at: str = ""
     available: bool = False
 
-@dataclass
-class SystemMetrics:
-    cpu_pct: float = 0.0
-    ram_pct: float = 0.0
-    ram_used_gb: float = 0.0
-    ram_total_gb: float = 0.0
-    gpu_pct: float = 0.0
-    gpu_mem_used_mb: float = 0.0
-    gpu_mem_total_mb: float = 0.0
-    net_up_bps: float = 0.0      # bytes per second
-    net_down_bps: float = 0.0
-
 # ---------------------------------------------------------------------------
-# System metrics (proc-based, no dependencies)
+# Per-process metrics (no dependencies, pure /proc + nvidia-smi)
 # ---------------------------------------------------------------------------
 
-_prev_cpu: Optional[tuple[float, float]] = None   # (idle, total)
-_prev_net: Optional[tuple[float, float, float]] = None  # (rx, tx, time)
 # Per-process CPU tracking: pid -> (utime+stime, timestamp)
 _prev_proc_cpu: dict[int, tuple[float, float]] = {}
-_NUM_CPUS = os.cpu_count() or 1
-
-def _read_cpu() -> float:
-    """Read CPU usage % from /proc/stat (delta between calls)."""
-    global _prev_cpu
-    try:
-        with open("/proc/stat") as f:
-            parts = f.readline().split()
-        vals = [float(v) for v in parts[1:]]
-        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
-        total = sum(vals)
-        if _prev_cpu is None:
-            _prev_cpu = (idle, total)
-            return 0.0
-        d_idle = idle - _prev_cpu[0]
-        d_total = total - _prev_cpu[1]
-        _prev_cpu = (idle, total)
-        if d_total == 0:
-            return 0.0
-        return (1.0 - d_idle / d_total) * 100
-    except Exception:
-        return 0.0
-
-def _read_ram() -> tuple[float, float, float]:
-    """Return (pct, used_gb, total_gb) from /proc/meminfo."""
-    try:
-        info = {}
-        with open("/proc/meminfo") as f:
-            for line in f:
-                parts = line.split()
-                if parts[0] in ("MemTotal:", "MemAvailable:"):
-                    info[parts[0]] = float(parts[1])
-        total = info.get("MemTotal:", 0)
-        avail = info.get("MemAvailable:", 0)
-        used = total - avail
-        total_gb = total / 1048576
-        used_gb = used / 1048576
-        pct = (used / total * 100) if total > 0 else 0
-        return pct, used_gb, total_gb
-    except Exception:
-        return 0.0, 0.0, 0.0
-
-def _read_gpu() -> tuple[float, float, float]:
-    """Return (util%, mem_used_mb, mem_total_mb) via nvidia-smi."""
-    try:
-        r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=2)
-        if r.returncode == 0:
-            parts = r.stdout.strip().split(",")
-            return float(parts[0]), float(parts[1]), float(parts[2])
-    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError, IndexError):
-        pass
-    return 0.0, 0.0, 0.0
-
-# Auto-detect main network interface
-def _detect_net_iface() -> str:
-    try:
-        with open("/proc/net/route") as f:
-            for line in f:
-                parts = line.split()
-                if len(parts) >= 2 and parts[1] == "00000000":
-                    return parts[0]
-    except Exception:
-        pass
-    return "wlp0s20f3"
-
-_NET_IFACE = _detect_net_iface()
-
-def _read_net() -> tuple[float, float]:
-    """Return (down_bps, up_bps) from /proc/net/dev (delta between calls)."""
-    global _prev_net
-    try:
-        now = time.time()
-        with open("/proc/net/dev") as f:
-            for line in f:
-                if _NET_IFACE in line:
-                    parts = line.split()
-                    rx = float(parts[1])
-                    tx = float(parts[9])
-                    if _prev_net is None:
-                        _prev_net = (rx, tx, now)
-                        return 0.0, 0.0
-                    dt = now - _prev_net[2]
-                    if dt <= 0:
-                        return 0.0, 0.0
-                    down = (rx - _prev_net[0]) / dt
-                    up = (tx - _prev_net[1]) / dt
-                    _prev_net = (rx, tx, now)
-                    return down, up
-    except Exception:
-        pass
-    return 0.0, 0.0
-
-def read_system_metrics() -> SystemMetrics:
-    cpu = _read_cpu()
-    ram_pct, ram_used, ram_total = _read_ram()
-    gpu_pct, gpu_mem_used, gpu_mem_total = _read_gpu()
-    net_down, net_up = _read_net()
-    return SystemMetrics(
-        cpu_pct=cpu, ram_pct=ram_pct,
-        ram_used_gb=ram_used, ram_total_gb=ram_total,
-        gpu_pct=gpu_pct, gpu_mem_used_mb=gpu_mem_used, gpu_mem_total_mb=gpu_mem_total,
-        net_up_bps=net_up, net_down_bps=net_down,
-    )
+# Per-process I/O tracking: pid -> (rchar, wchar, timestamp)
+_prev_proc_io: dict[int, tuple[float, float, float]] = {}
 
 def _fmt_bytes(bps: float) -> str:
     """Format bytes/sec into human-readable."""
@@ -359,7 +243,32 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
             gpu_pct += sm
             gpu_mem += mem
 
-    return ProcessMetrics(cpu_pct=cpu_pct, ram_mb=ram_mb, gpu_pct=gpu_pct, gpu_mem_mb=gpu_mem)
+    # I/O: delta-based from /proc/<pid>/io (rchar/wchar includes network)
+    global _prev_proc_io
+    rchar = 0.0
+    wchar = 0.0
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/io") as f:
+                for line in f:
+                    if line.startswith("rchar:"):
+                        rchar += float(line.split()[1])
+                    elif line.startswith("wchar:"):
+                        wchar += float(line.split()[1])
+        except (FileNotFoundError, PermissionError, IndexError, ValueError):
+            pass
+    io_read = 0.0
+    io_write = 0.0
+    prev_io = _prev_proc_io.get(kitty_pid)
+    if prev_io is not None:
+        dt = now - prev_io[2]
+        if dt > 0:
+            io_read = max(0, (rchar - prev_io[0]) / dt)
+            io_write = max(0, (wchar - prev_io[1]) / dt)
+    _prev_proc_io[kitty_pid] = (rchar, wchar, now)
+
+    return ProcessMetrics(cpu_pct=cpu_pct, ram_mb=ram_mb, gpu_pct=gpu_pct, gpu_mem_mb=gpu_mem,
+                          io_read_bps=io_read, io_write_bps=io_write)
 
 # ---------------------------------------------------------------------------
 # Session forking (for sub-agents)
@@ -815,17 +724,6 @@ def cmd_dashboard(args):
         margin: 0 2 0 0;
     }
 
-    #sys-bar {
-        dock: top;
-        height: 1;
-        padding: 0 1;
-        background: #050f15;
-    }
-
-    #sys-metrics {
-        width: 100%;
-    }
-
     #table-container {
         background: #000000;
     }
@@ -906,10 +804,6 @@ def cmd_dashboard(args):
                 UsageBar("Extra:", classes="usage-item", id="usage-extra"),
                 id="usage-bar",
             )
-            yield Horizontal(
-                Static("", id="sys-metrics"),
-                id="sys-bar",
-            )
             yield Vertical(
                 DataTable(id="agent-table"),
                 id="table-container",
@@ -920,7 +814,7 @@ def cmd_dashboard(args):
             table = self.query_one("#agent-table", DataTable)
             table.cursor_type = "row"
             table.zebra_stripes = True
-            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "CPU", "RAM", "GPU", "WS", "CWD")
+            table.add_columns("Name", "State", "Model", "Ctx", "Tokens", "CPU", "RAM", "GPU", "Net", "WS", "CWD")
             self.poll_and_update()
             self.set_interval(POLL_INTERVAL, self.poll_and_update)
             self.set_interval(1.0, self.update_clock)
@@ -967,34 +861,6 @@ def cmd_dashboard(args):
                 if usage.extra_limit > 0:
                     extra_bar.extra_text = f"${usage.extra_used / 100:.2f}/${usage.extra_limit / 100:.2f}"
 
-            # Update system metrics
-            sm = read_system_metrics()
-            sys_widget = self.query_one("#sys-metrics", Static)
-            t = Text()
-            # CPU
-            cpu_color = "#ff3333" if sm.cpu_pct >= 90 else "#ff8800" if sm.cpu_pct >= 80 else "#00d7d7"
-            t.append("CPU ", style="#447777")
-            t.append(f"{sm.cpu_pct:4.0f}%", style=f"bold {cpu_color}")
-            t.append("  ", style="")
-            # RAM
-            ram_color = "#ff3333" if sm.ram_pct >= 90 else "#ff8800" if sm.ram_pct >= 80 else "#00d7d7"
-            t.append("RAM ", style="#447777")
-            t.append(f"{sm.ram_pct:4.0f}%", style=f"bold {ram_color}")
-            t.append(f" {sm.ram_used_gb:.0f}/{sm.ram_total_gb:.0f}G", style="#447777")
-            t.append("  ", style="")
-            # GPU
-            gpu_color = "#ff3333" if sm.gpu_pct >= 90 else "#ff8800" if sm.gpu_pct >= 80 else "#00d7d7"
-            t.append("GPU ", style="#447777")
-            t.append(f"{sm.gpu_pct:4.0f}%", style=f"bold {gpu_color}")
-            t.append(f" {sm.gpu_mem_used_mb:.0f}/{sm.gpu_mem_total_mb:.0f}M", style="#447777")
-            t.append("  ", style="")
-            # Net
-            t.append("NET ", style="#447777")
-            t.append(f"↓{_fmt_bytes(sm.net_down_bps)}", style="bold #00d7d7")
-            t.append(" ", style="")
-            t.append(f"↑{_fmt_bytes(sm.net_up_bps)}", style="bold #00d7d7")
-            sys_widget.update(t)
-
             # Update table
             table = self.query_one("#agent-table", DataTable)
             table.clear()
@@ -1023,6 +889,8 @@ def cmd_dashboard(args):
                 if pm.gpu_mem_mb > 0:
                     gpu_str += f" {pm.gpu_mem_mb:.0f}M"
                 gpu_text = Text(gpu_str, style=gpu_c)
+                net_str = f"↓{_fmt_bytes(pm.io_read_bps)} ↑{_fmt_bytes(pm.io_write_bps)}"
+                net_text = Text(net_str, style="#00d7d7")
 
                 # Unique key: socket path + kitty window id
                 row_key = f"{a.socket}:{a.kitty_id}"
@@ -1035,6 +903,7 @@ def cmd_dashboard(args):
                     cpu_text,
                     ram_text,
                     gpu_text,
+                    net_text,
                     a.workspace or "?",
                     cwd,
                     key=row_key,
@@ -1064,7 +933,7 @@ def cmd_dashboard(args):
                         tmux_name,
                         tmux_age,
                         tmux_cmd,
-                        "", "", "", "", "",
+                        "", "", "", "", "", "",
                         "",
                         tmux_cwd,
                         key=tmux_key,
