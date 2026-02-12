@@ -1026,7 +1026,7 @@ def cmd_dashboard(args):
             pct_str = f"{pct:.0f}%"
             pct_field = pct_str.rjust(4)  # "  0%" .. "100%"
 
-            extra_width = 10
+            extra_width = 8
             extra = (self.extra_text or "")
             if extra:
                 extra = f" {extra.ljust(extra_width)}"
