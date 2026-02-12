@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import socket
+import struct
 import subprocess
 import time
 
@@ -16,6 +18,30 @@ _prev_proc_cpu: dict[int, tuple[float, float]] = {}
 _prev_proc_io: dict[int, tuple[float, float, float]] = {}
 _gpu_pmon_cache: dict[int, tuple[float, float]] | None = None
 _gpu_pmon_ts: float = 0.0
+
+# tcp_diag availability: None = untested, True/False = cached result
+_tcp_diag_available: bool | None = None
+
+# ---------------------------------------------------------------------------
+# Netlink SOCK_DIAG constants
+# ---------------------------------------------------------------------------
+_NETLINK_SOCK_DIAG: int = 4
+_SOCK_DIAG_BY_FAMILY: int = 20
+_NLMSG_DONE: int = 3
+_NLMSG_ERROR: int = 2
+_NLM_F_REQUEST: int = 0x01
+_NLM_F_DUMP: int = 0x300
+_INET_DIAG_INFO: int = 2  # nlattr type for TCP_INFO
+
+# tcp_info struct offsets (x86-64, Linux ≥ 4.2):
+# After 8×u8 + 23×u32 + 4-byte padding = offset 104
+#   104: tcpi_pacing_rate     (u64)
+#   112: tcpi_max_pacing_rate (u64)
+#   120: tcpi_bytes_acked     (u64)  ≈ bytes sent
+#   128: tcpi_bytes_received  (u64)
+_TCPI_BYTES_ACKED_OFF: int = 120
+_TCPI_BYTES_RECEIVED_OFF: int = 128
+_TCPI_MIN_LEN: int = 136  # need at least this many bytes
 
 
 def _fmt_bytes(bps: float) -> str:
@@ -128,10 +154,27 @@ def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
     return result
 
 
+def _get_socket_inodes(pids: list[int]) -> set[int]:
+    """Collect socket inodes owned by any PID in the list."""
+    inodes: set[int] = set()
+    for pid in pids:
+        fd_dir: str = f"/proc/{pid}/fd"
+        try:
+            for entry in os.listdir(fd_dir):
+                try:
+                    link: str = os.readlink(f"{fd_dir}/{entry}")
+                    if link.startswith("socket:["):
+                        inodes.add(int(link[8:-1]))
+                except (OSError, ValueError):
+                    pass
+        except (FileNotFoundError, PermissionError):
+            pass
+    return inodes
+
+
 def _has_tcp_socket(pid: int) -> bool:
     """Check if a process has at least one TCP/TCP6 socket open."""
     try:
-        # Read TCP inode set once per PID
         tcp_inodes: set[str] = set()
         for proto in ("tcp", "tcp6"):
             try:
@@ -144,21 +187,162 @@ def _has_tcp_socket(pid: int) -> bool:
                 pass
         if not tcp_inodes:
             return False
-        # Check if any FD points to a TCP socket
-        import os as _os
         fd_dir: str = f"/proc/{pid}/fd"
-        for entry in _os.listdir(fd_dir):
+        for entry in os.listdir(fd_dir):
             try:
-                link: str = _os.readlink(f"{fd_dir}/{entry}")
+                link: str = os.readlink(f"{fd_dir}/{entry}")
                 if link.startswith("socket:["):
-                    inode: str = link[8:-1]
-                    if inode in tcp_inodes:
+                    if link[8:-1] in tcp_inodes:
                         return True
             except (OSError, ValueError):
                 pass
     except (FileNotFoundError, PermissionError):
         pass
     return False
+
+
+def _query_tcp_bytes() -> dict[int, tuple[int, int]]:
+    """Query per-socket TCP byte counters via NETLINK_SOCK_DIAG.
+
+    Returns ``{inode: (bytes_received, bytes_acked)}``.
+    Requires the ``tcp_diag`` kernel module.  Returns empty dict on failure.
+    """
+    global _tcp_diag_available
+    if _tcp_diag_available is False:
+        return {}
+
+    results: dict[int, tuple[int, int]] = {}
+    try:
+        sock = socket.socket(
+            socket.AF_NETLINK, socket.SOCK_DGRAM, _NETLINK_SOCK_DIAG)
+        sock.settimeout(1.0)
+        sock.bind((0, 0))
+    except OSError:
+        _tcp_diag_available = False
+        return {}
+
+    try:
+        for family in (socket.AF_INET, socket.AF_INET6):
+            idiag_ext: int = 1 << (_INET_DIAG_INFO - 1)
+            sockid: bytes = b"\x00" * 48
+            payload: bytes = struct.pack(
+                "=BBBBI", family, socket.IPPROTO_TCP,
+                idiag_ext, 0, 0xFFFFFFFF,
+            ) + sockid
+            nlh: bytes = struct.pack(
+                "=IHHII",
+                16 + len(payload),
+                _SOCK_DIAG_BY_FAMILY,
+                _NLM_F_REQUEST | _NLM_F_DUMP,
+                0, 0,
+            )
+            sock.send(nlh + payload)
+
+            done: bool = False
+            while not done:
+                try:
+                    data: bytes = sock.recv(65536)
+                except socket.timeout:
+                    break
+                off: int = 0
+                while off < len(data):
+                    if off + 16 > len(data):
+                        break
+                    nl_len, nl_type = struct.unpack_from("=IH", data, off)
+                    if nl_type == _NLMSG_DONE:
+                        done = True
+                        break
+                    if nl_type == _NLMSG_ERROR:
+                        # tcp_diag not available
+                        _tcp_diag_available = False
+                        sock.close()
+                        return {}
+                    if nl_len < 16:
+                        break
+                    # inet_diag_msg is 72 bytes after the 16-byte nlh
+                    msg_off: int = off + 16
+                    if msg_off + 72 <= off + nl_len:
+                        inode: int = struct.unpack_from(
+                            "=I", data, msg_off + 68)[0]
+                        # Walk nlattrs after inet_diag_msg
+                        attr_off: int = msg_off + 72
+                        while attr_off + 4 <= off + nl_len:
+                            al, at = struct.unpack_from(
+                                "=HH", data, attr_off)
+                            if al < 4:
+                                break
+                            if (at == _INET_DIAG_INFO
+                                    and al - 4 >= _TCPI_MIN_LEN):
+                                ti: int = attr_off + 4
+                                ba: int = struct.unpack_from(
+                                    "=Q", data, ti + _TCPI_BYTES_ACKED_OFF
+                                )[0]
+                                br: int = struct.unpack_from(
+                                    "=Q", data,
+                                    ti + _TCPI_BYTES_RECEIVED_OFF,
+                                )[0]
+                                results[inode] = (br, ba)
+                            attr_off += (al + 3) & ~3
+                    off += (nl_len + 3) & ~3
+        _tcp_diag_available = True
+    except OSError:
+        _tcp_diag_available = False
+        results = {}
+    finally:
+        sock.close()
+    return results
+
+
+def _net_io_tcp_diag(
+    pids: list[int],
+) -> tuple[float, float] | None:
+    """Try to compute net bytes (recv, sent) via tcp_diag.
+
+    Returns ``(net_recv, net_sent)`` or ``None`` if tcp_diag unavailable.
+    """
+    tcp_map: dict[int, tuple[int, int]] = _query_tcp_bytes()
+    if not tcp_map:
+        return None
+    inodes: set[int] = _get_socket_inodes(pids)
+    if not inodes:
+        return (0.0, 0.0)
+    total_recv: float = 0.0
+    total_sent: float = 0.0
+    for ino in inodes:
+        entry = tcp_map.get(ino)
+        if entry is not None:
+            total_recv += entry[0]
+            total_sent += entry[1]
+    return (total_recv, total_sent)
+
+
+def _net_io_rchar_fallback(pids: list[int]) -> tuple[float, float]:
+    """Fallback: estimate net bytes via rchar-read_bytes for TCP-socket PIDs."""
+    net_rchar: float = 0.0
+    net_wchar: float = 0.0
+    for pid in pids:
+        if not _has_tcp_socket(pid):
+            continue
+        try:
+            rchar: float = 0.0
+            wchar: float = 0.0
+            read_bytes: float = 0.0
+            write_bytes: float = 0.0
+            with open(f"/proc/{pid}/io") as f:
+                for line in f:
+                    if line.startswith("rchar:"):
+                        rchar = float(line.split()[1])
+                    elif line.startswith("wchar:"):
+                        wchar = float(line.split()[1])
+                    elif line.startswith("read_bytes:"):
+                        read_bytes = float(line.split()[1])
+                    elif line.startswith("write_bytes:"):
+                        write_bytes = float(line.split()[1])
+            net_rchar += max(0, rchar - read_bytes)
+            net_wchar += max(0, wchar - write_bytes)
+        except (FileNotFoundError, PermissionError, IndexError, ValueError):
+            pass
+    return (net_rchar, net_wchar)
 
 
 def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
@@ -190,44 +374,23 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
             gpu_pct += sm
             gpu_mem += mem
 
-    # Network I/O: delta-based from /proc/<pid>/io
-    # Only count PIDs that have at least one TCP socket open,
-    # to exclude pipe/internal I/O from bash, tee, npm, etc.
-    # net_read ≈ rchar - read_bytes (total reads minus disk reads)
-    # net_write ≈ wchar - write_bytes (total writes minus disk writes)
-    net_rchar: float = 0.0
-    net_wchar: float = 0.0
-    for pid in pids:
-        if not _has_tcp_socket(pid):
-            continue
-        try:
-            rchar: float = 0.0
-            wchar: float = 0.0
-            read_bytes: float = 0.0
-            write_bytes: float = 0.0
-            with open(f"/proc/{pid}/io") as f:
-                for line in f:
-                    if line.startswith("rchar:"):
-                        rchar = float(line.split()[1])
-                    elif line.startswith("wchar:"):
-                        wchar = float(line.split()[1])
-                    elif line.startswith("read_bytes:"):
-                        read_bytes = float(line.split()[1])
-                    elif line.startswith("write_bytes:"):
-                        write_bytes = float(line.split()[1])
-            net_rchar += max(0, rchar - read_bytes)
-            net_wchar += max(0, wchar - write_bytes)
-        except (FileNotFoundError, PermissionError, IndexError, ValueError):
-            pass
+    # Network I/O: delta-based
+    # Prefer tcp_diag (accurate per-socket byte counters) when available,
+    # fall back to rchar-read_bytes filtered to TCP-socket PIDs.
+    diag: tuple[float, float] | None = _net_io_tcp_diag(pids)
+    if diag is not None:
+        net_recv, net_sent = diag
+    else:
+        net_recv, net_sent = _net_io_rchar_fallback(pids)
     io_read: float = 0.0
     io_write: float = 0.0
     prev_io = _prev_proc_io.get(kitty_pid)
     if prev_io is not None:
         dt = now - prev_io[2]
         if dt > 0:
-            io_read = max(0, (net_rchar - prev_io[0]) / dt)
-            io_write = max(0, (net_wchar - prev_io[1]) / dt)
-    _prev_proc_io[kitty_pid] = (net_rchar, net_wchar, now)
+            io_read = max(0, (net_recv - prev_io[0]) / dt)
+            io_write = max(0, (net_sent - prev_io[1]) / dt)
+    _prev_proc_io[kitty_pid] = (net_recv, net_sent, now)
 
     return ProcessMetrics(
         cpu_pct=cpu_pct, ram_mb=ram_mb,
