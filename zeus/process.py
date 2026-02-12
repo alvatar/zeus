@@ -1,9 +1,10 @@
 """Per-process metrics: CPU, RAM, GPU, I/O via /proc and nvidia-smi."""
 
+from __future__ import annotations
+
 import os
 import subprocess
 import time
-from typing import Optional
 
 from .models import ProcessMetrics
 
@@ -13,7 +14,7 @@ from .models import ProcessMetrics
 
 _prev_proc_cpu: dict[int, tuple[float, float]] = {}
 _prev_proc_io: dict[int, tuple[float, float, float]] = {}
-_gpu_pmon_cache: Optional[dict[int, tuple[float, float]]] = None
+_gpu_pmon_cache: dict[int, tuple[float, float]] | None = None
 _gpu_pmon_ts: float = 0.0
 
 
@@ -28,7 +29,7 @@ def _fmt_bytes(bps: float) -> str:
 
 def _get_process_tree(root_pid: int) -> list[int]:
     """Get all PIDs in the tree rooted at root_pid (inclusive)."""
-    pids = [root_pid]
+    pids: list[int] = [root_pid]
     try:
         children = subprocess.run(
             ["pgrep", "-P", str(root_pid)],
@@ -52,12 +53,12 @@ def _clk_tck() -> int:
         return 100
 
 
-_CLK_TCK = _clk_tck()
+_CLK_TCK: int = _clk_tck()
 
 
 def _read_proc_cpu(pids: list[int]) -> float:
     """Read total CPU ticks (utime+stime) for a set of PIDs."""
-    total = 0.0
+    total: float = 0.0
     for pid in pids:
         try:
             with open(f"/proc/{pid}/stat") as f:
@@ -70,7 +71,7 @@ def _read_proc_cpu(pids: list[int]) -> float:
 
 def _read_proc_ram(pids: list[int]) -> float:
     """Read total RSS in MB for a set of PIDs."""
-    total = 0
+    total: int = 0
     for pid in pids:
         try:
             with open(f"/proc/{pid}/statm") as f:
@@ -78,14 +79,14 @@ def _read_proc_ram(pids: list[int]) -> float:
             total += pages
         except (FileNotFoundError, IndexError, ValueError):
             pass
-    page_size = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+    page_size: int = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
     return total * page_size / 1048576
 
 
 def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
     """Read nvidia-smi pmon, return {pid: (sm%, mem_mb)}. Cached per second."""
     global _gpu_pmon_cache, _gpu_pmon_ts
-    now = time.time()
+    now: float = time.time()
     if _gpu_pmon_cache is not None and now - _gpu_pmon_ts < 1.5:
         return _gpu_pmon_cache
     result: dict[int, tuple[float, float]] = {}
@@ -130,35 +131,35 @@ def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
 def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     """Read CPU%, RAM, GPU% for an agent's process tree."""
     global _prev_proc_cpu, _prev_proc_io
-    pids = _get_process_tree(kitty_pid)
-    now = time.time()
+    pids: list[int] = _get_process_tree(kitty_pid)
+    now: float = time.time()
 
     # CPU: delta-based
-    ticks = _read_proc_cpu(pids)
-    cpu_pct = 0.0
+    ticks: float = _read_proc_cpu(pids)
+    cpu_pct: float = 0.0
     prev = _prev_proc_cpu.get(kitty_pid)
     if prev is not None:
-        dt = now - prev[1]
+        dt: float = now - prev[1]
         if dt > 0:
             cpu_pct = ((ticks - prev[0]) / _CLK_TCK / dt) * 100
     _prev_proc_cpu[kitty_pid] = (ticks, now)
 
     # RAM
-    ram_mb = _read_proc_ram(pids)
+    ram_mb: float = _read_proc_ram(pids)
 
     # GPU: match any PID in tree
-    gpu_data = _read_gpu_pmon()
-    gpu_pct = 0.0
-    gpu_mem = 0.0
-    pid_set = set(pids)
+    gpu_data: dict[int, tuple[float, float]] = _read_gpu_pmon()
+    gpu_pct: float = 0.0
+    gpu_mem: float = 0.0
+    pid_set: set[int] = set(pids)
     for pid, (sm, mem) in gpu_data.items():
         if pid in pid_set:
             gpu_pct += sm
             gpu_mem += mem
 
     # I/O: delta-based from /proc/<pid>/io
-    rchar = 0.0
-    wchar = 0.0
+    rchar: float = 0.0
+    wchar: float = 0.0
     for pid in pids:
         try:
             with open(f"/proc/{pid}/io") as f:
@@ -169,8 +170,8 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
                         wchar += float(line.split()[1])
         except (FileNotFoundError, PermissionError, IndexError, ValueError):
             pass
-    io_read = 0.0
-    io_write = 0.0
+    io_read: float = 0.0
+    io_write: float = 0.0
     prev_io = _prev_proc_io.get(kitty_pid)
     if prev_io is not None:
         dt = now - prev_io[2]

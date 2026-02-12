@@ -1,7 +1,8 @@
 """Tmux session discovery and agent matching."""
 
+from __future__ import annotations
+
 import subprocess
-from typing import Optional
 
 from .models import AgentWindow, TmuxSession
 
@@ -18,22 +19,23 @@ def discover_tmux_sessions() -> list[TmuxSession]:
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
 
-    sessions = []
+    sessions: list[TmuxSession] = []
     for line in r.stdout.strip().splitlines():
-        parts = line.split("\t")
+        parts: list[str] = line.split("\t")
         if len(parts) < 3:
             continue
         name, attached, created = parts[0], parts[1], parts[2]
-        is_attached = attached != "0"
+        is_attached: bool = attached != "0"
 
-        cmd_str, cwd = "", ""
+        cmd_str: str = ""
+        cwd: str = ""
         try:
             p = subprocess.run(
                 ["tmux", "list-panes", "-t", name, "-F",
                  "#{pane_start_command}\t#{pane_current_path}"],
                 capture_output=True, text=True, timeout=3)
             if p.returncode == 0 and p.stdout.strip():
-                pinfo = p.stdout.strip().splitlines()[0].split("\t")
+                pinfo: list[str] = p.stdout.strip().splitlines()[0].split("\t")
                 cmd_str = pinfo[0] if len(pinfo) > 0 else ""
                 cwd = pinfo[1] if len(pinfo) > 1 else ""
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -52,7 +54,7 @@ def discover_tmux_sessions() -> list[TmuxSession]:
 def match_tmux_to_agents(
     agents: list[AgentWindow],
     tmux_sessions: list[TmuxSession],
-):
+) -> None:
     """Match tmux sessions to agents.
 
     Priority:
@@ -62,8 +64,8 @@ def match_tmux_to_agents(
     """
     for sess in tmux_sessions:
         # 1. Try cwd match (most specific wins)
-        best_agent: Optional[AgentWindow] = None
-        best_len = -1
+        best_agent: AgentWindow | None = None
+        best_len: int = -1
         if sess.cwd:
             for agent in agents:
                 if (agent.cwd

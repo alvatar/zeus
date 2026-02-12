@@ -1,20 +1,22 @@
 """Kitty remote control, agent discovery, window management."""
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
 import time
+import threading
 from glob import glob
 from pathlib import Path
-from typing import Optional
 
 from .config import NAMES_FILE
 from .models import AgentWindow
 from .sessions import find_current_session, fork_session
 
 
-def kitty_cmd(socket: str, *args) -> Optional[str]:
-    cmd = ["kitty", "@", "--to", f"unix:{socket}"] + list(args)
+def kitty_cmd(socket: str, *args: str) -> str | None:
+    cmd: list[str] = ["kitty", "@", "--to", f"unix:{socket}"] + list(args)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
         if r.returncode == 0:
@@ -41,30 +43,32 @@ def discover_sockets() -> list[str]:
 
 
 def discover_agents() -> list[AgentWindow]:
-    agents = []
+    agents: list[AgentWindow] = []
     for socket in discover_sockets():
         try:
             kitty_pid = int(socket.rsplit("-", 1)[1])
         except (IndexError, ValueError):
             kitty_pid = 0
-        raw = kitty_cmd(socket, "ls")
+        raw: str | None = kitty_cmd(socket, "ls")
         if not raw:
             continue
         try:
-            os_windows = json.loads(raw)
+            os_windows: list[dict] = json.loads(raw)
         except json.JSONDecodeError:
             continue
         for os_win in os_windows:
             for tab in os_win.get("tabs", []):
                 for win in tab.get("windows", []):
-                    env = win.get("env", {})
-                    name = env.get("AGENTMON_NAME")
+                    env: dict[str, str] = win.get("env", {})
+                    name: str | None = env.get("AGENTMON_NAME")
 
                     if not name:
-                        cmdline = win.get("cmdline") or []
-                        title = (win.get("title") or "").lower()
-                        cmd_str = " ".join(str(x) for x in cmdline).lower()
-                        looks_like_pi = (
+                        cmdline: list = win.get("cmdline") or []
+                        title: str = (win.get("title") or "").lower()
+                        cmd_str: str = " ".join(
+                            str(x) for x in cmdline
+                        ).lower()
+                        looks_like_pi: bool = (
                             " pi" in f" {cmd_str} "
                             or " pi" in title
                             or title.startswith("π")
@@ -84,10 +88,10 @@ def discover_agents() -> list[AgentWindow]:
                     ))
 
     # Apply name overrides and fix parent refs
-    overrides = _load_names()
+    overrides: dict[str, str] = _load_names()
     orig_to_new: dict[str, str] = {}
     for a in agents:
-        key = f"{a.socket}:{a.kitty_id}"
+        key: str = f"{a.socket}:{a.kitty_id}"
         if key in overrides:
             orig_to_new[a.name] = overrides[key]
             a.name = overrides[key]
@@ -98,30 +102,34 @@ def discover_agents() -> list[AgentWindow]:
 
 
 def get_screen_text(agent: AgentWindow) -> str:
-    text = kitty_cmd(agent.socket, "get-text", "--match", f"id:{agent.kitty_id}")
+    text: str | None = kitty_cmd(
+        agent.socket, "get-text", "--match", f"id:{agent.kitty_id}"
+    )
     return text or ""
 
 
-def focus_window(agent: AgentWindow):
+def focus_window(agent: AgentWindow) -> None:
     subprocess.run(
         ["swaymsg", f"[pid={agent.kitty_pid}]", "focus"],
         capture_output=True, timeout=3)
 
 
-def close_window(agent: AgentWindow):
+def close_window(agent: AgentWindow) -> None:
     kitty_cmd(agent.socket, "close-window", "--match", f"id:{agent.kitty_id}")
 
 
-def spawn_subagent(agent: AgentWindow, name: str, workspace: str = "") -> Optional[str]:
+def spawn_subagent(
+    agent: AgentWindow, name: str, workspace: str = ""
+) -> str | None:
     """Fork the agent's session and launch a sub-agent in a new kitty window."""
-    cwd = agent.cwd
-    source = find_current_session(cwd)
+    cwd: str = agent.cwd
+    source: str | None = find_current_session(cwd)
     if not source:
         return None
-    forked = fork_session(source, cwd)
+    forked: str | None = fork_session(source, cwd)
     if not forked:
         return None
-    env = os.environ.copy()
+    env: dict[str, str] = os.environ.copy()
     env["AGENTMON_NAME"] = name
     env["ZEUS_PARENT"] = agent.name
     proc = subprocess.Popen(
@@ -131,13 +139,12 @@ def spawn_subagent(agent: AgentWindow, name: str, workspace: str = "") -> Option
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     if workspace and workspace != "?":
-        import threading
-
-        def _move_and_focus():
+        def _move_and_focus() -> None:
             time.sleep(0.5)
             try:
                 subprocess.run(
-                    ["swaymsg", f"[pid={proc.pid}]", "move", "workspace", workspace],
+                    ["swaymsg", f"[pid={proc.pid}]",
+                     "move", "workspace", workspace],
                     capture_output=True, timeout=3)
                 subprocess.run(
                     ["swaymsg", "workspace", workspace],

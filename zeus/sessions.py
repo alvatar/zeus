@@ -1,8 +1,9 @@
 """Claude session forking and discovery for sub-agents."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Optional
 
 from .config import AGENT_SESSIONS_DIR
 
@@ -12,9 +13,9 @@ def _encode_session_dir(cwd: str) -> str:
     return f"--{cwd.lstrip('/').replace('/', '-').replace(':', '-')}--"
 
 
-def find_current_session(cwd: str) -> Optional[str]:
+def find_current_session(cwd: str) -> str | None:
     """Find the most recent session file for a given cwd."""
-    session_dir = AGENT_SESSIONS_DIR / _encode_session_dir(cwd)
+    session_dir: Path = AGENT_SESSIONS_DIR / _encode_session_dir(cwd)
     if not session_dir.is_dir():
         return None
     files = sorted(
@@ -23,7 +24,7 @@ def find_current_session(cwd: str) -> Optional[str]:
     return str(files[0]) if files else None
 
 
-def fork_session(source_path: str, target_cwd: str) -> Optional[str]:
+def fork_session(source_path: str, target_cwd: str) -> str | None:
     """Fork a pi session file into a new independent session.
 
     Returns the path to the new session file, or None on failure.
@@ -35,7 +36,7 @@ def fork_session(source_path: str, target_cwd: str) -> Optional[str]:
     if not source.exists():
         return None
 
-    entries = []
+    entries: list[dict] = []
     with open(source) as f:
         for line in f:
             line = line.strip()
@@ -47,19 +48,21 @@ def fork_session(source_path: str, target_cwd: str) -> Optional[str]:
     if not entries:
         return None
 
-    header = next((e for e in entries if e.get("type") == "session"), None)
+    header: dict | None = next(
+        (e for e in entries if e.get("type") == "session"), None
+    )
     if not header:
         return None
 
-    session_dir = AGENT_SESSIONS_DIR / _encode_session_dir(target_cwd)
+    session_dir: Path = AGENT_SESSIONS_DIR / _encode_session_dir(target_cwd)
     session_dir.mkdir(parents=True, exist_ok=True)
 
-    new_id = str(uuid.uuid4())
+    new_id: str = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    ts = now.strftime("%Y-%m-%dT%H-%M-%S-") + f"{now.microsecond // 1000:03d}Z"
-    new_file = session_dir / f"{ts}_{new_id}.jsonl"
+    ts: str = now.strftime("%Y-%m-%dT%H-%M-%S-") + f"{now.microsecond // 1000:03d}Z"
+    new_file: Path = session_dir / f"{ts}_{new_id}.jsonl"
 
-    new_header = {
+    new_header: dict = {
         "type": "session",
         "version": header.get("version", 3),
         "id": new_id,

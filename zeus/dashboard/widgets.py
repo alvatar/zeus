@@ -1,5 +1,7 @@
 """Custom widgets: ZeusDataTable, UsageBar."""
 
+from __future__ import annotations
+
 from textual.reactive import reactive
 from textual.widgets import DataTable, Static
 from rich.text import Text
@@ -23,32 +25,31 @@ class ZeusDataTable(DataTable):
 
 class UsageBar(Static):
     """A labeled progress bar showing a percentage."""
-    pct = reactive(0.0)
-    label_text = reactive("")
-    extra_text = reactive("")
+    pct: reactive[float] = reactive(0.0)
+    label_text: reactive[str] = reactive("")
+    extra_text: reactive[str] = reactive("")
 
-    def __init__(self, label: str, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, label: str, **kwargs: str) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
         self.label_text = label
 
     def render(self) -> Text:
-        pct = self.pct
-        width = 12
-        filled = round((min(100, max(0, pct)) / 100) * width)
+        pct: float = self.pct
+        width: int = 12
+        filled: int = round((min(100, max(0, pct)) / 100) * width)
         if pct >= 90:
             color = "#ff3333"
         elif pct >= 80:
             color = "#ff8800"
         else:
             color = "#00d7d7"
-        bar_empty = "#555555"
+        bar_empty: str = "#555555"
 
-        pct_str = f"{pct:.0f}%"
-        pct_field = pct_str.rjust(4)
+        pct_str: str = f"{pct:.0f}%"
+        pct_field: str = pct_str.rjust(4)
 
-        extra_width = 7
-        extra = (self.extra_text or "")
-        extra = f"{extra.ljust(extra_width)}"
+        extra_width: int = 7
+        extra: str = (self.extra_text or "").ljust(extra_width)
 
         t = Text()
         t.append(f"{self.label_text} ", style="#447777")
