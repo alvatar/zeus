@@ -1166,6 +1166,21 @@ def cmd_dashboard(args):
         background: #050f15;
     }
 
+    #log-panel {
+        dock: bottom;
+        height: 22;
+        padding: 0 1;
+        background: #0a0a0a;
+        color: #888888;
+        border-top: solid #333333;
+        overflow-y: auto;
+        display: none;
+    }
+
+    #log-panel.visible {
+        display: block;
+    }
+
     #empty-message {
         width: 100%;
         height: auto;
@@ -1187,9 +1202,11 @@ def cmd_dashboard(args):
             Binding("k", "kill_agent", "Kill Agent"),
             Binding("r", "rename", "Rename"),
             Binding("f5", "refresh", "Refresh", show=False),
+            Binding("e", "toggle_expand", "Expand"),
         ]
 
         agents: list[AgentWindow] = []
+        _log_visible: bool = False
         prev_states: dict[int, State] = {}
         idle_since: dict[int, float] = {}     # kitty_id -> timestamp when went idle
         idle_notified: set[int] = set()       # kitty_ids already notified
@@ -1222,6 +1239,7 @@ def cmd_dashboard(args):
                 ),
                 id="table-container",
             )
+            yield Static("", id="log-panel")
             yield Static("", id="status-line")
 
         def on_mount(self) -> None:
@@ -1326,7 +1344,7 @@ def cmd_dashboard(args):
 
             def _add_agent_row(a: AgentWindow, indent: str = ""):
                 icon = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
-                state_color = {"WORKING": "#00d7d7", "IDLE": "#ff3333"}[a.state.value]
+                state_color = {"WORKING": "#00d700", "IDLE": "#ff3333"}[a.state.value]
                 if indent:
                     name_text = f"{indent}🧬 {a.name}"
                 else:
@@ -1417,6 +1435,9 @@ def cmd_dashboard(args):
                 f"[bold #d7af00]{n_idle} idle[/]  │  "
                 f"Poll: {POLL_INTERVAL}s"
             )
+
+            # Refresh log panel if visible
+            self._update_log_panel()
 
         def _get_selected_row_key(self) -> Optional[str]:
             table = self.query_one("#agent-table", DataTable)
@@ -1536,6 +1557,10 @@ def cmd_dashboard(args):
 
                 self.notify(f"Attached: {sess.name}", timeout=2)
 
+        def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+            """Cursor moved to a new row — update log panel."""
+            self._update_log_panel()
+
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
             """Enter or click on a table row."""
             self._activate_selected_row()
@@ -1640,6 +1665,38 @@ def cmd_dashboard(args):
                 self.poll_and_update()
             except Exception as e:
                 self.notify(f"Rename failed: {e}", timeout=3)
+
+        def action_toggle_expand(self) -> None:
+            from textual.widgets import Input
+            if isinstance(self.focused, Input):
+                return
+            if len(self.screen_stack) > 1:
+                return
+            self._log_visible = not self._log_visible
+            panel = self.query_one("#log-panel", Static)
+            if self._log_visible:
+                panel.add_class("visible")
+                self._update_log_panel()
+            else:
+                panel.remove_class("visible")
+
+        def _update_log_panel(self) -> None:
+            """Update the log panel with the last 20 lines of the selected agent's screen."""
+            panel = self.query_one("#log-panel", Static)
+            if not self._log_visible:
+                return
+            agent = self._get_selected_agent()
+            if not agent:
+                panel.update("  No agent selected")
+                return
+            lines = agent._screen_text.splitlines()
+            recent = [l for l in lines if l.strip()][-20:]
+            if not recent:
+                panel.update(f"  [{agent.name}] (no output)")
+                return
+            header = f"[bold #00d7d7]── {agent.name} ──[/]"
+            content = "\n".join(f"  {line.rstrip()}" for line in recent)
+            panel.update(f"{header}\n{content}")
 
         def action_refresh(self) -> None:
             self.poll_and_update()
