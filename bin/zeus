@@ -560,7 +560,7 @@ def cmd_ls(args):
         a.state = detect_state(screen)
         a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(screen)
         a.workspace = pid_ws.get(a.kitty_pid, "?")
-        cwd = a.cwd.replace(str(Path.home()), "~")
+        cwd = a.cwd
         icon = {"WORKING": "⟳", "IDLE": "⏳", "DONE": "✓"}[a.state.value]
         print(f"  {icon} [{a.kitty_id}] {a.name:16s} {a.state.value:7s}  "
               f"{a.model or '—':20s} Ctx:{a.ctx_pct:.0f}%  WS:{a.workspace:3s}  {cwd}")
@@ -864,7 +864,7 @@ def cmd_dashboard(args):
                 state_text = Text(f"{icon} {a.state.value}", style=f"bold {state_color}")
                 ctx_str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
                 tok_str = f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
-                cwd = a.cwd.replace(str(Path.home()), "~")
+                cwd = a.cwd
 
                 # Unique key: socket path + kitty window id
                 row_key = f"{a.socket}:{a.kitty_id}"
@@ -897,7 +897,7 @@ def cmd_dashboard(args):
                         tmux_name = Text(f"  └ 🔍 {sess.name}", style="#00d787")
                         tmux_cmd = Text(sess.command[:30] or "—", style="#557755")
                         tmux_age = Text(f"⏱ {age_str}", style="#557755")
-                    tmux_cwd = sess.cwd.replace(str(Path.home()), "~")
+                    tmux_cwd = sess.cwd
                     tmux_key = f"tmux:{sess.name}"
                     table.add_row(
                         tmux_name,
@@ -953,14 +953,51 @@ def cmd_dashboard(args):
             if agent:
                 focus_window(agent)
 
+        def _focus_tmux_client(self, sess: TmuxSession) -> bool:
+            """Focus the sway window running an attached tmux session.
+            Returns True if focused, False if not found."""
+            try:
+                r = subprocess.run(
+                    ["tmux", "list-clients", "-t", sess.name, "-F", "#{client_pid}"],
+                    capture_output=True, text=True, timeout=2)
+                if r.returncode != 0 or not r.stdout.strip():
+                    return False
+                client_pid = int(r.stdout.strip().splitlines()[0])
+                # Walk up ppid chain to find kitty process
+                pid = client_pid
+                for _ in range(10):
+                    try:
+                        with open(f"/proc/{pid}/comm") as f:
+                            comm = f.read().strip()
+                        if comm == "kitty":
+                            subprocess.run(["swaymsg", f"[pid={pid}]", "focus"],
+                                           capture_output=True, timeout=3)
+                            return True
+                        with open(f"/proc/{pid}/stat") as f:
+                            ppid = int(f.read().split()[3])
+                        if ppid <= 1:
+                            break
+                        pid = ppid
+                    except (FileNotFoundError, ValueError, IndexError):
+                        break
+            except (subprocess.TimeoutExpired, ValueError):
+                pass
+            return False
+
         def _attach_tmux(self, sess: TmuxSession) -> None:
-            """Open a new kitty window attached to a tmux session."""
-            subprocess.Popen(
-                ["kitty", "tmux", "attach", "-t", sess.name],
-                start_new_session=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            self.notify(f"Attached: {sess.name}", timeout=2)
+            """Handle Enter on a tmux row: focus if attached, open if detached."""
+            if sess.attached:
+                if self._focus_tmux_client(sess):
+                    self.notify(f"Focused: {sess.name}", timeout=2)
+                else:
+                    self.notify(f"Could not find window for {sess.name}", timeout=2)
+            else:
+                subprocess.Popen(
+                    ["kitty", "tmux", "attach", "-t", sess.name],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                self.notify(f"Attached: {sess.name}", timeout=2)
 
         def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
             """Enter pressed on a table row."""
