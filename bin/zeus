@@ -1014,7 +1014,6 @@ def cmd_dashboard(args):
             pct = self.pct
             width = 12
             filled = round((min(100, max(0, pct)) / 100) * width)
-            bar = "█" * filled + "░" * (width - filled)
             if pct >= 90:
                 color = "#ff3333"
             elif pct >= 80:
@@ -1022,13 +1021,23 @@ def cmd_dashboard(args):
             else:
                 color = "#00d7d7"
             bar_empty = "#555555"
+
+            # Keep layout stable: reserve fixed widths for percent + extra text.
+            pct_str = f"{pct:.0f}%"
+            pct_field = pct_str.rjust(4)  # "  0%" .. "100%"
+
+            extra_width = 10
+            extra = (self.extra_text or "")
+            if extra:
+                extra = f" {extra.ljust(extra_width)}"
+
             t = Text()
             t.append(f"{self.label_text} ", style="#447777")
             t.append("█" * filled, style=color)
             t.append("░" * (width - filled), style=bar_empty)
-            t.append(f" {pct:.0f}%", style=f"bold {color}")
-            if self.extra_text:
-                t.append(f" {self.extra_text}", style="#447777")
+            t.append(f" {pct_field}", style=f"bold {color}")
+            if extra:
+                t.append(extra, style="#447777")
             return t
 
     # ── Main app ──────────────────────────────────────────────────────
