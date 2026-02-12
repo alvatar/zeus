@@ -820,6 +820,8 @@ def cmd_dashboard(args):
 
         agents: list[AgentWindow] = []
         prev_states: dict[int, State] = {}
+        idle_since: dict[int, float] = {}     # kitty_id -> timestamp when went idle
+        idle_notified: set[int] = set()       # kitty_ids already notified
 
         def compose(self) -> ComposeResult:
             yield Horizontal(
@@ -865,10 +867,19 @@ def cmd_dashboard(args):
                 a.workspace = pid_ws.get(a.kitty_pid, "?")
                 a.proc_metrics = read_process_metrics(a.kitty_pid)
 
-                # Notifications
+                # Notifications — only after 4s of continuous idle
                 old = self.prev_states.get(a.kitty_id)
-                if old is not None and old != a.state and a.state == State.IDLE:
-                    notify("Agent ready", f"[{a.name}] needs attention", "critical")
+                if a.state == State.IDLE:
+                    if old == State.WORKING:
+                        self.idle_since[a.kitty_id] = time.time()
+                        self.idle_notified.discard(a.kitty_id)
+                    elif a.kitty_id in self.idle_since and a.kitty_id not in self.idle_notified:
+                        if time.time() - self.idle_since[a.kitty_id] >= 4.0:
+                            notify("Agent ready", f"[{a.name}] needs attention", "critical")
+                            self.idle_notified.add(a.kitty_id)
+                else:
+                    self.idle_since.pop(a.kitty_id, None)
+                    self.idle_notified.discard(a.kitty_id)
                 self.prev_states[a.kitty_id] = a.state
 
             match_tmux_to_agents(self.agents, tmux_sessions)
