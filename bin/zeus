@@ -964,7 +964,7 @@ def cmd_dashboard(args):
             # Restore selected row
             if _saved_key:
                 for idx, row_key in enumerate(table.rows):
-                    if str(row_key) == _saved_key:
+                    if row_key.value == _saved_key:
                         table.move_cursor(row=idx)
                         break
 
