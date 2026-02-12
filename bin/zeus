@@ -56,6 +56,13 @@ class TmuxSession:
     attached: bool = False
 
 @dataclass
+class ProcessMetrics:
+    cpu_pct: float = 0.0
+    ram_mb: float = 0.0
+    gpu_pct: float = 0.0
+    gpu_mem_mb: float = 0.0
+
+@dataclass
 class AgentWindow:
     kitty_id: int
     socket: str
@@ -95,13 +102,6 @@ class SystemMetrics:
     gpu_mem_total_mb: float = 0.0
     net_up_bps: float = 0.0      # bytes per second
     net_down_bps: float = 0.0
-
-@dataclass
-class ProcessMetrics:
-    cpu_pct: float = 0.0
-    ram_mb: float = 0.0
-    gpu_pct: float = 0.0
-    gpu_mem_mb: float = 0.0
 
 # ---------------------------------------------------------------------------
 # System metrics (proc-based, no dependencies)
