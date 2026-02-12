@@ -1328,7 +1328,7 @@ def cmd_dashboard(args):
                 icon = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
                 state_color = {"WORKING": "#00d7d7", "IDLE": "#ff3333"}[a.state.value]
                 if indent:
-                    name_text = Text(f"{indent}🧬 {a.name}", style="#00d7d7")
+                    name_text = f"{indent}🧬 {a.name}"
                 else:
                     name_text = a.name
                 state_text = Text(f"{icon} {a.state.value}", style=f"bold {state_color}")
@@ -1373,14 +1373,13 @@ def cmd_dashboard(args):
                     else:
                         age_str = f"{age_s}s"
                     if sess.attached:
-                        dim = "#558855"
-                        tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
-                        tmux_cmd = Text(sess.command[:30] or "—", style=dim)
-                        tmux_age = Text(f"⏱ {age_str} ●", style=dim)
+                        tmux_name = f"  └ 🔍 {sess.name}"
+                        tmux_cmd = sess.command[:30] or "—"
+                        tmux_age = f"⏱ {age_str} ●"
                     else:
-                        tmux_name = Text(f"  └ 🔍 {sess.name}", style="#00d787")
-                        tmux_cmd = Text(sess.command[:30] or "—", style="#77aa77")
-                        tmux_age = Text(f"⏱ {age_str}", style="#77aa77")
+                        tmux_name = f"  └ 🔍 {sess.name}"
+                        tmux_cmd = sess.command[:30] or "—"
+                        tmux_age = f"⏱ {age_str}"
                     tmux_key = f"tmux:{sess.name}"
                     table.add_row(
                         tmux_name,
