@@ -569,7 +569,6 @@ class ZeusApp(App):
             )
             self._generate_on_demand_summary(agent)
         self._update_interact_stream()
-        self.query_one("#interact-input", ZeusTextArea).focus()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
         """Focus the sway window running an attached tmux session."""
@@ -903,7 +902,6 @@ class ZeusApp(App):
         summary_w = self.query_one("#interact-summary", Static)
         ta = self.query_one("#interact-input", ZeusTextArea)
         ta.clear()
-        ta.focus()
 
         if agent.state == State.IDLE and key in self._idle_summaries:
             # Show pre-computed summary instantly
