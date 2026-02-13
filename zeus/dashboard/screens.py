@@ -299,21 +299,25 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
 # ── Help ──────────────────────────────────────────────────────────────
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
+    ("", "─── Navigation ───"),
     ("Enter", "Open / refresh interact panel"),
-    ("Ctrl+Enter", "Teleport to agent"),
+    ("Ctrl+Enter", "Teleport to agent / open tmux"),
     ("e", "Expand agent output"),
+    ("Esc", "Close panel"),
+    ("", "─── Interact Panel ───"),
     ("Ctrl+f", "Toggle focus: input ↔ table"),
-    ("Ctrl+s", "Send message to agent"),
+    ("Ctrl+s", "Send message to agent / tmux"),
+    ("", "─── Agent Management ───"),
     ("n", "New agent"),
     ("s", "Spawn sub-agent"),
+    ("q", "Stop agent (send ESC)"),
     ("k", "Kill agent / tmux session"),
-    ("r", "Rename"),
+    ("r", "Rename agent / tmux"),
+    ("", "─── Settings ───"),
     ("F3", "Change summary model"),
     ("F4", "Toggle sort mode"),
     ("F5", "Force refresh"),
-    ("Esc", "Close panel"),
     ("?", "This help"),
-    ("q", "Stop agent (send ESC)"),
     ("F10", "Quit Zeus"),
 ]
 
@@ -326,9 +330,12 @@ class HelpScreen(ModalScreen):
         with Vertical(id="help-dialog"):
             yield Label("⚡ Zeus — Keybindings", classes="help-title")
             for key, desc in _HELP_BINDINGS:
-                yield Label(
-                    f"  [bold #00d7d7]{key:<12}[/]  {desc}"
-                )
+                if not key:
+                    yield Label(f"  [dim]{desc}[/]")
+                else:
+                    yield Label(
+                        f"  [bold #00d7d7]{key:<12}[/]  {desc}"
+                    )
             yield Label("")
             yield Label(
                 "  [dim]Press any key to close[/]",
