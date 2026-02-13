@@ -74,6 +74,7 @@ class ZeusApp(App):
     DEFAULT_CSS = APP_CSS
     BINDINGS = [
         Binding("q", "stop_agent", "Stop Agent"),
+        Binding("ctrl+q", "stop_agent", "Stop Agent", show=False, priority=True),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),

@@ -37,6 +37,7 @@ class ZeusTextArea(TextArea):
         Binding("alt+d", "delete_word_right", "Delete word right", show=False),
         Binding("alt+backspace", "delete_word_left", "Delete word left", show=False),
         Binding("ctrl+u", "clear_all", "Clear", show=False),
+        Binding("ctrl+y", "paste", "Paste", show=False),
     ]
 
     def action_clear_all(self) -> None:
