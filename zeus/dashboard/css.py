@@ -117,6 +117,10 @@ DataTable > .datatable--odd-row {
     padding: 0 1;
 }
 
+#interact-summary.hidden {
+    display: none;
+}
+
 #interact-stream {
     height: 1fr;
     overflow-y: auto;

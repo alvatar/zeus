@@ -655,9 +655,7 @@ class ZeusApp(App):
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
             summary_w = self.query_one("#interact-summary", Static)
-            summary_w.update(
-                f"[bold #00d787]── tmux: {tmux.name} ──[/]"
-            )
+            summary_w.add_class("hidden")
             self._update_interact_stream()
             return
         agent = self._get_selected_agent()
@@ -668,11 +666,13 @@ class ZeusApp(App):
         self._interact_tmux_name = None
         summary_w = self.query_one("#interact-summary", Static)
         if agent.state == State.IDLE and key in self._idle_summaries:
+            summary_w.remove_class("hidden")
             summary_w.update(
                 f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                 f"{self._idle_summaries[key]}"
             )
         elif self._summaries_enabled:
+            summary_w.remove_class("hidden")
             label = "status" if agent.state == State.WORKING else "triage"
             summary_w.update(
                 f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
@@ -680,8 +680,7 @@ class ZeusApp(App):
             )
             self._generate_on_demand_summary(agent)
         else:
-            summary_w.update(
-                f"[bold #00d7d7]── {agent.name} ──[/]"
+            summary_w.add_class("hidden"
             )
         self._update_interact_stream()
 
@@ -1034,20 +1033,20 @@ class ZeusApp(App):
         if tmux:
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
-            summary_w.update(
-                f"[bold #00d787]── tmux: {tmux.name} ──[/]"
-            )
+            summary_w.add_class("hidden")
         else:
             assert agent is not None
             key = f"{agent.socket}:{agent.kitty_id}"
             self._interact_agent_key = key
             self._interact_tmux_name = None
             if agent.state == State.IDLE and key in self._idle_summaries:
+                summary_w.remove_class("hidden")
                 summary_w.update(
                     f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                     f"{self._idle_summaries[key]}"
                 )
             elif self._summaries_enabled:
+                summary_w.remove_class("hidden")
                 label = "status" if agent.state == State.WORKING else "triage"
                 summary_w.update(
                     f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
@@ -1055,9 +1054,7 @@ class ZeusApp(App):
                 )
                 self._generate_on_demand_summary(agent)
             else:
-                summary_w.update(
-                    f"[bold #00d7d7]── {agent.name} ──[/]"
-                )
+                summary_w.add_class("hidden")
         self._update_interact_stream()
 
     def action_focus_interact(self) -> None:
