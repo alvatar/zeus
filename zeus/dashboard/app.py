@@ -559,7 +559,7 @@ class ZeusApp(App):
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
             f"Layout: [bold]{'SPLIT' if self._split_mode else 'WIDE'}[/]  │  "
-            f"AI: [bold]{'ON' if self._summaries_enabled else 'OFF'}[/]  │  "
+            f"AI: [bold]{model_short if self._summaries_enabled else 'OFF'}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
 
