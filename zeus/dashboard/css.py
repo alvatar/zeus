@@ -69,7 +69,11 @@ DataTable > .datatable--odd-row {
 }
 
 #status-line {
-    display: none;
+    dock: bottom;
+    height: 1;
+    padding: 0 1;
+    background: #0a1a2a;
+    color: #447777;
 }
 
 #openai-usage-bar {
