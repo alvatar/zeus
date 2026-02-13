@@ -20,7 +20,6 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Static, Label, Input, TextArea
 from textual import work
-from rich.markup import escape as rich_escape
 from rich.text import Text
 
 from ..config import POLL_INTERVAL, SUMMARY_MODEL
@@ -1040,11 +1039,11 @@ class ZeusApp(App):
         if not recent:
             stream.update(f"  [{agent.name}] (no output)")
             return
-        header = f"[bold #00d7d7]── output ──[/]"
-        content = "\n".join(
-            f"  {rich_escape(line.rstrip())}" for line in recent
-        )
-        stream.update(f"{header}\n{content}")
+        t = Text()
+        t.append("── output ──\n", style="bold #00d7d7")
+        for line in recent:
+            t.append(f"  {line.rstrip()}\n")
+        stream.update(t)
         stream.scroll_end(animate=False)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
@@ -1113,14 +1112,14 @@ class ZeusApp(App):
                     recent: list[str] = [
                         l for l in lines if l.strip()
                     ][-max_lines:]
-                    header: str = (
-                        f"[bold #00d787]── tmux: {tmux.name} ──[/]"
+                    t = Text()
+                    t.append(
+                        f"── tmux: {tmux.name} ──\n",
+                        style="bold #00d787",
                     )
-                    content: str = "\n".join(
-                        f"  {rich_escape(line.rstrip())}"
-                        for line in recent
-                    )
-                    panel.update(f"{header}\n{content}")
+                    for line in recent:
+                        t.append(f"  {line.rstrip()}\n")
+                    panel.update(t)
                     return
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
@@ -1137,11 +1136,11 @@ class ZeusApp(App):
         if not recent:
             panel.update(f"  [{agent.name}] (no output)")
             return
-        header = f"[bold #00d7d7]── {agent.name} ──[/]"
-        content = "\n".join(
-            f"  {rich_escape(line.rstrip())}" for line in recent
-        )
-        panel.update(f"{header}\n{content}")
+        t = Text()
+        t.append(f"── {agent.name} ──\n", style="bold #00d7d7")
+        for line in recent:
+            t.append(f"  {line.rstrip()}\n")
+        panel.update(t)
 
     def action_refresh(self) -> None:
         self.poll_and_update()
