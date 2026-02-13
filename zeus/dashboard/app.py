@@ -599,7 +599,17 @@ class ZeusApp(App):
         """Ctrl+Enter: teleport to the agent's kitty window or tmux client."""
         tmux = self._get_selected_tmux()
         if tmux:
-            self._focus_tmux_client(tmux)
+            if not self._focus_tmux_client(tmux):
+                # No attached client — open a new kitty window
+                subprocess.Popen(
+                    ["kitty", "tmux", "attach-session", "-t", tmux.name],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.notify(
+                    f"Opening tmux:{tmux.name}", timeout=2,
+                )
             return
         agent = self._get_selected_agent()
         if agent:
