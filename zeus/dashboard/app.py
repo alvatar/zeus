@@ -1039,7 +1039,10 @@ class ZeusApp(App):
     def _store_idle_summary(self, key: str, summary: str) -> None:
         """Store an idle summary and update action_needed set."""
         self._idle_summaries[key] = summary
-        if "ACTION NEEDED" in summary.upper():
+        upper = summary.upper()
+        if "NO ACTION NEEDED" in upper:
+            self._action_needed.discard(key)
+        elif "ACTION NEEDED" in upper:
             self._action_needed.add(key)
         else:
             self._action_needed.discard(key)
