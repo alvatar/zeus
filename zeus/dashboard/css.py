@@ -97,6 +97,49 @@ DataTable > .datatable--odd-row {
     display: block;
 }
 
+#interact-panel {
+    dock: bottom;
+    height: 75vh;
+    padding: 0 1;
+    background: #0a0a0a;
+    border-top: solid #00d7d7;
+    display: none;
+}
+
+#interact-panel.visible {
+    display: block;
+}
+
+#interact-summary {
+    height: 1fr;
+    overflow-y: auto;
+    color: #cccccc;
+    padding: 0 1;
+}
+
+#interact-input {
+    dock: bottom;
+    height: 1;
+    background: #0a0a0a;
+    border: none;
+    border-top: solid #333333;
+    padding: 0 1;
+    color: #cccccc;
+}
+
+#interact-input:focus {
+    border: none;
+    border-top: solid #00d7d7;
+}
+
+#interact-input>.input--cursor {
+    color: #00d7d7;
+}
+
+#interact-input>.input--placeholder {
+    color: #555555;
+}
+
 #empty-message {
     width: 100%;
     height: auto;

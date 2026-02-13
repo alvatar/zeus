@@ -22,14 +22,14 @@ from textual.widgets import DataTable, Static, Label, Input
 from textual import work
 from rich.text import Text
 
-from ..config import POLL_INTERVAL
+from ..config import POLL_INTERVAL, SUMMARY_MODEL
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
 )
 from ..process import _fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
-    spawn_subagent, _load_names, _save_names,
+    spawn_subagent, _load_names, _save_names, kitty_cmd,
 )
 from ..sessions import find_current_session
 from ..sway import build_pid_workspace_map
@@ -65,7 +65,8 @@ class ZeusApp(App):
     DEFAULT_CSS = APP_CSS
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("escape", "quit", "Quit", show=False),
+        Binding("f10", "quit", "Quit"),
+        Binding("escape", "close_panel", "Close", show=False),
         Binding("enter", "focus_agent", "Focus Agent"),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
@@ -74,6 +75,7 @@ class ZeusApp(App):
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("e", "toggle_expand", "Expand"),
         Binding("d", "toggle_interact", "Interact"),
+        Binding("ctrl+d", "focus_interact", "Focus", show=False, priority=True),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
@@ -81,6 +83,10 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.STATE_ELAPSED
     _log_visible: bool = False
+    _interact_visible: bool = False
+    _interact_agent_key: str | None = None
+    _idle_summaries: dict[str, str] = {}
+    _idle_summary_pending: set[str] = set()
     prev_states: dict[int, State] = {}
     state_changed_at: dict[int, float] = {}
     idle_since: dict[int, float] = {}
@@ -115,6 +121,14 @@ class ZeusApp(App):
             id="table-container",
         )
         yield Static("", id="log-panel")
+        yield Vertical(
+            Static("[dim]Loading summary…[/]", id="interact-summary"),
+            Input(
+                placeholder="send to agent…",
+                id="interact-input",
+            ),
+            id="interact-panel",
+        )
         yield Static("", id="status-line")
 
     def on_mount(self) -> None:
@@ -202,12 +216,32 @@ class ZeusApp(App):
 
     def _apply_poll_result(self, r: PollResult) -> None:
         """Apply gathered data to the UI (runs on the main thread)."""
+        old_states = self.prev_states
         # Commit state tracking
         self.agents = r.agents
         self.prev_states = r.prev_states
         self.state_changed_at = r.state_changed_at
         self.idle_since = r.idle_since
         self.idle_notified = r.idle_notified
+
+        # Pre-compute summaries for agents that just became IDLE
+        live_keys: set[str] = set()
+        for a in self.agents:
+            key = f"{a.socket}:{a.kitty_id}"
+            live_keys.add(key)
+            if a.state == State.IDLE and key not in self._idle_summaries \
+                    and key not in self._idle_summary_pending:
+                self._idle_summary_pending.add(key)
+                self._generate_idle_summary(a, key)
+            elif a.state == State.WORKING:
+                # Invalidate stale summary if agent went back to working
+                self._idle_summaries.pop(key, None)
+                self._idle_summary_pending.discard(key)
+        # Clean up summaries for agents that no longer exist
+        for k in list(self._idle_summaries):
+            if k not in live_keys:
+                del self._idle_summaries[k]
+        self._idle_summary_pending &= live_keys
 
         # Update Claude usage bars
         if r.usage.available:
@@ -745,19 +779,197 @@ class ZeusApp(App):
             self.sort_mode = SortMode.STATE_ELAPSED
         self.poll_and_update()
 
-    def action_toggle_interact(self) -> None:
-        if isinstance(self.focused, Input):
+    def action_close_panel(self) -> None:
+        """Escape closes whichever bottom panel is open, or does nothing."""
+        if self._interact_visible:
+            self._interact_visible = False
+            self._interact_agent_key = None
+            self.query_one("#interact-panel", Vertical).remove_class("visible")
+            self.query_one("#agent-table", DataTable).focus()
             return
+        if self._log_visible:
+            self._log_visible = False
+            self.query_one("#log-panel", Static).remove_class("visible")
+            return
+
+    def action_toggle_interact(self) -> None:
         if len(self.screen_stack) > 1:
             return
-        # TODO: open interaction panel for selected agent
-        self.notify("Interact panel — coming soon", timeout=2)
+        panel = self.query_one("#interact-panel", Vertical)
+        if self._interact_visible:
+            self._interact_visible = False
+            self._interact_agent_key = None
+            panel.remove_class("visible")
+            self.query_one("#agent-table", DataTable).focus()
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("No agent selected", timeout=2)
+            return
+        # Close expand panel if open
+        if self._log_visible:
+            self._log_visible = False
+            self.query_one("#log-panel", Static).remove_class("visible")
+        self._interact_visible = True
+        key = f"{agent.socket}:{agent.kitty_id}"
+        self._interact_agent_key = key
+        panel.add_class("visible")
+        summary_w = self.query_one("#interact-summary", Static)
+        self.query_one("#interact-input", Input).value = ""
+        self.query_one("#interact-input", Input).focus()
+
+        if agent.state == State.IDLE and key in self._idle_summaries:
+            # Show pre-computed summary instantly
+            summary_w.update(
+                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                f"{self._idle_summaries[key]}"
+            )
+        else:
+            label = "status" if agent.state == State.WORKING else "triage"
+            summary_w.update(
+                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                f"[dim]Generating {label}…[/]"
+            )
+            self._generate_on_demand_summary(agent)
+
+    def action_focus_interact(self) -> None:
+        """Toggle focus between interact input and agent table."""
+        if not self._interact_visible:
+            return
+        inp = self.query_one("#interact-input", Input)
+        table = self.query_one("#agent-table", DataTable)
+        if self.focused is inp:
+            table.focus()
+        else:
+            inp.focus()
+
+    # ── Summary generation ────────────────────────────────────────────
+
+    _WORKING_PROMPT = (
+        "You are a status assistant. A human operator is monitoring "
+        "multiple coding agents. Given the terminal output below, "
+        "summarize what the agent is currently doing.\n"
+        "Be extremely concise (max 6 lines). No preamble.\n\n"
+        "Terminal output:\n"
+    )
+
+    _IDLE_PROMPT = (
+        "You are a triage assistant. A human operator is monitoring "
+        "multiple coding agents. The agent below is IDLE and waiting. "
+        "Given the terminal output, tell the operator:\n"
+        "1. Does this agent need human input? If yes, what exactly "
+        "is it asking for?\n"
+        "2. Any errors or problems that need attention?\n"
+        "3. What was the last thing it did?\n"
+        "Be extremely concise (max 8 lines). No preamble. "
+        "Start with ⚠ ACTION NEEDED or ✓ NO ACTION NEEDED.\n\n"
+        "Terminal output:\n"
+    )
+
+    def _get_screen_context(self, agent: AgentWindow) -> str:
+        lines = agent._screen_text.splitlines()
+        recent = [l for l in lines if l.strip()][-200:]
+        return "\n".join(recent)
+
+    def _run_pi_summary(self, prompt: str) -> str:
+        try:
+            r = subprocess.run(
+                ["pi", "--print", "--no-session", "--no-tools",
+                 "--model", SUMMARY_MODEL, prompt],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode == 0:
+                return r.stdout.strip()
+            return f"(summary failed: {r.stderr.strip()[:200]})"
+        except subprocess.TimeoutExpired:
+            return "(summary timed out)"
+        except FileNotFoundError:
+            return "(pi not found — install pi to enable summaries)"
+
+    @work(thread=True, exclusive=True, group="on_demand_summary")
+    def _generate_on_demand_summary(self, agent: AgentWindow) -> None:
+        """Generate summary when the interact panel is opened (WORKING or uncached IDLE)."""
+        context = self._get_screen_context(agent)
+        if not context.strip():
+            self.call_from_thread(
+                self._apply_interact_summary, agent.name,
+                "(no output to summarize)",
+            )
+            return
+        if agent.state == State.WORKING:
+            prompt = self._WORKING_PROMPT + context
+        else:
+            prompt = self._IDLE_PROMPT + context
+        summary = self._run_pi_summary(prompt)
+        # Also cache if idle
+        if agent.state == State.IDLE:
+            key = f"{agent.socket}:{agent.kitty_id}"
+            self._idle_summaries[key] = summary
+            self._idle_summary_pending.discard(key)
+        self.call_from_thread(
+            self._apply_interact_summary, agent.name, summary,
+        )
+
+    @work(thread=True, group="idle_summary")
+    def _generate_idle_summary(self, agent: AgentWindow, key: str) -> None:
+        """Pre-compute summary for an IDLE agent in the background."""
+        context = self._get_screen_context(agent)
+        if not context.strip():
+            self._idle_summaries[key] = "(no output to summarize)"
+            self._idle_summary_pending.discard(key)
+            return
+        prompt = self._IDLE_PROMPT + context
+        summary = self._run_pi_summary(prompt)
+        self._idle_summaries[key] = summary
+        self._idle_summary_pending.discard(key)
+
+    def _apply_interact_summary(self, name: str, summary: str) -> None:
+        """Apply generated summary to the interact panel (main thread)."""
+        if not self._interact_visible:
+            return
+        panel = self.query_one("#interact-summary", Static)
+        panel.update(
+            f"[bold #00d7d7]── {name} ──[/]\n\n{summary}"
+        )
+
+    def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
+        """Send text to the agent's kitty window."""
+        kitty_cmd(
+            agent.socket, "send-text", "--match",
+            f"id:{agent.kitty_id}", text + "\n",
+        )
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter in the interact input."""
+        if event.input.id != "interact-input":
+            return
+        text = event.input.value.strip()
+        if not text:
+            return
+        # Find the agent we're interacting with
+        agent: AgentWindow | None = None
+        if self._interact_agent_key:
+            for a in self.agents:
+                if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
+                    agent = a
+                    break
+        if not agent:
+            self.notify("Agent no longer available", timeout=2)
+            return
+        self._send_text_to_agent(agent, text)
+        event.input.value = ""
+        self.notify(f"Sent to {agent.name}", timeout=2)
 
     def action_toggle_expand(self) -> None:
         if isinstance(self.focused, Input):
             return
         if len(self.screen_stack) > 1:
             return
+        # Close interact panel if open
+        if self._interact_visible:
+            self._interact_visible = False
+            self._interact_agent_key = None
+            self.query_one("#interact-panel", Vertical).remove_class("visible")
         self._log_visible = not self._log_visible
         panel = self.query_one("#log-panel", Static)
         if self._log_visible:

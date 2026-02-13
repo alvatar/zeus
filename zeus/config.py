@@ -19,3 +19,8 @@ TOKENS_RE = re.compile(r"↑([\d.]+[kM]?)\s+↓([\d.]+[kM]?)")
 
 # Pi session storage
 AGENT_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
+
+# Model used for agent output summaries in the interact panel
+SUMMARY_MODEL = os.environ.get(
+    "ZEUS_SUMMARY_MODEL", "anthropic/claude-3-5-haiku-latest"
+)

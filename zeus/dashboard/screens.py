@@ -301,14 +301,16 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Enter", "Focus / attach selected"),
     ("e", "Expand agent output"),
     ("d", "Interact with agent"),
+    ("Ctrl+d", "Toggle focus: input ↔ table"),
     ("n", "New agent"),
     ("s", "Spawn sub-agent"),
     ("k", "Kill agent / tmux session"),
     ("r", "Rename"),
     ("F4", "Toggle sort mode"),
     ("F5", "Force refresh"),
+    ("Esc", "Close panel"),
     ("?", "This help"),
-    ("q / Esc", "Quit"),
+    ("q / F10", "Quit"),
 ]
 
 
