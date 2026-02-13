@@ -87,7 +87,7 @@ class ZeusApp(App):
 
         Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
-        Binding("alt+enter", "send_alt_enter", "Alt+Enter", show=False, priority=True),
+
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
@@ -762,12 +762,16 @@ class ZeusApp(App):
     # ── Event handlers ────────────────────────────────────────────────
 
     def on_key(self, event: object) -> None:
-        """Intercept Enter when DataTable has focus to open interact."""
+        """Intercept special keys."""
         key = getattr(event, "key", "")
         if key == "enter" and isinstance(self.focused, DataTable):
             event.prevent_default()  # type: ignore[attr-defined]
             event.stop()  # type: ignore[attr-defined]
             self.action_open_interact()
+        elif key == "ctrl+shift+s":
+            event.prevent_default()  # type: ignore[attr-defined]
+            event.stop()  # type: ignore[attr-defined]
+            self.action_queue_interact()
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
@@ -1289,20 +1293,25 @@ class ZeusApp(App):
         ta.clear()
         self.notify(f"Sent to {agent.name}", timeout=2)
 
-    def action_send_alt_enter(self) -> None:
-        """Send Alt+Enter (ESC + CR) to the focused agent/tmux."""
+    def action_queue_interact(self) -> None:
+        """Send text + Alt+Enter (queue in pi) to agent/tmux."""
         if not self._interact_visible:
+            return
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        text = ta.text.strip()
+        if not text:
             return
         if self._interact_tmux_name:
             try:
                 subprocess.run(
                     ["tmux", "send-keys", "-t", self._interact_tmux_name,
-                     "M-Enter"],
+                     text, "M-Enter"],
                     capture_output=True, timeout=3,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-            self.notify(f"Alt+Enter → tmux:{self._interact_tmux_name}", timeout=2)
+            ta.clear()
+            self.notify(f"Queued → tmux:{self._interact_tmux_name}", timeout=2)
             return
         agent: AgentWindow | None = None
         if self._interact_agent_key:
@@ -1311,12 +1320,14 @@ class ZeusApp(App):
                     agent = a
                     break
         if not agent:
+            self.notify("Agent no longer available", timeout=2)
             return
         kitty_cmd(
             agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", "\x1b\r",
+            f"id:{agent.kitty_id}", text + "\x1b\r",
         )
-        self.notify(f"Alt+Enter → {agent.name}", timeout=2)
+        ta.clear()
+        self.notify(f"Queued → {agent.name}", timeout=2)
 
     def action_toggle_expand(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
