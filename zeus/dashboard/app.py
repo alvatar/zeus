@@ -595,7 +595,11 @@ class ZeusApp(App):
         self.notify(f"ESC → {agent.name}", timeout=2)
 
     def action_focus_agent(self) -> None:
-        """Shift+Enter: always teleport to the agent's kitty window."""
+        """Ctrl+Enter: teleport to the agent's kitty window or tmux client."""
+        tmux = self._get_selected_tmux()
+        if tmux:
+            self._focus_tmux_client(tmux)
+            return
         agent = self._get_selected_agent()
         if agent:
             focus_window(agent)
