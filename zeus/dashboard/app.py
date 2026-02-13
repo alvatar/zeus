@@ -937,7 +937,7 @@ class ZeusApp(App):
         "You are a status assistant. A human operator is monitoring "
         "multiple coding agents. Given the terminal output below, "
         "summarize what the agent is currently doing.\n"
-        "Be extremely concise (max 6 lines). No preamble.\n\n"
+        "STRICT LIMIT: max 4 lines of output. No preamble.\n\n"
         "Terminal output:\n"
     )
 
@@ -949,7 +949,7 @@ class ZeusApp(App):
         "is it asking for?\n"
         "2. Any errors or problems that need attention?\n"
         "3. What was the last thing it did?\n"
-        "Be extremely concise (max 8 lines). No preamble. "
+        "STRICT LIMIT: max 4 lines of output. No preamble. "
         "Start with ⚠ ACTION NEEDED or ✓ NO ACTION NEEDED.\n\n"
         "Terminal output:\n"
     )
@@ -967,7 +967,8 @@ class ZeusApp(App):
                 capture_output=True, text=True, timeout=30,
             )
             if r.returncode == 0:
-                return r.stdout.strip()
+                lines = r.stdout.strip().splitlines()[:6]
+                return "\n".join(lines)
             return f"(summary failed: {r.stderr.strip()[:200]})"
         except subprocess.TimeoutExpired:
             return "(summary timed out)"
