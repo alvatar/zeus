@@ -138,12 +138,12 @@ class ZeusApp(App):
         )
         yield Static("", id="log-panel")
         yield Vertical(
+            Static("[dim]Loading summary…[/]", id="interact-summary"),
+            Static("", id="interact-stream"),
             ZeusTextArea(
                 "",
                 id="interact-input",
             ),
-            Static("[dim]Loading summary…[/]", id="interact-summary"),
-            Static("", id="interact-stream"),
             id="interact-panel",
         )
         yield Static("", id="status-line")
