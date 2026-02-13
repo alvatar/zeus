@@ -112,7 +112,7 @@ DataTable > .datatable--odd-row {
     dock: right;
     width: 50%;
     height: 100%;
-    margin-bottom: 3;
+    margin-bottom: 2;
     border-top: none;
     border-left: solid #00d7d7;
 }
@@ -141,7 +141,7 @@ DataTable > .datatable--odd-row {
 #interact-input {
     dock: bottom;
     height: auto;
-    min-height: 2;
+    min-height: 1;
     max-height: 8;
     background: #0a0a0a;
     border: none;
