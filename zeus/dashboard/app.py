@@ -20,6 +20,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Static, Label, Input, TextArea
 from textual import work
+from rich.markup import escape as rich_escape
 from rich.text import Text
 
 from ..config import POLL_INTERVAL, SUMMARY_MODEL
@@ -1040,7 +1041,9 @@ class ZeusApp(App):
             stream.update(f"  [{agent.name}] (no output)")
             return
         header = f"[bold #00d7d7]── output ──[/]"
-        content = "\n".join(f"  {line.rstrip()}" for line in recent)
+        content = "\n".join(
+            f"  {rich_escape(line.rstrip())}" for line in recent
+        )
         stream.update(f"{header}\n{content}")
         stream.scroll_end(animate=False)
 
@@ -1114,7 +1117,8 @@ class ZeusApp(App):
                         f"[bold #00d787]── tmux: {tmux.name} ──[/]"
                     )
                     content: str = "\n".join(
-                        f"  {line.rstrip()}" for line in recent
+                        f"  {rich_escape(line.rstrip())}"
+                        for line in recent
                     )
                     panel.update(f"{header}\n{content}")
                     return
@@ -1134,7 +1138,9 @@ class ZeusApp(App):
             panel.update(f"  [{agent.name}] (no output)")
             return
         header = f"[bold #00d7d7]── {agent.name} ──[/]"
-        content = "\n".join(f"  {line.rstrip()}" for line in recent)
+        content = "\n".join(
+            f"  {rich_escape(line.rstrip())}" for line in recent
+        )
         panel.update(f"{header}\n{content}")
 
     def action_refresh(self) -> None:
