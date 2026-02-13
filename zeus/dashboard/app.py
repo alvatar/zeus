@@ -497,9 +497,33 @@ class ZeusApp(App):
     # ── Actions ───────────────────────────────────────────────────────
 
     def action_focus_agent(self) -> None:
+        if self._interact_visible:
+            self._refresh_interact_panel()
+            return
         agent = self._get_selected_agent()
         if agent:
             focus_window(agent)
+
+    def _refresh_interact_panel(self) -> None:
+        """Refresh the interact panel for the currently selected agent."""
+        agent = self._get_selected_agent()
+        if not agent:
+            return
+        key = f"{agent.socket}:{agent.kitty_id}"
+        self._interact_agent_key = key
+        summary_w = self.query_one("#interact-summary", Static)
+        if agent.state == State.IDLE and key in self._idle_summaries:
+            summary_w.update(
+                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                f"{self._idle_summaries[key]}"
+            )
+        else:
+            label = "status" if agent.state == State.WORKING else "triage"
+            summary_w.update(
+                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                f"[dim]Generating {label}…[/]"
+            )
+            self._generate_on_demand_summary(agent)
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
         """Focus the sway window running an attached tmux session."""
