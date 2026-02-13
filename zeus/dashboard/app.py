@@ -12,6 +12,14 @@ import time
 import threading
 
 
+_SGR_RE = re.compile(r"\x1b\[([0-9:;]*)m")
+
+
+def _kitty_ansi_to_standard(text: str) -> str:
+    """Convert kitty's colon-separated SGR params to semicolons for Rich."""
+    return _SGR_RE.sub(lambda m: f"\x1b[{m.group(1).replace(':', ';')}m", text)
+
+
 class SortMode(Enum):
     STATE_ELAPSED = "state+elapsed"
     ALPHA = "alpha"
@@ -1120,7 +1128,8 @@ class ZeusApp(App):
         avail = stream.size.height
         if avail and len(lines) > avail:
             lines = lines[-avail:]
-        t = Text.from_ansi("".join(lines))
+        raw = _kitty_ansi_to_standard("".join(lines))
+        t = Text.from_ansi(raw)
         stream.update(t)
         stream.scroll_end(animate=False)
 
@@ -1212,7 +1221,7 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             panel.update(f"  [{agent.name}] (no output)")
             return
-        t = Text.from_ansi(screen_text)
+        t = Text.from_ansi(_kitty_ansi_to_standard(screen_text))
         panel.update(t)
 
     def action_refresh(self) -> None:
