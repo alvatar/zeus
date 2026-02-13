@@ -6,15 +6,37 @@ BIN_DIR="${HOME}/.local/bin"
 LIB_DIR="${HOME}/.local/lib"
 
 DEV_MODE=false
-if [ "${1:-}" = "--dev" ] || [ "${1:-}" = "-d" ]; then
-    DEV_MODE=true
-fi
+WRAP_PI=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --dev|-d)
+            DEV_MODE=true
+            ;;
+        --wrap-pi)
+            WRAP_PI=true
+            ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            echo "Usage: $0 [--dev|-d] [--wrap-pi]" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "=== Zeus installer ==="
 if $DEV_MODE; then
     echo "Mode: development (symlinks)"
 else
     echo "Mode: install (copy)"
+fi
+if $WRAP_PI; then
+    echo "pi wrapper: enabled"
+else
+    echo "pi wrapper: disabled"
+    echo "⚠⚠⚠ NOTICE: pi wrapper is NOT installed in this run."
+    echo "⚠ Independent pi launches won't get deterministic ZEUS_AGENT_ID by default."
+    echo "⚠ Run with --wrap-pi to enable it."
 fi
 echo ""
 
@@ -47,7 +69,62 @@ if [ -f "$SCRIPT_DIR/bin/zeus-launch" ]; then
     fi
 fi
 
-# 3. Patch kitty.conf (idempotent)
+# 3. Optional pi wrapper for deterministic ZEUS_AGENT_ID on independent pi launches
+if $WRAP_PI; then
+    PI_BIN="$BIN_DIR/pi"
+    PI_ORIG="$BIN_DIR/pi.zeus-orig"
+    WRAP_READY=false
+
+    if [ ! -e "$PI_BIN" ] && [ ! -L "$PI_BIN" ]; then
+        echo "⚠ $PI_BIN not found; skipping pi wrapper"
+    else
+        if grep -q "Zeus pi wrapper" "$PI_BIN" 2>/dev/null; then
+            echo "✓ pi already wrapped by Zeus (refreshing wrapper)"
+            WRAP_READY=true
+        else
+            if [ -e "$PI_ORIG" ] || [ -L "$PI_ORIG" ]; then
+                echo "⚠ Backup already exists at $PI_ORIG; skipping pi wrapper"
+                echo "  Remove $PI_ORIG manually if you want to re-wrap pi."
+            else
+                mv "$PI_BIN" "$PI_ORIG"
+                echo "✓ Backed up original pi to $PI_ORIG"
+                WRAP_READY=true
+            fi
+        fi
+
+        if $WRAP_READY; then
+            cat > "$PI_BIN" <<EOF
+#!/bin/bash
+# --- Zeus pi wrapper ---
+set -euo pipefail
+
+PI_REAL="$PI_ORIG"
+
+if [ -z "\${ZEUS_AGENT_ID:-}" ]; then
+    ZEUS_AGENT_ID=\$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4().hex)
+PY
+)
+    export ZEUS_AGENT_ID
+fi
+
+tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
+
+if [ ! -e "\$PI_REAL" ] && [ ! -L "\$PI_REAL" ]; then
+    echo "Zeus pi wrapper error: original pi not found at \$PI_REAL" >&2
+    exit 1
+fi
+
+exec "\$PI_REAL" "\$@"
+EOF
+            chmod +x "$PI_BIN"
+            echo "✓ Installed Zeus pi wrapper at $PI_BIN"
+        fi
+    fi
+fi
+
+# 4. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 if [ -f "$KITTY_CONF" ]; then
     if grep -q "Zeus agent monitor" "$KITTY_CONF" 2>/dev/null; then
@@ -63,7 +140,7 @@ else
     echo "✓ Created $KITTY_CONF"
 fi
 
-# 4. Sway config (just show instructions)
+# 5. Sway config (just show instructions)
 echo ""
 echo "── Manual step: Sway config ──"
 echo "Edit ~/.config/sway/config and change your terminal keybinding:"
@@ -76,7 +153,7 @@ echo ""
 echo "Then reload sway: swaymsg reload"
 echo ""
 
-# 5. Verify
+# 6. Verify
 echo "── Status ──"
 if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"
@@ -88,6 +165,18 @@ if command -v zeus-launch &>/dev/null; then
     echo "✓ zeus-launch is in PATH"
 else
     echo "⚠ zeus-launch not in PATH"
+fi
+
+if $WRAP_PI; then
+    if [ -f "$BIN_DIR/pi" ] && grep -q "Zeus pi wrapper" "$BIN_DIR/pi" 2>/dev/null; then
+        echo "✓ pi wrapper installed at $BIN_DIR/pi"
+    else
+        echo "⚠ pi wrapper requested but not installed"
+    fi
+else
+    echo "⚠⚠⚠ NOTICE: pi wrapper was NOT installed."
+    echo "⚠ To enable deterministic IDs for independent pi launches:"
+    echo "⚠   bash install.sh --wrap-pi"
 fi
 
 echo ""
