@@ -86,7 +86,8 @@ class ZeusApp(App):
         Binding("e", "toggle_expand", "Expand"),
 
         Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
-        Binding("alt+s", "send_interact", "Send", show=False, priority=True),
+        Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
+        Binding("ctrl+e", "queue_interact", "Queue", show=False, priority=True),
 
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
@@ -768,10 +769,7 @@ class ZeusApp(App):
             event.prevent_default()  # type: ignore[attr-defined]
             event.stop()  # type: ignore[attr-defined]
             self.action_open_interact()
-        elif key == "alt+shift+s":
-            event.prevent_default()  # type: ignore[attr-defined]
-            event.stop()  # type: ignore[attr-defined]
-            self.action_queue_interact()
+
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
