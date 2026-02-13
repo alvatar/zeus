@@ -106,10 +106,14 @@ DataTable > .datatable--odd-row {
     background: #0a0a0a;
 }
 
-#interact-panel.visible.split {
+#interact-panel.visible {
     display: block;
     width: 50%;
     border-left: solid #00d7d7;
+}
+
+#interact-panel.visible.split {
+    display: block;
 }
 
 #interact-summary {

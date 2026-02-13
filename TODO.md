@@ -28,7 +28,7 @@ zeus/
 │       ├── widgets.py        # UsageBar, ZeusDataTable
 │       ├── css.py            # All CSS strings
 │       └── screens.py        # Modal screens
-├── tests/                    # 41 tests, all passing
+├── tests/                    # 46 tests, all passing
 │   ├── test_config.py
 │   ├── test_models.py
 │   ├── test_process.py

@@ -70,11 +70,23 @@ zeus kill fix-auth                   # Close an agent's window
 | Key | Action |
 |-----|--------|
 | `↑` `↓` | Navigate agents |
-| `Enter` | Focus selected agent (switches sway workspace) |
-| `k` | Kill selected agent (with confirmation) |
+| `Enter` | Focus interact input |
+| `Esc` | Return focus to agent table |
+| `Ctrl+Enter` | Teleport to selected agent / open tmux client |
+| `Ctrl+S` | Send interact input |
+| `Ctrl+W` | Queue interact input (Alt+Enter in pi) |
+| `Ctrl+Y` | Paste clipboard into interact input |
+| `q` | Stop selected agent (send ESC) |
+| `Ctrl+Q` | Stop selected agent from any focus (including input) |
+| `k` | Kill selected agent / tmux session (with confirmation) |
 | `n` | Launch new tracked agent |
-| `q` / `Esc` | Quit dashboard |
-| `r` | Force refresh |
+| `r` | Rename selected agent / tmux session |
+| `F4` | Toggle sort |
+| `F5` | Force refresh |
+| `F6` | Toggle split layout |
+| `F7` | Toggle AI summaries |
+| `F8` | Toggle interact panel |
+| `F10` | Quit dashboard |
 
 ### Sway launcher (`zeus-launch`)
 

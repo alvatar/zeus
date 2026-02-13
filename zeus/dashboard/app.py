@@ -5,48 +5,49 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 from enum import Enum
-import os
-import re
 import subprocess
 import time
-import threading
 
-
-_SGR_RE = re.compile(r"\x1b\[([0-9:;]*)m")
-
-
-def _kitty_ansi_to_standard(text: str) -> str:
-    """Convert kitty's colon-separated SGR params to semicolons for Rich."""
-    return _SGR_RE.sub(lambda m: f"\x1b[{m.group(1).replace(':', ';')}m", text)
+from textual import events, work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.timer import Timer
+from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
+from rich.text import Text
 
 
 class SortMode(Enum):
     STATE_ELAPSED = "state+elapsed"
     ALPHA = "alpha"
 
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
-from textual import work
-from rich.text import Text
-
 from ..config import POLL_INTERVAL, SUMMARY_MODEL
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
 )
-from ..process import _fmt_bytes, read_process_metrics
+from ..process import fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
-    spawn_subagent, _load_names, _save_names, kitty_cmd,
+    spawn_subagent, load_names, save_names, kitty_cmd,
 )
 from ..sessions import find_current_session
 from ..sway import build_pid_workspace_map
 from ..tmux import discover_tmux_sessions, match_tmux_to_agents
 from ..state import detect_state, parse_footer
-from ..usage import read_usage, read_openai_usage, _time_left
+from ..usage import read_usage, read_openai_usage, time_left
+from ..windowing import (
+    find_ancestor_pid_by_comm,
+    focus_pid,
+    kill_pid,
+    move_pid_to_workspace_and_focus_later,
+)
 
 from .css import APP_CSS
+from .stream import (
+    kitty_ansi_to_standard,
+    strip_pi_input_chrome,
+    trim_trailing_blank_lines,
+)
 from .widgets import ZeusDataTable, ZeusTextArea, UsageBar
 from .screens import (
     NewAgentScreen, SubAgentScreen,
@@ -74,7 +75,7 @@ class ZeusApp(App):
     DEFAULT_CSS = APP_CSS
     BINDINGS = [
         Binding("q", "stop_agent", "Stop Agent"),
-        Binding("ctrl+q", "stop_agent", "Stop Agent", show=False, priority=True),
+        Binding("ctrl+q", "force_stop_agent", "Stop Agent", show=False, priority=True),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
@@ -101,7 +102,7 @@ class ZeusApp(App):
     _summaries_enabled: bool = True
     _split_mode: bool = True
     _interact_visible: bool = True
-    _highlight_timer: object | None = None
+    _highlight_timer: Timer | None = None
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
     _idle_summaries: dict[str, str] = {}
@@ -251,6 +252,16 @@ class ZeusApp(App):
                 idle_notified.discard(akey)
             prev_states[akey] = a.state
 
+        live_keys = {f"{a.socket}:{a.kitty_id}" for a in agents}
+        state_changed_at = {
+            k: v for k, v in state_changed_at.items() if k in live_keys
+        }
+        prev_states = {
+            k: v for k, v in prev_states.items() if k in live_keys
+        }
+        idle_since = {k: v for k, v in idle_since.items() if k in live_keys}
+        idle_notified &= live_keys
+
         result = PollResult(
             agents=agents,
             usage=usage,
@@ -308,7 +319,7 @@ class ZeusApp(App):
         if r.usage.available:
             sess_bar = self.query_one("#usage-session", UsageBar)
             sess_bar.pct = r.usage.session_pct
-            sess_left: str = _time_left(r.usage.session_resets_at)
+            sess_left: str = time_left(r.usage.session_resets_at)
             sess_bar.extra_text = f"({sess_left})" if sess_left else ""
 
             week_bar = self.query_one("#usage-week", UsageBar)
@@ -327,7 +338,7 @@ class ZeusApp(App):
         o_week = self.query_one("#openai-week", UsageBar)
         if r.openai.available:
             o_sess.pct = r.openai.requests_pct
-            left: str = _time_left(r.openai.requests_resets_at)
+            left: str = time_left(r.openai.requests_resets_at)
             o_sess.extra_text = f"({left})" if left else ""
             o_week.pct = r.openai.tokens_pct
             o_week.extra_text = ""
@@ -430,48 +441,43 @@ class ZeusApp(App):
                 _fmt_duration(elapsed),
                 style=f"#cccccc {row_bg}".strip(),
             )
-            ctx_str: str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
-            tok_str: str = (
+            ctx_cell: str | Text = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
+            tok_cell: str | Text = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
             )
 
             pm = a.proc_metrics
-            cpu_text = f"{pm.cpu_pct:.0f}%"
-            ram_text = f"{pm.ram_mb:.0f}M"
+            cpu_cell: str | Text = f"{pm.cpu_pct:.0f}%"
+            ram_cell: str | Text = f"{pm.ram_mb:.0f}M"
             gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-            gpu_text = gpu_str
-            net_str: str = (
-                f"↓{_fmt_bytes(pm.io_read_bps)} "
-                f"↑{_fmt_bytes(pm.io_write_bps)}"
+            gpu_cell: str | Text = gpu_str
+            net_cell: str | Text = (
+                f"↓{fmt_bytes(pm.io_read_bps)} "
+                f"↑{fmt_bytes(pm.io_write_bps)}"
             )
-            net_text = net_str
 
-            # Apply row background to all cells if waiting
             if row_bg:
-                for val in (ctx_str, cpu_text, ram_text, gpu_text,
-                            net_text, tok_str):
-                    pass  # strings don't need styling
-                ctx_str = Text(ctx_str, style=row_bg)
-                cpu_text = Text(cpu_text, style=row_bg)
-                ram_text = Text(ram_text, style=row_bg)
-                gpu_text = Text(gpu_text, style=row_bg)
-                net_text = Text(net_text, style=row_bg)
-                tok_str = Text(tok_str, style=row_bg)
+                ctx_cell = Text(str(ctx_cell), style=row_bg)
+                cpu_cell = Text(str(cpu_cell), style=row_bg)
+                ram_cell = Text(str(ram_cell), style=row_bg)
+                gpu_cell = Text(str(gpu_cell), style=row_bg)
+                net_cell = Text(str(net_cell), style=row_bg)
+                tok_cell = Text(str(tok_cell), style=row_bg)
 
             row_key: str = akey
             row = [
                 name_text, state_text, elapsed_text,
                 Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
-                ctx_str,
-                cpu_text, ram_text, gpu_text, net_text,
+                ctx_cell,
+                cpu_cell, ram_cell, gpu_cell, net_cell,
             ]
             if not self._split_mode:
                 row.extend([
                     Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
                     Text(a.cwd, style=row_bg) if row_bg else a.cwd,
-                    tok_str,
+                    tok_cell,
                 ])
             table.add_row(*row, key=row_key)
 
@@ -511,8 +517,8 @@ class ZeusApp(App):
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
                     gpu_t = gpu_str
                     net_str: str = (
-                        f"↓{_fmt_bytes(pm.io_read_bps)} "
-                        f"↑{_fmt_bytes(pm.io_write_bps)}"
+                        f"↓{fmt_bytes(pm.io_read_bps)} "
+                        f"↑{fmt_bytes(pm.io_write_bps)}"
                     )
                     net_t = net_str
                 if sess.attached:
@@ -581,17 +587,19 @@ class ZeusApp(App):
                 table.cursor_coordinate
             )
             return row_key.value
-        except Exception:
+        except (KeyError, IndexError, LookupError):
             return None
 
-    def _get_selected_agent(self) -> AgentWindow | None:
-        key_val: str | None = self._get_selected_row_key()
+    def _get_agent_by_key(self, key_val: str | None) -> AgentWindow | None:
         if not key_val or key_val.startswith("tmux:"):
             return None
         for a in self.agents:
             if f"{a.socket}:{a.kitty_id}" == key_val:
                 return a
         return None
+
+    def _get_selected_agent(self) -> AgentWindow | None:
+        return self._get_agent_by_key(self._get_selected_row_key())
 
     def _get_selected_tmux(self) -> TmuxSession | None:
         key_val: str | None = self._get_selected_row_key()
@@ -613,10 +621,8 @@ class ZeusApp(App):
 
     # ── Actions ───────────────────────────────────────────────────────
 
-    def action_stop_agent(self) -> None:
-        """Send ESC to the selected agent to stop it."""
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
+    def _send_stop_to_selected_agent(self) -> None:
+        """Send ESC to the currently selected agent row."""
         if len(self.screen_stack) > 1:
             return
         agent = self._get_selected_agent()
@@ -628,8 +634,19 @@ class ZeusApp(App):
         )
         self.notify(f"ESC → {agent.name}", timeout=2)
 
-    def on_app_focus(self, event: object) -> None:
+    def action_stop_agent(self) -> None:
+        """Send ESC to selected agent (table-focused safety behavior)."""
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        self._send_stop_to_selected_agent()
+
+    def action_force_stop_agent(self) -> None:
+        """Send ESC to selected agent from any focused widget."""
+        self._send_stop_to_selected_agent()
+
+    def on_app_focus(self, event: events.AppFocus) -> None:
         """When terminal window gains focus, focus the agent table."""
+        del event
         self.query_one("#agent-table", DataTable).focus()
 
     def action_focus_agent(self) -> None:
@@ -648,22 +665,11 @@ class ZeusApp(App):
                 stderr=subprocess.DEVNULL,
             )
             if workspace and workspace != "?":
-                def _move() -> None:
-                    time.sleep(0.5)
-                    try:
-                        subprocess.run(
-                            ["swaymsg", f"[pid={proc.pid}]",
-                             "move", "workspace", workspace],
-                            capture_output=True, timeout=3)
-                        subprocess.run(
-                            ["swaymsg", "workspace", workspace],
-                            capture_output=True, timeout=3)
-                        subprocess.run(
-                            ["swaymsg", f"[pid={proc.pid}]", "focus"],
-                            capture_output=True, timeout=3)
-                    except Exception:
-                        pass
-                threading.Thread(target=_move, daemon=True).start()
+                move_pid_to_workspace_and_focus_later(
+                    proc.pid,
+                    workspace,
+                    delay=0.5,
+                )
             self.notify(
                 f"Opening tmux:{tmux.name}", timeout=2,
             )
@@ -673,8 +679,10 @@ class ZeusApp(App):
             focus_window(agent)
 
     def _update_summary_widget(
-        self, name: str, content: str | None, generating: str | None = None,
-        agent: "AgentWindow | None" = None,
+        self,
+        name: str,
+        content: str | None,
+        generating: str | None = None,
     ) -> None:
         """Route summary content to the correct widget based on layout."""
         left_w = self.query_one("#left-summary", Static)
@@ -682,8 +690,11 @@ class ZeusApp(App):
         if self._split_mode:
             target = left_w
             interact_w.add_class("hidden")
+            left_w.remove_class("hidden")
         else:
             target = interact_w
+            interact_w.remove_class("hidden")
+            left_w.add_class("hidden")
             left_w.remove_class("visible")
 
         if content:
@@ -699,8 +710,6 @@ class ZeusApp(App):
                 f"[bold #00d7d7]── {name} ──[/]\n\n"
                 f"[dim]Generating {generating}…[/]"
             )
-            if agent:
-                self._generate_on_demand_summary(agent)
         else:
             target.add_class("hidden")
             target.remove_class("visible")
@@ -726,48 +735,35 @@ class ZeusApp(App):
             )
         elif self._summaries_enabled:
             label = "status" if agent.state == State.WORKING else "triage"
-            self._update_summary_widget(
-                agent.name, None, generating=label, agent=agent,
-            )
+            self._update_summary_widget(agent.name, None, generating=label)
+            self._generate_on_demand_summary(agent, key)
         else:
             self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
 
-    def _focus_tmux_client(self, sess: TmuxSession) -> bool:
-        """Focus the sway window running an attached tmux session."""
+    def _get_tmux_client_pid(self, sess_name: str) -> int | None:
+        """Return PID of first attached tmux client for a session."""
         try:
             r = subprocess.run(
-                ["tmux", "list-clients", "-t", sess.name,
+                ["tmux", "list-clients", "-t", sess_name,
                  "-F", "#{client_pid}"],
                 capture_output=True, text=True, timeout=2)
             if r.returncode != 0 or not r.stdout.strip():
-                return False
-            client_pid: int = int(r.stdout.strip().splitlines()[0])
-            pid: int = client_pid
-            for _ in range(15):
-                try:
-                    with open(f"/proc/{pid}/comm") as f:
-                        comm: str = f.read().strip()
-                    if comm == "kitty":
-                        subprocess.run(
-                            ["swaymsg", f"[pid={pid}]", "focus"],
-                            capture_output=True, timeout=3)
-                        return True
-                    ppid: int | None = None
-                    with open(f"/proc/{pid}/status") as f:
-                        for line in f:
-                            if line.startswith("PPid:"):
-                                ppid = int(line.split()[1])
-                                break
-                    if ppid is None or ppid <= 1:
-                        break
-                    pid = ppid
-                except (FileNotFoundError, ValueError, IndexError,
-                        PermissionError):
-                    break
-        except (subprocess.TimeoutExpired, ValueError):
-            pass
-        return False
+                return None
+            return int(r.stdout.strip().splitlines()[0])
+        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+            return None
+
+    def _focus_tmux_client(self, sess: TmuxSession) -> bool:
+        """Focus the sway window running an attached tmux session."""
+        client_pid = self._get_tmux_client_pid(sess.name)
+        if client_pid is None:
+            return False
+
+        kitty_pid = find_ancestor_pid_by_comm(client_pid, "kitty")
+        if kitty_pid is None:
+            return False
+        return focus_pid(kitty_pid)
 
     def _find_agent_for_tmux(
         self, sess: TmuxSession
@@ -796,34 +792,20 @@ class ZeusApp(App):
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             if parent_ws and parent_ws != "?":
-                def _move_and_focus() -> None:
-                    time.sleep(0.5)
-                    try:
-                        subprocess.run(
-                            ["swaymsg", f"[pid={proc.pid}]",
-                             "move", "workspace", parent_ws],
-                            capture_output=True, timeout=3)
-                        subprocess.run(
-                            ["swaymsg", "workspace", parent_ws],
-                            capture_output=True, timeout=3)
-                        subprocess.run(
-                            ["swaymsg", f"[pid={proc.pid}]", "focus"],
-                            capture_output=True, timeout=3)
-                    except Exception:
-                        pass
-                threading.Thread(
-                    target=_move_and_focus, daemon=True
-                ).start()
+                move_pid_to_workspace_and_focus_later(
+                    proc.pid,
+                    parent_ws,
+                    delay=0.5,
+                )
             self.notify(f"Attached: {sess.name}", timeout=2)
 
     # ── Event handlers ────────────────────────────────────────────────
 
-    def on_key(self, event: object) -> None:
+    def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
-        key = getattr(event, "key", "")
-        if key == "enter" and isinstance(self.focused, DataTable):
-            event.prevent_default()  # type: ignore[attr-defined]
-            event.stop()  # type: ignore[attr-defined]
+        if event.key == "enter" and isinstance(self.focused, DataTable):
+            event.prevent_default()
+            event.stop()
             # Focus the interact input
             if self._interact_visible:
                 self.query_one("#interact-input", ZeusTextArea).focus()
@@ -880,15 +862,14 @@ class ZeusApp(App):
             focus_window(agent)
             self.notify(f"Focused: {agent.name}", timeout=2)
 
-    _last_click_row: int | None = None
-    _last_click_time: float = 0.0
-
-    def on_click(self, event: object) -> None:
-        if getattr(event, "chain", 0) < 2:
+    def on_click(self, event: events.Click) -> None:
+        if event.chain < 2:
             return
         table = self.query_one("#agent-table", DataTable)
-        w = getattr(event, "widget", None)
-        if w is not table and table not in getattr(w, "ancestors", []):
+        w = event.widget
+        if w is None:
+            return
+        if w is not table and table not in w.ancestors:
             return
         self.set_timer(0.05, self._activate_selected_row)
 
@@ -915,40 +896,12 @@ class ZeusApp(App):
     def do_kill_tmux(self, sess: TmuxSession) -> None:
         """Detach tmux session and close the kitty window hosting it."""
         self._last_kill_time = time.time()
-        try:
-            kitty_pid: int | None = None
-            try:
-                r = subprocess.run(
-                    ["tmux", "list-clients", "-t", sess.name,
-                     "-F", "#{client_pid}"],
-                    capture_output=True, text=True, timeout=2)
-                if r.returncode == 0 and r.stdout.strip():
-                    client_pid: int = int(
-                        r.stdout.strip().splitlines()[0]
-                    )
-                    pid: int = client_pid
-                    for _ in range(15):
-                        try:
-                            with open(f"/proc/{pid}/comm") as f:
-                                comm: str = f.read().strip()
-                            if comm == "kitty":
-                                kitty_pid = pid
-                                break
-                            ppid: int | None = None
-                            with open(f"/proc/{pid}/status") as f:
-                                for line in f:
-                                    if line.startswith("PPid:"):
-                                        ppid = int(line.split()[1])
-                                        break
-                            if ppid is None or ppid <= 1:
-                                break
-                            pid = ppid
-                        except (FileNotFoundError, ValueError,
-                                IndexError, PermissionError):
-                            break
-            except Exception:
-                pass
+        kitty_pid: int | None = None
+        client_pid = self._get_tmux_client_pid(sess.name)
+        if client_pid is not None:
+            kitty_pid = find_ancestor_pid_by_comm(client_pid, "kitty")
 
+        try:
             subprocess.run(
                 ["tmux", "detach-client", "-s", sess.name, "-a"],
                 capture_output=True, timeout=3)
@@ -957,12 +910,10 @@ class ZeusApp(App):
                 capture_output=True, timeout=3)
 
             if kitty_pid:
-                subprocess.run(
-                    ["swaymsg", f"[pid={kitty_pid}]", "kill"],
-                    capture_output=True, timeout=3)
+                kill_pid(kitty_pid)
 
             self.notify(f"Detached: {sess.name}", timeout=2)
-        except Exception as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             self.notify(f"Detach failed: {e}", timeout=3)
         self.poll_and_update()
 
@@ -1014,10 +965,10 @@ class ZeusApp(App):
             self.push_screen(RenameTmuxScreen(tmux))
 
     def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
-        overrides: dict[str, str] = _load_names()
+        overrides: dict[str, str] = load_names()
         key: str = f"{agent.socket}:{agent.kitty_id}"
         overrides[key] = new_name
-        _save_names(overrides)
+        save_names(overrides)
         self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
         self.poll_and_update()
 
@@ -1028,7 +979,7 @@ class ZeusApp(App):
                 capture_output=True, timeout=3)
             self.notify(f"Renamed: {sess.name} → {new_name}", timeout=3)
             self.poll_and_update()
-        except Exception as e:
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             self.notify(f"Rename failed: {e}", timeout=3)
 
     # ── Log panel ─────────────────────────────────────────────────────
@@ -1096,24 +1047,6 @@ class ZeusApp(App):
             panel.add_class("visible")
             self._refresh_interact_panel()
 
-    def action_toggle_interact(self) -> None:
-        if len(self.screen_stack) > 1:
-            return
-        panel = self.query_one("#interact-panel", Vertical)
-        if self._interact_visible:
-            self._interact_visible = False
-            self._interact_agent_key = None
-            self._interact_tmux_name = None
-            panel.remove_class("visible")
-            self.query_one("#agent-table", DataTable).focus()
-            return
-
-        self._interact_visible = True
-        panel.add_class("visible")
-        ta = self.query_one("#interact-input", ZeusTextArea)
-        ta.clear()
-        self._refresh_interact_panel()
-
     # ── Summary generation ────────────────────────────────────────────
 
     _WORKING_PROMPT = (
@@ -1160,31 +1093,48 @@ class ZeusApp(App):
             return "(pi not found — install pi to enable summaries)"
 
     @work(thread=True, exclusive=True, group="on_demand_summary")
-    def _generate_on_demand_summary(self, agent: AgentWindow) -> None:
-        """Generate summary when the interact panel is opened (WORKING or uncached IDLE)."""
+    def _generate_on_demand_summary(self, agent: AgentWindow, key: str) -> None:
+        """Generate summary when interact panel is opened/refreshed."""
         context = self._get_screen_context(agent)
         if not context.strip():
+            empty = "(no output to summarize)"
+            if agent.state == State.IDLE:
+                self.call_from_thread(self._store_idle_summary, key, empty)
+                self.call_from_thread(self._mark_idle_summary_done, key)
             self.call_from_thread(
-                self._apply_interact_summary, agent.name,
-                "(no output to summarize)",
+                self._apply_interact_summary,
+                key,
+                agent.name,
+                empty,
             )
             return
-        if agent.state == State.WORKING:
-            prompt = self._WORKING_PROMPT + context
-        else:
-            prompt = self._IDLE_PROMPT + context
+
+        prompt = (
+            self._WORKING_PROMPT + context
+            if agent.state == State.WORKING
+            else self._IDLE_PROMPT + context
+        )
         summary = self._run_pi_summary(prompt)
-        # Also cache if idle
+
         if agent.state == State.IDLE:
-            key = f"{agent.socket}:{agent.kitty_id}"
             self.call_from_thread(self._store_idle_summary, key, summary)
-            self._idle_summary_pending.discard(key)
+            self.call_from_thread(self._mark_idle_summary_done, key)
+
         self.call_from_thread(
-            self._apply_interact_summary, agent.name, summary,
+            self._apply_interact_summary,
+            key,
+            agent.name,
+            summary,
         )
 
     def _store_idle_summary(self, key: str, summary: str) -> None:
         """Store an idle summary and update action_needed set."""
+        agent = self._get_agent_by_key(key)
+        if not agent or agent.state != State.IDLE:
+            self._idle_summaries.pop(key, None)
+            self._action_needed.discard(key)
+            return
+
         self._idle_summaries[key] = summary
         upper = summary.upper()
         if "NO ACTION NEEDED" in upper:
@@ -1194,21 +1144,39 @@ class ZeusApp(App):
         else:
             self._action_needed.discard(key)
 
+    def _mark_idle_summary_done(self, key: str) -> None:
+        """Mark idle summary generation completed."""
+        self._idle_summary_pending.discard(key)
+
     @work(thread=True, group="idle_summary")
     def _generate_idle_summary(self, agent: AgentWindow, key: str) -> None:
         """Pre-compute summary for an IDLE agent in the background."""
         context = self._get_screen_context(agent)
         if not context.strip():
-            self._idle_summaries[key] = "(no output to summarize)"
-            self._idle_summary_pending.discard(key)
+            self.call_from_thread(
+                self._store_idle_summary,
+                key,
+                "(no output to summarize)",
+            )
+            self.call_from_thread(self._mark_idle_summary_done, key)
             return
+
         prompt = self._IDLE_PROMPT + context
         summary = self._run_pi_summary(prompt)
         self.call_from_thread(self._store_idle_summary, key, summary)
-        self._idle_summary_pending.discard(key)
+        self.call_from_thread(self._mark_idle_summary_done, key)
 
-    def _apply_interact_summary(self, name: str, summary: str) -> None:
-        """Apply generated summary to the correct widget (main thread)."""
+    def _apply_interact_summary(
+        self,
+        requested_key: str,
+        name: str,
+        summary: str,
+    ) -> None:
+        """Apply generated summary to widget, guarding against stale selection."""
+        if not self._interact_visible:
+            return
+        if requested_key != self._interact_agent_key:
+            return
         self._update_summary_widget(name, summary)
 
     def _update_interact_stream(self) -> None:
@@ -1218,13 +1186,7 @@ class ZeusApp(App):
         if self._interact_tmux_name:
             self._fetch_interact_tmux_stream(self._interact_tmux_name)
             return
-        if not self._interact_agent_key:
-            return
-        agent: AgentWindow | None = None
-        for a in self.agents:
-            if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
-                agent = a
-                break
+        agent = self._get_agent_by_key(self._interact_agent_key)
         if not agent:
             return
         self._fetch_interact_stream(agent)
@@ -1243,61 +1205,56 @@ class ZeusApp(App):
             text = ""
         self.call_from_thread(self._apply_tmux_stream, sess_name, text)
 
-    def _apply_tmux_stream(self, name: str, screen_text: str) -> None:
+    def _apply_tmux_stream(self, requested_name: str, screen_text: str) -> None:
         """Apply tmux pane content (no pi separator trimming)."""
         if not self._interact_visible:
             return
+        if requested_name != self._interact_tmux_name:
+            return
         stream = self.query_one("#interact-stream", RichLog)
-        if not screen_text or not screen_text.strip():
-            stream.clear(); stream.write(f"  [tmux:{name}] (no output)")
+        content = trim_trailing_blank_lines(screen_text)
+        if not content.strip():
+            stream.clear()
+            stream.write(f"  [tmux:{requested_name}] (no output)")
             return
-        # Strip trailing blank lines, keep content lines
-        lines = screen_text.splitlines(keepends=True)
-        while lines and not lines[-1].strip():
-            lines.pop()
-        if not lines:
-            stream.clear(); stream.write(f"  [tmux:{name}] (no output)")
-            return
-        raw = _kitty_ansi_to_standard("".join(lines))
-        t = Text.from_ansi(raw)
-        stream.clear(); stream.write(t)
+        raw = kitty_ansi_to_standard(content)
+        stream.clear()
+        stream.write(Text.from_ansi(raw))
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
         """Fetch screen text with ANSI formatting in background thread."""
         screen_text = get_screen_text(agent, ansi=True)
+        agent_key = f"{agent.socket}:{agent.kitty_id}"
         self.call_from_thread(
-            self._apply_interact_stream, agent.name, screen_text,
+            self._apply_interact_stream,
+            agent_key,
+            agent.name,
+            screen_text,
         )
 
     def _apply_interact_stream(
-        self, name: str, screen_text: str,
+        self,
+        requested_agent_key: str,
+        name: str,
+        screen_text: str,
     ) -> None:
         """Apply fetched stream content on the main thread."""
         if not self._interact_visible:
             return
-        stream = self.query_one("#interact-stream", RichLog)
-        if not screen_text or not screen_text.strip():
-            stream.clear(); stream.write(f"  [{name}] (no output)")
+        if requested_agent_key != self._interact_agent_key:
             return
-        # Strip pi's input area + status bar: cut at 2nd horizontal
-        # line from the bottom (lines made of ─ characters).
-        # ANSI escapes must be stripped for detection.
-        _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
-        lines = screen_text.splitlines(keepends=True)
-        sep_count = 0
-        cut_at = len(lines)
-        for i in range(len(lines) - 1, -1, -1):
-            plain = _ansi_re.sub("", lines[i]).strip()
-            if len(plain) >= 20 and all(c == "─" for c in plain):
-                sep_count += 1
-                if sep_count == 2:
-                    cut_at = i
-                    break
-        lines = lines[:cut_at]
-        raw = _kitty_ansi_to_standard("".join(lines))
-        t = Text.from_ansi(raw)
-        stream.clear(); stream.write(t)
+
+        stream = self.query_one("#interact-stream", RichLog)
+        content = trim_trailing_blank_lines(strip_pi_input_chrome(screen_text))
+        if not content.strip():
+            stream.clear()
+            stream.write(f"  [{name}] (no output)")
+            return
+
+        raw = kitty_ansi_to_standard(content)
+        stream.clear()
+        stream.write(Text.from_ansi(raw))
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
@@ -1324,18 +1281,16 @@ class ZeusApp(App):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
             ta.clear()
+            ta.styles.height = 3
             return
-        agent: AgentWindow | None = None
-        if self._interact_agent_key:
-            for a in self.agents:
-                if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
-                    agent = a
-                    break
+
+        agent = self._get_agent_by_key(self._interact_agent_key)
         if not agent:
             self.notify("Agent no longer available", timeout=2)
             return
         self._send_text_to_agent(agent, text)
         ta.clear()
+        ta.styles.height = 3
 
     def action_queue_interact(self) -> None:
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
@@ -1355,13 +1310,10 @@ class ZeusApp(App):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
             ta.clear()
+            ta.styles.height = 3
             return
-        agent: AgentWindow | None = None
-        if self._interact_agent_key:
-            for a in self.agents:
-                if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
-                    agent = a
-                    break
+
+        agent = self._get_agent_by_key(self._interact_agent_key)
         if not agent:
             self.notify("Agent no longer available", timeout=2)
             return

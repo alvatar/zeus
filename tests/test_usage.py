@@ -3,47 +3,47 @@
 import json
 import time
 
-from zeus.usage import _time_left, read_usage, read_openai_usage
+from zeus.usage import time_left, read_usage, read_openai_usage
 from zeus.models import UsageData, OpenAIUsageData
 
 
 def test_time_left_duration_minutes():
-    assert _time_left("5m") == "5m"
-    assert _time_left("30m") == "30m"
+    assert time_left("5m") == "5m"
+    assert time_left("30m") == "30m"
 
 
 def test_time_left_duration_hours():
-    assert _time_left("2h") == "2h00m"
-    assert _time_left("1h") == "1h00m"
+    assert time_left("2h") == "2h00m"
+    assert time_left("1h") == "1h00m"
 
 
 def test_time_left_duration_seconds():
-    assert _time_left("45s") == "45s"
-    assert _time_left("0s") == "now"
+    assert time_left("45s") == "45s"
+    assert time_left("0s") == "now"
 
 
 def test_time_left_duration_ms():
-    assert _time_left("500ms") == "now"  # 500ms rounds to 0s
-    assert _time_left("1500ms") == "2s"  # 1500ms rounds to 2s
-    assert _time_left("0ms") == "now"
+    assert time_left("500ms") == "now"  # 500ms rounds to 0s
+    assert time_left("1500ms") == "2s"  # 1500ms rounds to 2s
+    assert time_left("0ms") == "now"
 
 
 def test_time_left_iso_future():
     from datetime import datetime, timezone, timedelta
     future = datetime.now(timezone.utc) + timedelta(hours=2, minutes=30)
-    result = _time_left(future.isoformat())
+    result = time_left(future.isoformat())
     assert "2h" in result
 
 
 def test_time_left_iso_past():
     from datetime import datetime, timezone, timedelta
     past = datetime.now(timezone.utc) - timedelta(hours=1)
-    assert _time_left(past.isoformat()) == "now"
+    assert time_left(past.isoformat()) == "now"
 
 
 def test_time_left_empty():
-    assert _time_left("") == ""
-    assert _time_left("   ") == ""
+    assert time_left("") == ""
+    assert time_left("   ") == ""
 
 
 def test_read_usage_missing_cache(tmp_path, monkeypatch):

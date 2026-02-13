@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import subprocess
-import time
-import threading
 from glob import glob
-from pathlib import Path
 
 from .config import NAMES_FILE
 from .models import AgentWindow
 from .sessions import find_current_session, fork_session
+from .windowing import focus_pid, move_pid_to_workspace_and_focus_later
 
 
 def kitty_cmd(
@@ -30,7 +30,7 @@ def kitty_cmd(
     return None
 
 
-def _load_names() -> dict[str, str]:
+def load_names() -> dict[str, str]:
     """Load rename overrides: {original_name: new_name}."""
     try:
         return json.loads(NAMES_FILE.read_text())
@@ -38,12 +38,53 @@ def _load_names() -> dict[str, str]:
         return {}
 
 
-def _save_names(names: dict[str, str]) -> None:
+def save_names(names: dict[str, str]) -> None:
     NAMES_FILE.write_text(json.dumps(names))
+
+
+# Backward-compatible aliases for older imports.
+_load_names = load_names
+_save_names = save_names
 
 
 def discover_sockets() -> list[str]:
     return glob("/tmp/kitty-*")
+
+
+_PI_WORD_RE = re.compile(r"(?:^|\s)pi(?:\s|$)")
+
+
+def _iter_cmdline_tokens(cmdline: list[object]) -> list[str]:
+    """Tokenize kitty cmdline entries, including shell '-c' payloads."""
+    tokens: list[str] = []
+    for part in cmdline:
+        text = str(part).strip()
+        if not text:
+            continue
+        try:
+            tokens.extend(shlex.split(text))
+        except ValueError:
+            tokens.extend(text.split())
+    return tokens
+
+
+def _looks_like_pi_window(win: dict) -> bool:
+    """Heuristic to detect real pi windows without matching generic shells."""
+    cmdline: list[object] = win.get("cmdline") or []
+    tokens = _iter_cmdline_tokens(cmdline)
+    for tok in tokens:
+        base = tok.rsplit("/", 1)[-1]
+        if base == "pi":
+            return True
+
+    # Fallback: word-boundary match in raw cmdline payloads.
+    cmd_str = " ".join(str(x) for x in cmdline).lower()
+    if _PI_WORD_RE.search(cmd_str):
+        return True
+
+    # pi windows typically have a title starting with π.
+    title: str = (win.get("title") or "").strip()
+    return title.startswith("π")
 
 
 def discover_agents() -> list[AgentWindow]:
@@ -67,17 +108,7 @@ def discover_agents() -> list[AgentWindow]:
                     name: str | None = env.get("AGENTMON_NAME")
 
                     if not name:
-                        cmdline: list = win.get("cmdline") or []
-                        title: str = (win.get("title") or "").lower()
-                        cmd_str: str = " ".join(
-                            str(x) for x in cmdline
-                        ).lower()
-                        looks_like_pi: bool = (
-                            " pi" in f" {cmd_str} "
-                            or " pi" in title
-                            or title.startswith("π")
-                        )
-                        if not looks_like_pi:
+                        if not _looks_like_pi_window(win):
                             continue
                         name = f"pi-{win['id']}"
 
@@ -92,7 +123,7 @@ def discover_agents() -> list[AgentWindow]:
                     ))
 
     # Apply name overrides and fix parent refs
-    overrides: dict[str, str] = _load_names()
+    overrides: dict[str, str] = load_names()
     orig_to_new: dict[str, str] = {}
     for a in agents:
         key: str = f"{a.socket}:{a.kitty_id}"
@@ -118,9 +149,7 @@ def get_screen_text(
 
 
 def focus_window(agent: AgentWindow) -> None:
-    subprocess.run(
-        ["swaymsg", f"[pid={agent.kitty_pid}]", "focus"],
-        capture_output=True, timeout=3)
+    focus_pid(agent.kitty_pid)
 
 
 def close_window(agent: AgentWindow) -> None:
@@ -148,20 +177,5 @@ def spawn_subagent(
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     if workspace and workspace != "?":
-        def _move_and_focus() -> None:
-            time.sleep(0.5)
-            try:
-                subprocess.run(
-                    ["swaymsg", f"[pid={proc.pid}]",
-                     "move", "workspace", workspace],
-                    capture_output=True, timeout=3)
-                subprocess.run(
-                    ["swaymsg", "workspace", workspace],
-                    capture_output=True, timeout=3)
-                subprocess.run(
-                    ["swaymsg", f"[pid={proc.pid}]", "focus"],
-                    capture_output=True, timeout=3)
-            except Exception:
-                pass
-        threading.Thread(target=_move_and_focus, daemon=True).start()
+        move_pid_to_workspace_and_focus_later(proc.pid, workspace, delay=0.5)
     return forked

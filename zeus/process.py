@@ -44,13 +44,17 @@ _TCPI_BYTES_RECEIVED_OFF: int = 128
 _TCPI_MIN_LEN: int = 136  # need at least this many bytes
 
 
-def _fmt_bytes(bps: float) -> str:
+def fmt_bytes(bps: float) -> str:
     """Format bytes/sec into human-readable."""
     if bps >= 1048576:
         return f"{bps / 1048576:.1f}M"
     if bps >= 1024:
         return f"{bps / 1024:.0f}K"
     return f"{bps:.0f}B"
+
+
+# Backward-compatible alias for older imports.
+_fmt_bytes = fmt_bytes
 
 
 def _get_process_tree(root_pid: int) -> list[int]:

@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 import subprocess
+from typing import ClassVar, cast
 
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.widgets import DataTable, Static, TextArea
 from rich.text import Text
+
+
+def _as_binding(spec: Binding | tuple[str, ...]) -> Binding:
+    """Normalize tuple-style Textual bindings into ``Binding`` objects."""
+    if isinstance(spec, Binding):
+        return spec
+    if len(spec) >= 3:
+        return Binding(spec[0], spec[1], spec[2], show=False)
+    return Binding(spec[0], spec[1], show=False)
+
+
+_BASE_TEXTAREA_BINDINGS: list[Binding] = [
+    _as_binding(spec) for spec in TextArea.BINDINGS
+]
 
 
 class ZeusDataTable(DataTable):
@@ -28,17 +43,22 @@ class ZeusDataTable(DataTable):
 
 class ZeusTextArea(TextArea):
     """TextArea with emacs-style alt keybindings and system clipboard paste."""
-    BINDINGS = [
-        b for b in TextArea.BINDINGS
-        if not any(k in b.key for k in ("ctrl+u", "ctrl+f", "ctrl+w"))
-    ] + [
-        Binding("alt+f", "cursor_word_right", "Word right", show=False),
-        Binding("alt+b", "cursor_word_left", "Word left", show=False),
-        Binding("alt+d", "delete_word_right", "Delete word right", show=False),
-        Binding("alt+backspace", "delete_word_left", "Delete word left", show=False),
-        Binding("ctrl+u", "clear_all", "Clear", show=False),
-        Binding("ctrl+y", "paste", "Paste", show=False),
-    ]
+    BINDINGS: ClassVar[
+        list[Binding | tuple[str, str] | tuple[str, str, str]]
+    ] = cast(
+        list[Binding | tuple[str, str] | tuple[str, str, str]],
+        [
+            b for b in _BASE_TEXTAREA_BINDINGS
+            if not any(k in b.key for k in ("ctrl+u", "ctrl+f", "ctrl+w"))
+        ] + [
+            Binding("alt+f", "cursor_word_right", "Word right", show=False),
+            Binding("alt+b", "cursor_word_left", "Word left", show=False),
+            Binding("alt+d", "delete_word_right", "Delete word right", show=False),
+            Binding("alt+backspace", "delete_word_left", "Delete word left", show=False),
+            Binding("ctrl+u", "clear_all", "Clear", show=False),
+            Binding("ctrl+y", "paste", "Paste", show=False),
+        ],
+    )
 
     def action_clear_all(self) -> None:
         """Clear entire text area."""
@@ -66,8 +86,14 @@ class UsageBar(Static):
     label_text: reactive[str] = reactive("")
     extra_text: reactive[str] = reactive("")
 
-    def __init__(self, label: str, **kwargs: str) -> None:
-        super().__init__(**kwargs)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        label: str,
+        *,
+        id: str | None = None,
+        classes: str | None = None,
+    ) -> None:
+        super().__init__("", id=id, classes=classes)
         self.label_text = label
 
     def render(self) -> Text:

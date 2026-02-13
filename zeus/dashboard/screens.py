@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -33,7 +34,7 @@ class _ZeusScreenMixin:
 
     @property
     def zeus(self) -> ZeusApp:
-        return self.app  # type: ignore[attr-defined]
+        return cast(ZeusApp, self.app)  # type: ignore[attr-defined]
 
 
 class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
@@ -244,12 +245,12 @@ class ConfirmKillScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
         event.stop()
 
-    def on_key(self, event: object) -> None:
-        if getattr(event, "key", None) == "enter":
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
             self.zeus.do_kill_agent(self.agent)
             self.dismiss()
-            event.stop()  # type: ignore[attr-defined]
-            event.prevent_default()  # type: ignore[attr-defined]
+            event.stop()
+            event.prevent_default()
 
     def action_confirm(self) -> None:
         self.zeus.do_kill_agent(self.agent)
@@ -284,12 +285,12 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
         event.stop()
 
-    def on_key(self, event: object) -> None:
-        if getattr(event, "key", None) == "enter":
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
             self.zeus.do_kill_tmux(self.sess)
             self.dismiss()
-            event.stop()  # type: ignore[attr-defined]
-            event.prevent_default()  # type: ignore[attr-defined]
+            event.stop()
+            event.prevent_default()
 
     def action_confirm(self) -> None:
         self.zeus.do_kill_tmux(self.sess)
@@ -306,11 +307,13 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Interact Panel ───"),
     ("Ctrl+s", "Send message to agent / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
+    ("Ctrl+y", "Paste from system clipboard"),
     ("Ctrl+u", "Clear input"),
     ("", "─── Agent Management ───"),
     ("n", "New agent"),
     ("s", "Spawn sub-agent"),
-    ("q", "Stop agent (send ESC)"),
+    ("q", "Stop agent (table focus)"),
+    ("Ctrl+q", "Stop agent (works from input too)"),
     ("k", "Kill agent / tmux session"),
     ("r", "Rename agent / tmux"),
     ("", "─── Settings ───"),
@@ -344,10 +347,10 @@ class HelpScreen(ModalScreen):
                 "  [dim]Press any key to close[/]",
             )
 
-    def on_key(self, event: object) -> None:
+    def on_key(self, event: events.Key) -> None:
         self.dismiss()
-        event.stop()  # type: ignore[attr-defined]
-        event.prevent_default()  # type: ignore[attr-defined]
+        event.stop()
+        event.prevent_default()
 
 
 # ── Change model ──────────────────────────────────────────────────────

@@ -15,7 +15,12 @@ def build_pid_workspace_map() -> dict[int, str]:
         if r.returncode != 0:
             return {}
         tree: dict = json.loads(r.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (
+        subprocess.TimeoutExpired,
+        json.JSONDecodeError,
+        FileNotFoundError,
+        OSError,
+    ):
         return {}
 
     pid_ws: dict[int, str] = {}

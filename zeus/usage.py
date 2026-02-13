@@ -19,7 +19,7 @@ from .models import UsageData, OpenAIUsageData
 # Time helpers
 # ---------------------------------------------------------------------------
 
-def _time_left(value: str) -> str:
+def time_left(value: str) -> str:
     """Convert a reset timestamp or duration to a human-readable countdown."""
     if not value:
         return ""
@@ -59,8 +59,12 @@ def _time_left(value: str) -> str:
         if h > 0:
             return f"{h}h{m:02d}m"
         return f"{m}m"
-    except Exception:
+    except (ValueError, TypeError, OverflowError):
         return ""
+
+
+# Backward-compatible alias for older imports.
+_time_left = time_left
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +97,7 @@ def _openai_log(msg: str) -> None:
         ts: str = time.strftime("%Y-%m-%d %H:%M:%S")
         with open("/tmp/zeus-openai.log", "a") as f:
             f.write(f"[{ts}] {msg}\n")
-    except Exception:
+    except OSError:
         pass
 
 
@@ -115,7 +119,7 @@ def _load_openai_access_token() -> str:
             _openai_log("oauth access token appears expired, trying anyway")
             return token
         _openai_log("no openai-codex access token present in auth.json")
-    except Exception as e:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as e:
         _openai_log(f"failed to read {auth_path}: {e}")
     return ""
 
@@ -124,12 +128,14 @@ def _spawn_openai_fetch() -> None:
     """Spawn a helper process to fetch OpenAI usage."""
     try:
         zeus_path: str = str(Path(sys.argv[0]).expanduser().resolve())
-        subprocess.Popen(
-            ["python3", zeus_path, "fetch-openai-usage"],
-            stdout=subprocess.DEVNULL,
-            stderr=open("/tmp/zeus-openai-fetch.err", "a"),
-        )
-    except Exception as e:
+        with open("/tmp/zeus-openai-fetch.err", "a") as err:
+            subprocess.Popen(
+                [sys.executable, zeus_path, "fetch-openai-usage"],
+                stdout=subprocess.DEVNULL,
+                stderr=err,
+                start_new_session=True,
+            )
+    except (FileNotFoundError, OSError, ValueError) as e:
         _openai_log(f"failed to spawn openai fetch helper: {e}")
 
 
@@ -164,7 +170,12 @@ def fetch_openai_usage() -> None:
                         break
                 if api_key:
                     break
-        except Exception as e:
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            OSError,
+            json.JSONDecodeError,
+        ) as e:
             _openai_log(f"failed to scan kitty env for OPENAI_API_KEY: {e}")
 
     if not api_key:
@@ -213,7 +224,7 @@ def fetch_openai_usage() -> None:
                     def _pct(win: dict) -> float:
                         try:
                             return float(win.get("used_percent", 0.0))
-                        except Exception:
+                        except (TypeError, ValueError):
                             return 0.0
 
                     def _reset_at(win: dict) -> str:
@@ -226,7 +237,7 @@ def fetch_openai_usage() -> None:
                             return datetime.fromtimestamp(
                                 secs_val, tz=timezone.utc
                             ).isoformat()
-                        except Exception:
+                        except (TypeError, ValueError, OSError):
                             return str(ra)
 
                     cache_data: dict = {
@@ -253,12 +264,18 @@ def fetch_openai_usage() -> None:
             except urllib.error.HTTPError as e:
                 err_body: str = e.read(500).decode(errors="replace")
                 _openai_log(f"HTTPError {e.code} from {url}: {err_body}")
-            except Exception as e:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                OSError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as e:
                 _openai_log(
                     f"fetch failed for {url}: {type(e).__name__}: {e}"
                 )
 
-    except Exception as e:
+    except (ImportError, OSError) as e:
         _openai_log(f"wham usage attempt failed: {type(e).__name__}: {e}")
 
     # 2) Fallback: API platform rate-limit headers
@@ -307,18 +324,19 @@ def fetch_openai_usage() -> None:
             }
             OPENAI_USAGE_CACHE.write_text(json.dumps(cache_data))
             _openai_log(f"cached api rate limits to {OPENAI_USAGE_CACHE}")
-    except Exception as e:
-        try:
-            import urllib.error
-            if isinstance(e, urllib.error.HTTPError):
-                body_err: str = e.read(500).decode(errors="replace")
-                _openai_log(f"fallback HTTPError {e.code}: {body_err}")
-            else:
-                _openai_log(
-                    f"fallback fetch failed: {type(e).__name__}: {e}"
-                )
-        except Exception:
-            _openai_log(f"fallback fetch failed: {type(e).__name__}: {e}")
+    except ImportError as e:
+        _openai_log(f"fallback fetch failed: {type(e).__name__}: {e}")
+    except urllib.error.HTTPError as e:
+        body_err: str = e.read(500).decode(errors="replace")
+        _openai_log(f"fallback HTTPError {e.code}: {body_err}")
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as e:
+        _openai_log(f"fallback fetch failed: {type(e).__name__}: {e}")
 
 
 # ---------------------------------------------------------------------------
