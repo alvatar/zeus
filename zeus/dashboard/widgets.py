@@ -32,7 +32,7 @@ class ZeusTextArea(TextArea):
         *TextArea.BINDINGS,
         Binding("alt+f", "cursor_word_right", "Word right", show=False),
         Binding("alt+b", "cursor_word_left", "Word left", show=False),
-        Binding("ctrl+l", "clear_all", "Clear", show=False),
+        Binding("ctrl+u", "clear_all", "Clear", show=False),
     ]
 
     def action_clear_all(self) -> None:
