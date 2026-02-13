@@ -1280,21 +1280,27 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        # Strip pi's input area + status bar: scan from the absolute
-        # bottom to find the 2 separator lines (all ─ characters).
-        # The last line is always the status bar, then separator,
-        # then input area, then separator. Content ─ lines are above.
+        # Strip pi's bottom chrome. From the bottom the structure is:
+        #   status bar (1 line) → ─── separator → input area → ─── separator
+        # Scan upward: once we find the 1st separator, everything
+        # between it and the 2nd separator is the input area (blank
+        # or short text). If we hit a long non-separator, non-blank
+        # line after the 1st sep, stop — we've left the chrome zone.
         _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
         lines = screen_text.splitlines(keepends=True)
         sep_count = 0
         cut_at = len(lines)
         for i in range(len(lines) - 1, -1, -1):
             plain = _ansi_re.sub("", lines[i]).strip()
-            if len(plain) >= 20 and all(c == "─" for c in plain):
+            is_sep = len(plain) >= 20 and all(c == "─" for c in plain)
+            if is_sep:
                 sep_count += 1
                 if sep_count == 2:
                     cut_at = i
                     break
+            elif sep_count == 1 and len(plain) > 60:
+                # Long content line after 1st separator — not chrome
+                break
         lines = lines[:cut_at]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
