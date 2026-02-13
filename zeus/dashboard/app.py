@@ -768,7 +768,7 @@ class ZeusApp(App):
             event.prevent_default()  # type: ignore[attr-defined]
             event.stop()  # type: ignore[attr-defined]
             self.action_open_interact()
-        elif key == "ctrl+shift+s":
+        elif key == "ctrl+alt+s":
             event.prevent_default()  # type: ignore[attr-defined]
             event.stop()  # type: ignore[attr-defined]
             self.action_queue_interact()

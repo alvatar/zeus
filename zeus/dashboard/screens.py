@@ -307,7 +307,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Interact Panel ───"),
     ("Ctrl+f", "Toggle focus: input ↔ table"),
     ("Ctrl+s", "Send message to agent / tmux"),
-    ("Ctrl+S", "Queue message (Alt+Enter in pi)"),
+    ("Ctrl+Alt+s", "Queue message (Alt+Enter in pi)"),
     ("", "─── Agent Management ───"),
     ("n", "New agent"),
     ("s", "Spawn sub-agent"),
