@@ -112,7 +112,7 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-summary {
-    height: 10;
+    height: 6;
     color: #cccccc;
     padding: 0 1;
 }
