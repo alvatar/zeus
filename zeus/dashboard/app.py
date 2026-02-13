@@ -1044,6 +1044,7 @@ class ZeusApp(App):
         header = f"[bold #00d7d7]── output ──[/]"
         content = "\n".join(f"  {line.rstrip()}" for line in recent)
         stream.update(f"{header}\n{content}")
+        stream.scroll_end(animate=False)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
@@ -1128,7 +1129,8 @@ class ZeusApp(App):
         if not agent:
             panel.update("  No agent selected")
             return
-        lines = agent._screen_text.splitlines()
+        screen_text = get_screen_text(agent, full=True)
+        lines = screen_text.splitlines()
         recent = [l for l in lines if l.strip()][-max_lines:]
         if not recent:
             panel.update(f"  [{agent.name}] (no output)")
