@@ -1315,7 +1315,6 @@ class ZeusApp(App):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
             ta.clear()
-            self.notify(f"Sent to tmux:{self._interact_tmux_name}", timeout=2)
             return
         agent: AgentWindow | None = None
         if self._interact_agent_key:
@@ -1328,7 +1327,6 @@ class ZeusApp(App):
             return
         self._send_text_to_agent(agent, text)
         ta.clear()
-        self.notify(f"Sent to {agent.name}", timeout=2)
 
     def action_queue_interact(self) -> None:
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
@@ -1348,7 +1346,6 @@ class ZeusApp(App):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
             ta.clear()
-            self.notify(f"Queued → tmux:{self._interact_tmux_name}", timeout=2)
             return
         agent: AgentWindow | None = None
         if self._interact_agent_key:
@@ -1365,7 +1362,6 @@ class ZeusApp(App):
             f"id:{agent.kitty_id}", text + "\x1b[13;3u",
         )
         ta.clear()
-        self.notify(f"Queued → {agent.name}", timeout=2)
 
     def action_refresh(self) -> None:
         self.poll_and_update()
