@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from enum import Enum
 import os
 import subprocess
 import time
 import threading
+
+
+class SortMode(Enum):
+    STATE_TIME = "state+time"
+    ALPHA = "alpha"
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -49,11 +55,14 @@ class ZeusApp(App):
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("e", "toggle_expand", "Expand"),
+        Binding("d", "toggle_sort", "Sort"),
     ]
 
     agents: list[AgentWindow] = []
+    sort_mode: SortMode = SortMode.STATE_TIME
     _log_visible: bool = False
     prev_states: dict[int, State] = {}
+    state_changed_at: dict[int, float] = {}
     idle_since: dict[int, float] = {}
     idle_notified: set[int] = set()
 
@@ -124,10 +133,16 @@ class ZeusApp(App):
             a.proc_metrics = read_process_metrics(a.kitty_pid)
 
             # Track state transitions
+            now: float = time.time()
             old: State | None = self.prev_states.get(a.kitty_id)
+            if a.kitty_id not in self.state_changed_at:
+                self.state_changed_at[a.kitty_id] = now
+            elif old is not None and old != a.state:
+                self.state_changed_at[a.kitty_id] = now
+
             if a.state == State.IDLE:
                 if old == State.WORKING:
-                    self.idle_since[a.kitty_id] = time.time()
+                    self.idle_since[a.kitty_id] = now
                     self.idle_notified.discard(a.kitty_id)
             else:
                 self.idle_since.pop(a.kitty_id, None)
@@ -194,6 +209,24 @@ class ZeusApp(App):
         for a in self.agents:
             if a.parent_name and a.parent_name in parent_names:
                 children_of.setdefault(a.parent_name, []).append(a)
+
+        def _state_sort_key(a: AgentWindow) -> tuple[int, float, str]:
+            # IDLE first, then oldest state change first, then name
+            pri: int = 0 if a.state == State.IDLE else 1
+            changed_at: float = self.state_changed_at.get(a.kitty_id, time.time())
+            return (pri, changed_at, a.name.lower())
+
+        def _alpha_sort_key(a: AgentWindow) -> str:
+            return a.name.lower()
+
+        sort_key = (
+            _alpha_sort_key
+            if self.sort_mode == SortMode.ALPHA
+            else _state_sort_key
+        )
+        top_level.sort(key=sort_key)
+        for kids in children_of.values():
+            kids.sort(key=sort_key)
 
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             icon: str = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
@@ -311,10 +344,12 @@ class ZeusApp(App):
             1 for a in self.agents if a.state == State.IDLE
         )
         status = self.query_one("#status-line", Static)
+        sort_label: str = self.sort_mode.value
         status.update(
             f"  {len(self.agents)} agents  │  "
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
+            f"Sort: [bold]{sort_label}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
 
@@ -622,6 +657,17 @@ class ZeusApp(App):
             self.notify(f"Rename failed: {e}", timeout=3)
 
     # ── Log panel ─────────────────────────────────────────────────────
+
+    def action_toggle_sort(self) -> None:
+        if isinstance(self.focused, Input):
+            return
+        if len(self.screen_stack) > 1:
+            return
+        if self.sort_mode == SortMode.STATE_TIME:
+            self.sort_mode = SortMode.ALPHA
+        else:
+            self.sort_mode = SortMode.STATE_TIME
+        self.poll_and_update()
 
     def action_toggle_expand(self) -> None:
         if isinstance(self.focused, Input):
