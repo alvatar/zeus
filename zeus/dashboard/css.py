@@ -111,6 +111,19 @@ DataTable > .datatable--odd-row {
     display: block;
 }
 
+#interact-panel.split {
+    dock: right;
+    width: 50%;
+    height: 100%;
+    margin-bottom: 0;
+    border-top: none;
+    border-left: solid #00d7d7;
+}
+
+#interact-panel.split.visible {
+    display: block;
+}
+
 #interact-summary {
     height: 6;
     color: #cccccc;

@@ -91,7 +91,8 @@ class ZeusApp(App):
 
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
-        Binding("f6", "toggle_summaries", "Summaries"),
+        Binding("f6", "toggle_split", "Split"),
+        Binding("f7", "toggle_summaries", "Summaries"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
@@ -99,6 +100,7 @@ class ZeusApp(App):
     sort_mode: SortMode = SortMode.STATE_ELAPSED
     summary_model: str = SUMMARY_MODEL
     _summaries_enabled: bool = False
+    _split_mode: bool = False
     _log_visible: bool = False
     _interact_visible: bool = False
     _interact_agent_key: str | None = None
@@ -151,14 +153,26 @@ class ZeusApp(App):
         )
         yield Static("", id="status-line")
 
+    _FULL_COLUMNS = (
+        "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
+    )
+    _SPLIT_COLUMNS = (
+        "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "RAM", "GPU", "Net",
+    )
+
+    def _setup_table_columns(self) -> None:
+        table = self.query_one("#agent-table", DataTable)
+        table.clear(columns=True)
+        cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
+        table.add_columns(*cols)
+
     def on_mount(self) -> None:
         table = self.query_one("#agent-table", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns(
-            "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
-            "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
-        )
+        self._setup_table_columns()
         self.poll_and_update()
         self.set_interval(POLL_INTERVAL, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
@@ -435,16 +449,19 @@ class ZeusApp(App):
                 tok_str = Text(tok_str, style=row_bg)
 
             row_key: str = akey
-            table.add_row(
+            row = [
                 name_text, state_text, elapsed_text,
                 Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
                 ctx_str,
                 cpu_text, ram_text, gpu_text, net_text,
-                Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
-                Text(a.cwd, style=row_bg) if row_bg else a.cwd,
-                tok_str,
-                key=row_key,
-            )
+            ]
+            if not self._split_mode:
+                row.extend([
+                    Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
+                    Text(a.cwd, style=row_bg) if row_bg else a.cwd,
+                    tok_str,
+                ])
+            table.add_row(*row, key=row_key)
 
         def _clean_tmux_cmd(cmd: str) -> str:
             """Strip 'cd ... &&' prefix and surrounding quotes."""
@@ -499,11 +516,13 @@ class ZeusApp(App):
                         if isinstance(v, Text):
                             v.stylize(dim)
                 tmux_key: str = f"tmux:{sess.name}"
-                table.add_row(
+                row = [
                     tmux_name, tmux_age, "", tmux_cmd,
-                    "", cpu_t, ram_t, gpu_t, net_t, "", sess.cwd, "",
-                    key=tmux_key,
-                )
+                    "", cpu_t, ram_t, gpu_t, net_t,
+                ]
+                if not self._split_mode:
+                    row.extend(["", sess.cwd, ""])
+                table.add_row(*row, key=tmux_key)
 
         for a in top_level:
             _add_agent_row(a)
@@ -533,6 +552,7 @@ class ZeusApp(App):
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
+            f"Layout: [bold]{'SPLIT' if self._split_mode else 'WIDE'}[/]  │  "
             f"AI: [bold]{'ON' if self._summaries_enabled else 'OFF'}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
@@ -967,6 +987,27 @@ class ZeusApp(App):
         if len(self.screen_stack) > 1:
             return
         self.push_screen(HelpScreen())
+
+    def action_toggle_split(self) -> None:
+        self._split_mode = not self._split_mode
+        panel = self.query_one("#interact-panel", Vertical)
+        if self._split_mode:
+            panel.add_class("split")
+            # Auto-open interact panel in split mode
+            if not self._interact_visible:
+                self._interact_visible = True
+                panel.add_class("visible")
+                # Try to load the selected agent/tmux
+                self._refresh_interact_panel()
+        else:
+            panel.remove_class("split")
+            if self._interact_visible:
+                self._interact_visible = False
+                self._interact_agent_key = None
+                self._interact_tmux_name = None
+                panel.remove_class("visible")
+        self._setup_table_columns()
+        self.poll_and_update()
 
     def action_toggle_summaries(self) -> None:
         self._summaries_enabled = not self._summaries_enabled
