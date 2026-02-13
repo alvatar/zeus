@@ -100,6 +100,7 @@ DataTable > .datatable--odd-row {
 #interact-panel {
     dock: bottom;
     height: 75vh;
+    margin-bottom: 1;
     padding: 0 1;
     background: #0a0a0a;
     border-top: solid #00d7d7;
