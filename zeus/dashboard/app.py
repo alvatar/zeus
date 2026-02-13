@@ -166,7 +166,7 @@ class ZeusApp(App):
 
     # Columns that get a fixed width (label → width)
     _COL_WIDTHS: dict[str, int] = {"Elapsed": 5}
-    _COL_WIDTHS_SPLIT: dict[str, int] = {"Elapsed": 4}
+    _COL_WIDTHS_SPLIT: dict[str, int] = {"Name": 16, "Elapsed": 4, "Model/Cmd": 32}
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
