@@ -27,7 +27,7 @@ class SortMode(Enum):
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DataTable, Static, Label, Input, TextArea
+from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
 from textual import work
 from rich.text import Text
 
@@ -143,7 +143,7 @@ class ZeusApp(App):
             ),
             Vertical(
                 Static("", id="interact-summary"),
-                Static("", id="interact-stream"),
+                RichLog(id="interact-stream", wrap=True, markup=False, auto_scroll=True),
                 ZeusTextArea(
                     "",
                     id="interact-input",
@@ -1242,24 +1242,20 @@ class ZeusApp(App):
         """Apply tmux pane content (no pi separator trimming)."""
         if not self._interact_visible:
             return
-        stream = self.query_one("#interact-stream", Static)
+        stream = self.query_one("#interact-stream", RichLog)
         if not screen_text or not screen_text.strip():
-            stream.update(f"  [tmux:{name}] (no output)")
+            stream.clear(); stream.write(f"  [tmux:{name}] (no output)")
             return
         # Strip trailing blank lines, keep content lines
         lines = screen_text.splitlines(keepends=True)
         while lines and not lines[-1].strip():
             lines.pop()
         if not lines:
-            stream.update(f"  [tmux:{name}] (no output)")
+            stream.clear(); stream.write(f"  [tmux:{name}] (no output)")
             return
-        # Trim from top to fit visible area
-        avail = stream.content_region.height
-        if avail > 0 and len(lines) > avail:
-            lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
-        stream.update(t)
+        stream.clear(); stream.write(t)
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1275,9 +1271,9 @@ class ZeusApp(App):
         """Apply fetched stream content on the main thread."""
         if not self._interact_visible:
             return
-        stream = self.query_one("#interact-stream", Static)
+        stream = self.query_one("#interact-stream", RichLog)
         if not screen_text or not screen_text.strip():
-            stream.update(f"  [{name}] (no output)")
+            stream.clear(); stream.write(f"  [{name}] (no output)")
             return
         # Strip pi's input area + status bar: cut at 2nd horizontal
         # line from the bottom (lines made of ─ characters).
@@ -1294,13 +1290,9 @@ class ZeusApp(App):
                     cut_at = i
                     break
         lines = lines[:cut_at]
-        # Trim from top to fit visible area — Static scroll is unreliable
-        avail = stream.content_region.height
-        if avail > 0 and len(lines) > avail:
-            lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
-        stream.update(t)
+        stream.clear(); stream.write(t)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
