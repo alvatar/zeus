@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.widgets import DataTable, Static, TextArea
@@ -25,12 +27,27 @@ class ZeusDataTable(DataTable):
 
 
 class ZeusTextArea(TextArea):
-    """TextArea with emacs-style alt keybindings."""
+    """TextArea with emacs-style alt keybindings and system clipboard paste."""
     BINDINGS = [
         *TextArea.BINDINGS,
         Binding("alt+f", "cursor_word_right", "Word right", show=False),
         Binding("alt+b", "cursor_word_left", "Word left", show=False),
     ]
+
+    def action_paste(self) -> None:
+        """Paste from system clipboard (wl-paste for Wayland)."""
+        try:
+            r = subprocess.run(
+                ["wl-paste", "--no-newline"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0 and r.stdout:
+                self.insert(r.stdout)
+                return
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        # Fallback to Textual internal clipboard
+        super().action_paste()
 
 
 class UsageBar(Static):
