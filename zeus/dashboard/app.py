@@ -1322,9 +1322,10 @@ class ZeusApp(App):
         if not agent:
             self.notify("Agent no longer available", timeout=2)
             return
+        # Send text, then Alt+Enter via kitty keyboard protocol CSI 13;3u
         kitty_cmd(
             agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", text + "\x1b\r",
+            f"id:{agent.kitty_id}", text + "\x1b[13;3u",
         )
         ta.clear()
         self.notify(f"Queued → {agent.name}", timeout=2)
