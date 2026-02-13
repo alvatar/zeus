@@ -255,6 +255,38 @@ RenameScreen, RenameTmuxScreen {
 }
 """
 
+CHANGE_MODEL_CSS = """
+ChangeModelScreen {
+    align: center middle;
+}
+
+#model-dialog {
+    width: 60;
+    height: auto;
+    border: solid #00d7d7;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#model-dialog Label {
+    margin: 0;
+    color: #00d7d7;
+}
+
+#model-dialog Input {
+    margin: 1 0;
+}
+
+#model-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#model-buttons Button {
+    margin: 0 0 0 1;
+}
+"""
+
 HELP_CSS = """
 HelpScreen {
     align: center middle;

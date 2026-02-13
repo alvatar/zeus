@@ -43,7 +43,7 @@ from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
-    HelpScreen,
+    HelpScreen, ChangeModelScreen,
 )
 
 
@@ -76,12 +76,14 @@ class ZeusApp(App):
         Binding("e", "toggle_expand", "Expand"),
         Binding("d", "toggle_interact", "Interact"),
         Binding("ctrl+d", "focus_interact", "Focus", show=False, priority=True),
+        Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.STATE_ELAPSED
+    summary_model: str = SUMMARY_MODEL
     _log_visible: bool = False
     _interact_visible: bool = False
     _interact_agent_key: str | None = None
@@ -450,11 +452,13 @@ class ZeusApp(App):
         )
         status = self.query_one("#status-line", Static)
         sort_label: str = self.sort_mode.value
+        model_short: str = self.summary_model.split("/")[-1]
         status.update(
             f"  {len(self.agents)} agents  │  "
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
+            f"LLM: [bold]{model_short}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
 
@@ -787,6 +791,11 @@ class ZeusApp(App):
 
     # ── Log panel ─────────────────────────────────────────────────────
 
+    def action_change_model(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
+        self.push_screen(ChangeModelScreen(self.summary_model))
+
     def action_show_help(self) -> None:
         if len(self.screen_stack) > 1:
             return
@@ -899,7 +908,7 @@ class ZeusApp(App):
         try:
             r = subprocess.run(
                 ["pi", "--print", "--no-session", "--no-tools",
-                 "--model", SUMMARY_MODEL, prompt],
+                 "--model", self.summary_model, prompt],
                 capture_output=True, text=True, timeout=30,
             )
             if r.returncode == 0:

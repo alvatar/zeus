@@ -19,6 +19,7 @@ from .css import (
     RENAME_CSS,
     CONFIRM_KILL_CSS,
     HELP_CSS,
+    CHANGE_MODEL_CSS,
 )
 
 if TYPE_CHECKING:
@@ -306,6 +307,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-agent"),
     ("k", "Kill agent / tmux session"),
     ("r", "Rename"),
+    ("F3", "Change summary model"),
     ("F4", "Toggle sort mode"),
     ("F5", "Force refresh"),
     ("Esc", "Close panel"),
@@ -334,3 +336,49 @@ class HelpScreen(ModalScreen):
         self.dismiss()
         event.stop()  # type: ignore[attr-defined]
         event.prevent_default()  # type: ignore[attr-defined]
+
+
+# ── Change model ──────────────────────────────────────────────────────
+
+class ChangeModelScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = CHANGE_MODEL_CSS
+    BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+
+    def __init__(self, current_model: str) -> None:
+        super().__init__()
+        self.current_model = current_model
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="model-dialog"):
+            yield Label("Summary model")
+            yield Input(value=self.current_model, id="model-input")
+            with Horizontal(id="model-buttons"):
+                yield Button("Cancel", variant="default", id="cancel-btn")
+                yield Button("Set", variant="primary", id="set-btn")
+
+    def on_mount(self) -> None:
+        inp = self.query_one("#model-input", Input)
+        inp.focus()
+        inp.action_select_all()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "set-btn":
+            self._apply()
+        else:
+            self.dismiss()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._apply()
+
+    def _apply(self) -> None:
+        new_model: str = self.query_one("#model-input", Input).value.strip()
+        if not new_model or new_model == self.current_model:
+            self.dismiss()
+            return
+        self.dismiss()
+        self.zeus.summary_model = new_model
+        # Invalidate cached summaries since model changed
+        self.zeus._idle_summaries.clear()
+        self.zeus._idle_summary_pending.clear()
+        self.zeus.notify(f"Model: {new_model}", timeout=3)
+        self.zeus.poll_and_update()
