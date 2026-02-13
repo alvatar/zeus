@@ -637,9 +637,7 @@ class ZeusApp(App):
     def on_data_table_row_selected(
         self, event: DataTable.RowSelected
     ) -> None:
-        if self._interact_visible:
-            return  # handled by action_open_interact
-        self._activate_selected_row()
+        pass  # Enter is handled by action_open_interact binding
 
     _last_kill_time: float = 0.0
 
