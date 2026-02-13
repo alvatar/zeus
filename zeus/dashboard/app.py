@@ -567,6 +567,13 @@ class ZeusApp(App):
                     return sess
         return None
 
+    def _get_parent_agent_for_tmux(self, sess: TmuxSession) -> AgentWindow | None:
+        """Return the agent that owns this tmux session."""
+        for a in self.agents:
+            if sess in a.tmux_sessions:
+                return a
+        return None
+
     # ── Actions ───────────────────────────────────────────────────────
 
     def action_open_interact(self) -> None:
@@ -599,17 +606,37 @@ class ZeusApp(App):
         """Ctrl+Enter: teleport to the agent's kitty window or tmux client."""
         tmux = self._get_selected_tmux()
         if tmux:
-            if not self._focus_tmux_client(tmux):
-                # No attached client — open a new kitty window
-                subprocess.Popen(
-                    ["kitty", "tmux", "attach-session", "-t", tmux.name],
-                    start_new_session=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                self.notify(
-                    f"Opening tmux:{tmux.name}", timeout=2,
-                )
+            if self._focus_tmux_client(tmux):
+                return
+            # No attached client — open a new kitty window on parent workspace
+            parent = self._get_parent_agent_for_tmux(tmux)
+            workspace = (parent.workspace if parent else None) or ""
+            proc = subprocess.Popen(
+                ["kitty", "tmux", "attach-session", "-t", tmux.name],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if workspace and workspace != "?":
+                def _move() -> None:
+                    time.sleep(0.5)
+                    try:
+                        subprocess.run(
+                            ["swaymsg", f"[pid={proc.pid}]",
+                             "move", "workspace", workspace],
+                            capture_output=True, timeout=3)
+                        subprocess.run(
+                            ["swaymsg", "workspace", workspace],
+                            capture_output=True, timeout=3)
+                        subprocess.run(
+                            ["swaymsg", f"[pid={proc.pid}]", "focus"],
+                            capture_output=True, timeout=3)
+                    except Exception:
+                        pass
+                threading.Thread(target=_move, daemon=True).start()
+            self.notify(
+                f"Opening tmux:{tmux.name}", timeout=2,
+            )
             return
         agent = self._get_selected_agent()
         if agent:
