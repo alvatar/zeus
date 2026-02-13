@@ -779,7 +779,7 @@ class ZeusApp(App):
     def on_data_table_row_selected(
         self, event: DataTable.RowSelected
     ) -> None:
-        pass  # Enter is handled by action_open_interact binding
+        self.action_open_interact()
 
     _last_kill_time: float = 0.0
 
