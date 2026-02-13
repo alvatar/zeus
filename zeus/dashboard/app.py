@@ -38,7 +38,7 @@ from ..state import detect_state, parse_footer
 from ..usage import read_usage, read_openai_usage, _time_left
 
 from .css import APP_CSS
-from .widgets import ZeusDataTable, UsageBar
+from .widgets import ZeusDataTable, ZeusTextArea, UsageBar
 from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
@@ -126,7 +126,7 @@ class ZeusApp(App):
         )
         yield Static("", id="log-panel")
         yield Vertical(
-            TextArea(
+            ZeusTextArea(
                 "",
                 id="interact-input",
             ),
@@ -516,7 +516,7 @@ class ZeusApp(App):
 
     def action_open_interact(self) -> None:
         """Enter: open interact panel or refresh it for the selected agent."""
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -551,7 +551,7 @@ class ZeusApp(App):
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
-        self.query_one("#interact-input", TextArea).focus()
+        self.query_one("#interact-input", ZeusTextArea).focus()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
         """Focus the sway window running an attached tmux session."""
@@ -688,7 +688,7 @@ class ZeusApp(App):
     # ── Kill ──────────────────────────────────────────────────────────
 
     def action_kill_agent(self) -> None:
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -765,7 +765,7 @@ class ZeusApp(App):
         self.push_screen(NewAgentScreen())
 
     def action_spawn_subagent(self) -> None:
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -794,7 +794,7 @@ class ZeusApp(App):
             )
 
     def action_rename(self) -> None:
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -837,7 +837,7 @@ class ZeusApp(App):
         self.push_screen(HelpScreen())
 
     def action_toggle_sort(self) -> None:
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -883,7 +883,7 @@ class ZeusApp(App):
         self._interact_agent_key = key
         panel.add_class("visible")
         summary_w = self.query_one("#interact-summary", Static)
-        ta = self.query_one("#interact-input", TextArea)
+        ta = self.query_one("#interact-input", ZeusTextArea)
         ta.clear()
         ta.focus()
 
@@ -905,7 +905,7 @@ class ZeusApp(App):
         """Toggle focus between interact input and agent table."""
         if not self._interact_visible:
             return
-        inp = self.query_one("#interact-input", TextArea)
+        inp = self.query_one("#interact-input", ZeusTextArea)
         table = self.query_one("#agent-table", DataTable)
         if self.focused is inp:
             table.focus()
@@ -1012,7 +1012,7 @@ class ZeusApp(App):
         """Send text from interact input to the agent (Ctrl+Enter)."""
         if not self._interact_visible:
             return
-        ta = self.query_one("#interact-input", TextArea)
+        ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()
         if not text:
             return
@@ -1030,7 +1030,7 @@ class ZeusApp(App):
         self.notify(f"Sent to {agent.name}", timeout=2)
 
     def action_toggle_expand(self) -> None:
-        if isinstance(self.focused, (Input, TextArea)):
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
             return

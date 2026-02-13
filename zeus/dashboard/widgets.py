@@ -1,9 +1,10 @@
-"""Custom widgets: ZeusDataTable, UsageBar."""
+"""Custom widgets: ZeusDataTable, UsageBar, ZeusTextArea."""
 
 from __future__ import annotations
 
+from textual.binding import Binding
 from textual.reactive import reactive
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, Static, TextArea
 from rich.text import Text
 
 
@@ -21,6 +22,15 @@ class ZeusDataTable(DataTable):
         text-style: none;
     }
     """
+
+
+class ZeusTextArea(TextArea):
+    """TextArea with emacs-style alt keybindings."""
+    BINDINGS = [
+        *TextArea.BINDINGS,
+        Binding("alt+f", "cursor_word_right", "Word right", show=False),
+        Binding("alt+b", "cursor_word_left", "Word left", show=False),
+    ]
 
 
 class UsageBar(Static):
