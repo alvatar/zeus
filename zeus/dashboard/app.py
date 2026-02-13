@@ -472,7 +472,7 @@ class ZeusApp(App):
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
-            f"LLM: [bold]{model_short}[/]  │  "
+            f"Reporter: [bold]{model_short}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
 
