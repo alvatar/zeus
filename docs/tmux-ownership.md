@@ -1,0 +1,78 @@
+# Deterministic tmux ownership in Zeus
+
+## Goal
+
+Map tmux sessions to agents without relying primarily on fragile heuristics (cwd/screen text).
+
+## Ownership model
+
+Zeus uses three layers, in this order:
+
+1. `@zeus_owner` tmux session option (deterministic)
+2. `ZEUS_AGENT_ID` from tmux session environment (deterministic)
+3. Legacy heuristics (screen text / cwd)
+
+## Agent identity
+
+- Each tracked agent has an `agent_id` (`ZEUS_AGENT_ID`).
+- Zeus-launched agents are started with `ZEUS_AGENT_ID` in their environment.
+- Independently discovered agents (heuristic pi windows) are assigned a persisted id in:
+  - `/tmp/zeus-agent-ids.json` (`"socket:kitty_id" -> "agent_id"`)
+
+## Backfill stamping
+
+When a tmux session is matched to an agent and `@zeus_owner` is missing, Zeus backfills:
+
+```bash
+tmux set-option -t <session> @zeus_owner <agent_id>
+```
+
+This is done only for high-confidence matches (`env-id`, `screen-exact`, `cwd`).
+Low-confidence `screen-fallback` matches are not auto-stamped.
+
+## tmux propagation
+
+Zeus ensures tmux server config includes:
+
+```bash
+tmux set -ga update-environment ZEUS_AGENT_ID
+```
+
+This allows `ZEUS_AGENT_ID` from client environments to propagate into newly created sessions.
+
+## Independent `pi` launches
+
+Independent `pi` launches remain supported. They can still be discovered heuristically.
+
+For strongest determinism from session creation time, use a wrapper around `pi` that sets `ZEUS_AGENT_ID` if missing.
+
+Installer-managed option:
+
+```bash
+bash install.sh --wrap-pi
+```
+
+This wraps `~/.local/bin/pi`, stores original binary at `~/.local/bin/pi.zeus-orig`, and restores it on `bash uninstall.sh`.
+
+Manual wrapper example:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${ZEUS_AGENT_ID:-}" ]; then
+  ZEUS_AGENT_ID=$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4().hex)
+PY
+)
+  export ZEUS_AGENT_ID
+fi
+
+exec /path/to/real/pi "$@"
+```
+
+## Notes
+
+- Determinism is immediate when `@zeus_owner` or `ZEUS_AGENT_ID` exists.
+- For legacy/no-id sessions, determinism starts after first high-confidence match and backfill.

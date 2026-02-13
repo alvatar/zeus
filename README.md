@@ -10,6 +10,7 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Usage tracking** — shows Anthropic API usage (session/week/extra) with color-coded progress bars
 - **Sway integration** — jump to any agent's workspace with Enter, see which monitor/workspace each agent is on
 - **Notifications** — `notify-send` alert when an agent transitions from working → idle
+- **Deterministic tmux ownership** — sessions are matched by `ZEUS_AGENT_ID` / `@zeus_owner` first, with cwd/screen-text fallback for legacy sessions
 - **Agent launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
 
 ## Requirements
@@ -41,10 +42,19 @@ cd zeus
 bash install.sh
 ```
 
+⚠ **NOTICE:** `bash install.sh` alone does **not** install the `pi` wrapper.
+
+Optional (recommended): install a managed `pi` wrapper for deterministic `ZEUS_AGENT_ID` on independent launches:
+
+```bash
+bash install.sh --wrap-pi
+```
+
 The installer:
 1. Copies `zeus` and `zeus-launch` to `~/.local/bin/`
-2. Patches `~/.config/kitty/kitty.conf` to enable remote control
-3. Prints instructions for the sway keybinding
+2. (Optional `--wrap-pi`) wraps `~/.local/bin/pi` and stores backup at `~/.local/bin/pi.zeus-orig`
+3. Patches `~/.config/kitty/kitty.conf` to enable remote control
+4. Prints instructions for the sway keybinding
 
 After installing, add this to `~/.config/sway/config`:
 ```
@@ -94,6 +104,15 @@ Bound to `$mod+Return`. Opens a bemenu prompt:
 - **Type a name** → launches a tracked kitty window (visible in the zeus dashboard)
 - **Press Enter empty** → launches a normal untracked kitty
 
+### Independent `pi` windows
+
+Zeus still tracks independently started `pi` windows via cmdline/title heuristics.
+For tmux ownership, deterministic matching is ID-first (`@zeus_owner` / `ZEUS_AGENT_ID`) with heuristic fallback.
+When Zeus gets a high-confidence match for an unstamped session, it backfills `@zeus_owner` automatically.
+
+If you want independent launches to carry IDs from the start, run `bash install.sh --wrap-pi` (installer-managed wrapper) or provide your own wrapper that exports `ZEUS_AGENT_ID` when missing before `exec`ing the real pi binary.
+See `docs/tmux-ownership.md` for full details.
+
 ## Development
 
 ```bash
@@ -111,11 +130,13 @@ python3 -m pytest tests/ -v  # Tests
 ## How it works
 
 1. **Kitty remote control** — each kitty instance creates a Unix socket at `/tmp/kitty-{pid}`, enabling `kitty @ ls` and `kitty @ get-text` queries
-2. **Agent discovery** — Zeus scans `/tmp/kitty-*` sockets, queries each, and filters windows by the `AGENTMON_NAME` environment variable
-3. **State detection** — `kitty @ get-text` captures terminal content; pi's braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) indicate WORKING, absence indicates IDLE
-4. **Footer parsing** — extracts model name, context %, and token count from pi's usage-bars extension output
-5. **Usage data** — reads `/tmp/claude-usage-cache.json` (written by pi's usage-bars extension) for session/week/extra API usage
-6. **Sway mapping** — `swaymsg -t get_tree` maps kitty PIDs to workspaces; `swaymsg [pid=N] focus` switches to an agent's window
+2. **Agent discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `AGENTMON_NAME` or pi heuristics (cmdline/title)
+3. **Agent identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `/tmp/zeus-agent-ids.json`)
+4. **tmux ownership** — sessions match by `@zeus_owner` first, then `ZEUS_AGENT_ID` from tmux session env, then cwd/screen heuristics; high-confidence matches are backfilled into `@zeus_owner`
+5. **State detection** — `kitty @ get-text` captures terminal content; pi's braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) indicate WORKING, absence indicates IDLE
+6. **Footer parsing** — extracts model name, context %, and token count from pi's usage-bars extension output
+7. **Usage data** — reads `/tmp/claude-usage-cache.json` (written by pi's usage-bars extension) for session/week/extra API usage
+8. **Sway mapping** — `swaymsg -t get_tree` maps kitty PIDs to workspaces; `swaymsg [pid=N] focus` switches to an agent's window
 
 ## Configuration
 
@@ -132,6 +153,8 @@ Dark background with cyan (`#00d7d7`) accent — designed to match a sway setup 
 ```bash
 bash uninstall.sh
 ```
+
+If the installer-managed pi wrapper was enabled, uninstall restores `~/.local/bin/pi` from `~/.local/bin/pi.zeus-orig`.
 
 ## License
 
