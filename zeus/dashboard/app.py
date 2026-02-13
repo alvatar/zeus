@@ -91,6 +91,7 @@ class ZeusApp(App):
     _interact_agent_key: str | None = None
     _idle_summaries: dict[str, str] = {}
     _idle_summary_pending: set[str] = set()
+    _action_needed: set[str] = set()
     prev_states: dict[str, State] = {}
     state_changed_at: dict[str, float] = {}
     idle_since: dict[str, float] = {}
@@ -244,11 +245,13 @@ class ZeusApp(App):
                 # Invalidate stale summary if agent went back to working
                 self._idle_summaries.pop(key, None)
                 self._idle_summary_pending.discard(key)
+                self._action_needed.discard(key)
         # Clean up summaries for agents that no longer exist
         for k in list(self._idle_summaries):
             if k not in live_keys:
                 del self._idle_summaries[k]
         self._idle_summary_pending &= live_keys
+        self._action_needed &= live_keys
 
         # Refresh interact panel if the viewed agent changed state
         if self._interact_visible and self._interact_agent_key:
@@ -346,20 +349,38 @@ class ZeusApp(App):
             return f"{s // 86400}d{(s % 86400) // 3600}h"
 
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
-            icon: str = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
-            state_color: str = {
-                "WORKING": "#00d700", "IDLE": "#ff3333"
-            }[a.state.value]
-            name_text: str = f"{indent}🧬 {a.name}" if indent else a.name
-            state_text = Text(
-                f"{icon} {a.state.value}",
-                style=f"bold {state_color}",
-            )
             akey: str = f"{a.socket}:{a.kitty_id}"
+            waiting: bool = akey in self._action_needed
+
+            if waiting:
+                icon = "⏸"
+                state_label = "WAITING"
+                state_color = "#d7af00"
+                row_bg = "on #2a2000"
+            elif a.state == State.WORKING:
+                icon = "▶"
+                state_label = "WORKING"
+                state_color = "#00d700"
+                row_bg = ""
+            else:
+                icon = "⏹"
+                state_label = "IDLE"
+                state_color = "#ff3333"
+                row_bg = ""
+
+            raw_name: str = f"{indent}🧬 {a.name}" if indent else a.name
+            name_text = Text(raw_name, style=row_bg) if row_bg else raw_name
+            state_text = Text(
+                f"{icon} {state_label}",
+                style=f"bold {state_color} {row_bg}".strip(),
+            )
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
             )
-            elapsed_text = Text(_fmt_duration(elapsed), style="#cccccc")
+            elapsed_text = Text(
+                _fmt_duration(elapsed),
+                style=f"#cccccc {row_bg}".strip(),
+            )
             ctx_str: str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
             tok_str: str = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
@@ -378,12 +399,27 @@ class ZeusApp(App):
             )
             net_text = net_str
 
-            row_key: str = f"{a.socket}:{a.kitty_id}"
+            # Apply row background to all cells if waiting
+            if row_bg:
+                for val in (ctx_str, cpu_text, ram_text, gpu_text,
+                            net_text, tok_str):
+                    pass  # strings don't need styling
+                ctx_str = Text(ctx_str, style=row_bg)
+                cpu_text = Text(cpu_text, style=row_bg)
+                ram_text = Text(ram_text, style=row_bg)
+                gpu_text = Text(gpu_text, style=row_bg)
+                net_text = Text(net_text, style=row_bg)
+                tok_str = Text(tok_str, style=row_bg)
+
+            row_key: str = akey
             table.add_row(
                 name_text, state_text, elapsed_text,
-                a.model or "—", ctx_str,
+                Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
+                ctx_str,
                 cpu_text, ram_text, gpu_text, net_text,
-                a.workspace or "?", a.cwd, tok_str,
+                Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
+                Text(a.cwd, style=row_bg) if row_bg else a.cwd,
+                tok_str,
                 key=row_key,
             )
 
@@ -992,11 +1028,19 @@ class ZeusApp(App):
         # Also cache if idle
         if agent.state == State.IDLE:
             key = f"{agent.socket}:{agent.kitty_id}"
-            self._idle_summaries[key] = summary
+            self.call_from_thread(self._store_idle_summary, key, summary)
             self._idle_summary_pending.discard(key)
         self.call_from_thread(
             self._apply_interact_summary, agent.name, summary,
         )
+
+    def _store_idle_summary(self, key: str, summary: str) -> None:
+        """Store an idle summary and update action_needed set."""
+        self._idle_summaries[key] = summary
+        if "ACTION NEEDED" in summary.upper():
+            self._action_needed.add(key)
+        else:
+            self._action_needed.discard(key)
 
     @work(thread=True, group="idle_summary")
     def _generate_idle_summary(self, agent: AgentWindow, key: str) -> None:
@@ -1008,7 +1052,7 @@ class ZeusApp(App):
             return
         prompt = self._IDLE_PROMPT + context
         summary = self._run_pi_summary(prompt)
-        self._idle_summaries[key] = summary
+        self.call_from_thread(self._store_idle_summary, key, summary)
         self._idle_summary_pending.discard(key)
 
     def _apply_interact_summary(self, name: str, summary: str) -> None:
