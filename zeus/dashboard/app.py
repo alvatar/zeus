@@ -68,7 +68,7 @@ class ZeusApp(App):
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
         Binding("enter", "open_interact", "Interact", priority=True),
-        Binding("shift+enter", "focus_agent", "Teleport", priority=True),
+        Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
@@ -247,6 +247,15 @@ class ZeusApp(App):
             if k not in live_keys:
                 del self._idle_summaries[k]
         self._idle_summary_pending &= live_keys
+
+        # Refresh interact panel if the viewed agent changed state
+        if self._interact_visible and self._interact_agent_key:
+            ikey = self._interact_agent_key
+            old_st = old_states.get(ikey)
+            new_st = r.prev_states.get(ikey)
+            if old_st is not None and new_st is not None \
+                    and old_st != new_st:
+                self._refresh_interact_panel()
 
         # Update Claude usage bars
         if r.usage.available:
