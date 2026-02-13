@@ -1295,10 +1295,6 @@ class ZeusApp(App):
                     cut_at = i
                     break
         lines = lines[:cut_at]
-        # Trim from top so bottom of output is always visible.
-        avail = stream.content_size.height - 1
-        if avail > 0 and len(lines) > avail:
-            lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
