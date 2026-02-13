@@ -1031,8 +1031,10 @@ class ZeusApp(App):
                 break
         if not agent:
             return
+        # Fetch fresh screen text directly
+        screen_text = get_screen_text(agent)
         stream = self.query_one("#interact-stream", Static)
-        lines = agent._screen_text.splitlines()
+        lines = screen_text.splitlines()
         recent = [l for l in lines if l.strip()][-200:]
         if not recent:
             stream.update(f"  [{agent.name}] (no output)")
