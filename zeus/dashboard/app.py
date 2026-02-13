@@ -1031,8 +1031,8 @@ class ZeusApp(App):
                 break
         if not agent:
             return
-        # Fetch fresh screen text with full scrollback
-        screen_text = get_screen_text(agent, full=True)
+        # Fetch current visible screen (not full scrollback)
+        screen_text = get_screen_text(agent)
         stream = self.query_one("#interact-stream", Static)
         lines = screen_text.splitlines()
         recent = [l for l in lines if l.strip()][-200:]
@@ -1130,7 +1130,7 @@ class ZeusApp(App):
         if not agent:
             panel.update("  No agent selected")
             return
-        screen_text = get_screen_text(agent, full=True)
+        screen_text = get_screen_text(agent)
         lines = screen_text.splitlines()
         recent = [l for l in lines if l.strip()][-max_lines:]
         if not recent:
