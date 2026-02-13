@@ -953,9 +953,9 @@ class ZeusApp(App):
     )
 
     def _get_screen_context(self, agent: AgentWindow) -> str:
-        text = get_screen_text(agent, full=True)
+        text = get_screen_text(agent)
         lines = text.splitlines()
-        recent = [l for l in lines if l.strip()][-200:]
+        recent = [l for l in lines if l.strip()][-50:]
         return "\n".join(recent)
 
     def _run_pi_summary(self, prompt: str) -> str:
@@ -1021,7 +1021,7 @@ class ZeusApp(App):
         )
 
     def _update_interact_stream(self) -> None:
-        """Update the stream portion of the interact panel."""
+        """Kick off background fetch for interact stream."""
         if not self._interact_visible or not self._interact_agent_key:
             return
         agent: AgentWindow | None = None
@@ -1031,13 +1031,25 @@ class ZeusApp(App):
                 break
         if not agent:
             return
-        # Fetch current visible screen (not full scrollback)
+        self._fetch_interact_stream(agent)
+
+    @work(thread=True, exclusive=True, group="interact_stream")
+    def _fetch_interact_stream(self, agent: AgentWindow) -> None:
+        """Fetch screen text in background thread."""
         screen_text = get_screen_text(agent)
-        stream = self.query_one("#interact-stream", Static)
         lines = screen_text.splitlines()
-        recent = [l for l in lines if l.strip()][-200:]
+        recent = [l for l in lines if l.strip()]
+        self.call_from_thread(self._apply_interact_stream, agent.name, recent)
+
+    def _apply_interact_stream(
+        self, name: str, recent: list[str]
+    ) -> None:
+        """Apply fetched stream content on the main thread."""
+        if not self._interact_visible:
+            return
+        stream = self.query_one("#interact-stream", Static)
         if not recent:
-            stream.update(f"  [{agent.name}] (no output)")
+            stream.update(f"  [{name}] (no output)")
             return
         t = Text()
         t.append("── output ──\n", style="bold #00d7d7")
