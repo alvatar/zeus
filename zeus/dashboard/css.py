@@ -130,7 +130,6 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-input {
-    dock: bottom;
     height: auto;
     min-height: 1;
     max-height: 8;
