@@ -131,6 +131,7 @@ class ZeusApp(App):
                 id="interact-input",
             ),
             Static("[dim]Loading summary…[/]", id="interact-summary"),
+            Static("", id="interact-stream"),
             id="interact-panel",
         )
         yield Static("", id="status-line")
@@ -147,6 +148,7 @@ class ZeusApp(App):
         self.set_interval(POLL_INTERVAL, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_log_panel)
+        self.set_interval(1.0, self._update_interact_stream)
 
     def update_clock(self) -> None:
         clock = self.query_one("#title-clock", Static)
@@ -566,6 +568,7 @@ class ZeusApp(App):
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
+        self._update_interact_stream()
         self.query_one("#interact-input", ZeusTextArea).focus()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
@@ -915,6 +918,7 @@ class ZeusApp(App):
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
+        self._update_interact_stream()
 
     def action_focus_interact(self) -> None:
         """Toggle focus between interact input and agent table."""
@@ -1015,6 +1019,27 @@ class ZeusApp(App):
         panel.update(
             f"[bold #00d7d7]── {name} ──[/]\n\n{summary}"
         )
+
+    def _update_interact_stream(self) -> None:
+        """Update the stream portion of the interact panel."""
+        if not self._interact_visible or not self._interact_agent_key:
+            return
+        agent: AgentWindow | None = None
+        for a in self.agents:
+            if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
+                agent = a
+                break
+        if not agent:
+            return
+        stream = self.query_one("#interact-stream", Static)
+        lines = agent._screen_text.splitlines()
+        recent = [l for l in lines if l.strip()][-200:]
+        if not recent:
+            stream.update(f"  [{agent.name}] (no output)")
+            return
+        header = f"[bold #00d7d7]── output ──[/]"
+        content = "\n".join(f"  {line.rstrip()}" for line in recent)
+        stream.update(f"{header}\n{content}")
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""

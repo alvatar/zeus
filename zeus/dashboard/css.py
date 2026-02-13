@@ -112,10 +112,17 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-summary {
-    height: 1fr;
-    overflow-y: auto;
+    height: 10;
     color: #cccccc;
     padding: 0 1;
+}
+
+#interact-stream {
+    height: 1fr;
+    overflow-y: auto;
+    color: #888888;
+    padding: 0 1;
+    border-top: solid #333333;
 }
 
 #interact-input {
