@@ -67,7 +67,6 @@ DataTable > .datatable--odd-row {
 }
 
 #status-line {
-    dock: bottom;
     height: 1;
     padding: 0 1;
     background: #0a1a2a;
