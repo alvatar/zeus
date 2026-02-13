@@ -300,12 +300,10 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Navigation ───"),
-    ("Enter", "Open / refresh interact panel"),
+    ("Enter", "Focus interact input"),
+    ("Esc", "Back to agent table"),
     ("Ctrl+Enter", "Teleport to agent / open tmux"),
-    ("e", "Expand agent output"),
-    ("Esc", "Close panel"),
     ("", "─── Interact Panel ───"),
-    ("Ctrl+f", "Toggle focus: input ↔ table"),
     ("Ctrl+s", "Send message to agent / tmux"),
     ("Ctrl+e", "Queue message (Alt+Enter in pi)"),
     ("", "─── Agent Management ───"),
@@ -317,9 +315,10 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Settings ───"),
     ("F3", "Change summary model"),
     ("F4", "Toggle sort mode"),
+    ("F5", "Force refresh"),
     ("F6", "Toggle split layout"),
     ("F7", "Toggle AI summaries"),
-    ("F5", "Force refresh"),
+    ("F8", "Toggle interact panel"),
     ("?", "This help"),
     ("F10", "Quit Zeus"),
 ]

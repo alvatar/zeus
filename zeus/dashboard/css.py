@@ -82,21 +82,6 @@ DataTable > .datatable--odd-row {
     background: #050f15;
 }
 
-#log-panel {
-    dock: bottom;
-    height: 75vh;
-    padding: 0 1;
-    background: #0a0a0a;
-    color: #888888;
-    border-top: solid #333333;
-    overflow-y: auto;
-    display: none;
-}
-
-#log-panel.visible {
-    display: block;
-}
-
 #interact-panel {
     dock: bottom;
     height: 75vh;

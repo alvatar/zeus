@@ -76,16 +76,13 @@ class ZeusApp(App):
         Binding("q", "stop_agent", "Stop Agent"),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
-        Binding("enter", "open_interact", "Interact", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
-        Binding("e", "toggle_expand", "Expand"),
 
-        Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+e", "queue_interact", "Queue", show=False, priority=True),
 
@@ -93,6 +90,7 @@ class ZeusApp(App):
         Binding("f4", "toggle_sort", "Sort"),
         Binding("f6", "toggle_split", "Split"),
         Binding("f7", "toggle_summaries", "Summaries"),
+        Binding("f8", "toggle_interact_panel", "Panel"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
@@ -101,8 +99,8 @@ class ZeusApp(App):
     summary_model: str = SUMMARY_MODEL
     _summaries_enabled: bool = False
     _split_mode: bool = False
-    _log_visible: bool = False
-    _interact_visible: bool = False
+    _interact_visible: bool = True
+    _highlight_timer: object | None = None
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
     _idle_summaries: dict[str, str] = {}
@@ -141,15 +139,15 @@ class ZeusApp(App):
             ),
             id="table-container",
         )
-        yield Static("", id="log-panel")
         yield Vertical(
-            Static("[dim]Loading summary…[/]", id="interact-summary"),
+            Static("", id="interact-summary"),
             Static("", id="interact-stream"),
             ZeusTextArea(
                 "",
                 id="interact-input",
             ),
             id="interact-panel",
+            classes="visible",
         )
         yield Static("", id="status-line")
 
@@ -176,7 +174,6 @@ class ZeusApp(App):
         self.poll_and_update()
         self.set_interval(POLL_INTERVAL, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
-        self.set_interval(1.0, self._update_log_panel)
         self.set_interval(1.0, self._update_interact_stream)
 
     def update_clock(self) -> None:
@@ -380,8 +377,8 @@ class ZeusApp(App):
             if s < 3600:
                 return f"{s // 60}m"
             if s < 86400:
-                return f"{s // 3600}h{(s % 3600) // 60}m"
-            return f"{s // 86400}d{(s % 86400) // 3600}h"
+                return f"{s // 3600}h"
+            return f"{s // 86400}d"
 
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             akey: str = f"{a.socket}:{a.kitty_id}"
@@ -557,7 +554,6 @@ class ZeusApp(App):
             f"Poll: {POLL_INTERVAL}s"
         )
 
-        self._update_log_panel()
 
     # ── Selection helpers ─────────────────────────────────────────────
 
@@ -601,17 +597,6 @@ class ZeusApp(App):
         return None
 
     # ── Actions ───────────────────────────────────────────────────────
-
-    def action_open_interact(self) -> None:
-        """Enter: open interact panel or refresh it for the selected agent."""
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
-            return
-        if not self._interact_visible:
-            self.action_toggle_interact()
-        else:
-            self._refresh_interact_panel()
 
     def action_stop_agent(self) -> None:
         """Send ESC to the selected agent to stop it."""
@@ -795,18 +780,35 @@ class ZeusApp(App):
         if key == "enter" and isinstance(self.focused, DataTable):
             event.prevent_default()  # type: ignore[attr-defined]
             event.stop()  # type: ignore[attr-defined]
-            self.action_open_interact()
+            # Focus the interact input
+            if self._interact_visible:
+                self.query_one("#interact-input", ZeusTextArea).focus()
 
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
     ) -> None:
-        self._update_log_panel()
+        # Cancel previous timer
+        if self._highlight_timer is not None:
+            self._highlight_timer.stop()
+        # Schedule interact refresh after 0.5s
+        self._highlight_timer = self.set_timer(
+            0.5, self._on_highlight_settled,
+        )
+
+    def _on_highlight_settled(self) -> None:
+        """Called 0.5s after row highlight settles."""
+        self._highlight_timer = None
+        if self._interact_visible:
+            self._refresh_interact_panel()
 
     def on_data_table_row_selected(
         self, event: DataTable.RowSelected
     ) -> None:
-        self.action_open_interact()
+        # Click/Enter: immediate refresh + focus input
+        if self._interact_visible:
+            self._refresh_interact_panel()
+            self.query_one("#interact-input", ZeusTextArea).focus()
 
     _last_kill_time: float = 0.0
 
@@ -993,19 +995,8 @@ class ZeusApp(App):
         panel = self.query_one("#interact-panel", Vertical)
         if self._split_mode:
             panel.add_class("split")
-            # Auto-open interact panel in split mode
-            if not self._interact_visible:
-                self._interact_visible = True
-                panel.add_class("visible")
-                # Try to load the selected agent/tmux
-                self._refresh_interact_panel()
         else:
             panel.remove_class("split")
-            if self._interact_visible:
-                self._interact_visible = False
-                self._interact_agent_key = None
-                self._interact_tmux_name = None
-                panel.remove_class("visible")
         self._setup_table_columns()
         self.poll_and_update()
 
@@ -1029,18 +1020,24 @@ class ZeusApp(App):
         self.poll_and_update()
 
     def action_close_panel(self) -> None:
-        """Escape closes whichever bottom panel is open, or does nothing."""
+        """Escape: if in interact input, go back to table."""
+        if isinstance(self.focused, (ZeusTextArea, TextArea)):
+            self.query_one("#agent-table", DataTable).focus()
+            return
+
+    def action_toggle_interact_panel(self) -> None:
+        """F8: toggle interact panel visibility."""
+        panel = self.query_one("#interact-panel", Vertical)
         if self._interact_visible:
             self._interact_visible = False
             self._interact_agent_key = None
             self._interact_tmux_name = None
-            self.query_one("#interact-panel", Vertical).remove_class("visible")
+            panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
-            return
-        if self._log_visible:
-            self._log_visible = False
-            self.query_one("#log-panel", Static).remove_class("visible")
-            return
+        else:
+            self._interact_visible = True
+            panel.add_class("visible")
+            self._refresh_interact_panel()
 
     def action_toggle_interact(self) -> None:
         if len(self.screen_stack) > 1:
@@ -1053,11 +1050,6 @@ class ZeusApp(App):
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
             return
-
-        # Close expand panel if open
-        if self._log_visible:
-            self._log_visible = False
-            self.query_one("#log-panel", Static).remove_class("visible")
 
         tmux = self._get_selected_tmux()
         agent = self._get_selected_agent()
@@ -1097,17 +1089,6 @@ class ZeusApp(App):
             else:
                 summary_w.add_class("hidden")
         self._update_interact_stream()
-
-    def action_focus_interact(self) -> None:
-        """Toggle focus between interact input and agent table."""
-        if not self._interact_visible:
-            return
-        inp = self.query_one("#interact-input", ZeusTextArea)
-        table = self.query_one("#agent-table", DataTable)
-        if self.focused is inp:
-            table.focus()
-        else:
-            inp.focus()
 
     # ── Summary generation ────────────────────────────────────────────
 
@@ -1385,70 +1366,6 @@ class ZeusApp(App):
         )
         ta.clear()
         self.notify(f"Queued → {agent.name}", timeout=2)
-
-    def action_toggle_expand(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
-            return
-        # Close interact panel if open
-        if self._interact_visible:
-            self._interact_visible = False
-            self._interact_agent_key = None
-            self._interact_tmux_name = None
-            self.query_one("#interact-panel", Vertical).remove_class("visible")
-        self._log_visible = not self._log_visible
-        panel = self.query_one("#log-panel", Static)
-        if self._log_visible:
-            panel.add_class("visible")
-            self._update_log_panel()
-        else:
-            panel.remove_class("visible")
-
-    def _update_log_panel(self) -> None:
-        """Update the log panel with recent output of selected item."""
-        panel = self.query_one("#log-panel", Static)
-        if not self._log_visible:
-            return
-
-        max_lines: int = 200
-
-        tmux = self._get_selected_tmux()
-        if tmux:
-            try:
-                r = subprocess.run(
-                    ["tmux", "capture-pane", "-t", tmux.name,
-                     "-p", "-S", f"-{max_lines}"],
-                    capture_output=True, text=True, timeout=3)
-                if r.returncode == 0 and r.stdout.strip():
-                    lines: list[str] = r.stdout.splitlines()
-                    recent: list[str] = [
-                        l for l in lines if l.strip()
-                    ][-max_lines:]
-                    t = Text()
-                    t.append(
-                        f"── tmux: {tmux.name} ──\n",
-                        style="bold #00d787",
-                    )
-                    for line in recent:
-                        t.append(f"  {line.rstrip()}\n")
-                    panel.update(t)
-                    return
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
-            panel.update(f"  [tmux: {tmux.name}] (no output)")
-            return
-
-        agent = self._get_selected_agent()
-        if not agent:
-            panel.update("  No agent selected")
-            return
-        screen_text = get_screen_text(agent, ansi=True)
-        if not screen_text or not screen_text.strip():
-            panel.update(f"  [{agent.name}] (no output)")
-            return
-        t = Text.from_ansi(_kitty_ansi_to_standard(screen_text))
-        panel.update(t)
 
     def action_refresh(self) -> None:
         self.poll_and_update()
