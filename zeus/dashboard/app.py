@@ -84,7 +84,7 @@ class ZeusApp(App):
         Binding("f5", "refresh", "Refresh", show=False),
 
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
-        Binding("ctrl+e", "queue_interact", "Queue", show=False, priority=True),
+        Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
 
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
