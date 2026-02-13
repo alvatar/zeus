@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
+import tempfile
+import time
 from typing import ClassVar, cast
 
 from textual.binding import Binding
@@ -23,6 +26,23 @@ def _as_binding(spec: Binding | tuple[str, ...]) -> Binding:
 _BASE_TEXTAREA_BINDINGS: list[Binding] = [
     _as_binding(spec) for spec in TextArea.BINDINGS
 ]
+
+_TEXT_CLIPBOARD_MIME_TYPES: tuple[str, ...] = (
+    "text/plain;charset=utf-8",
+    "text/plain",
+    "UTF8_STRING",
+    "STRING",
+    "TEXT",
+    "text",
+)
+
+_IMAGE_CLIPBOARD_MIME_TO_EXT: dict[str, str] = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+}
 
 
 class ZeusDataTable(DataTable):
@@ -64,18 +84,97 @@ class ZeusTextArea(TextArea):
         """Clear entire text area."""
         self.clear()
 
-    def action_paste(self) -> None:
-        """Paste from system clipboard (wl-paste for Wayland)."""
+    def _wl_paste_types(self) -> list[str]:
+        """Return MIME types currently offered by the Wayland clipboard."""
         try:
             r = subprocess.run(
-                ["wl-paste", "--no-newline"],
-                capture_output=True, text=True, timeout=2,
+                ["wl-paste", "--list-types"],
+                capture_output=True,
+                text=True,
+                timeout=1,
             )
-            if r.returncode == 0 and r.stdout:
-                self.insert(r.stdout)
-                return
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+            return []
+        if r.returncode != 0:
+            return []
+        return [line.strip() for line in r.stdout.splitlines() if line.strip()]
+
+    def _paste_text_from_wl_clipboard(self, offered_types: list[str]) -> str | None:
+        """Return clipboard text from wl-paste, or None if unavailable."""
+        candidates: list[str] = []
+        for mime in offered_types:
+            lower = mime.lower()
+            if lower.startswith("text/") or mime in {"UTF8_STRING", "STRING", "TEXT"}:
+                candidates.append(mime)
+        for mime in _TEXT_CLIPBOARD_MIME_TYPES:
+            if mime not in candidates:
+                candidates.append(mime)
+
+        for mime in candidates:
+            try:
+                r = subprocess.run(
+                    ["wl-paste", "--no-newline", "--type", mime],
+                    capture_output=True,
+                    timeout=2,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                return None
+            if r.returncode != 0 or not r.stdout:
+                continue
+            try:
+                return r.stdout.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+        return None
+
+    def _paste_image_from_wl_clipboard(self, offered_types: list[str]) -> Path | None:
+        """Save clipboard image bytes to a temp file and return its path."""
+        mime: str | None = None
+        for offered in offered_types:
+            if offered in _IMAGE_CLIPBOARD_MIME_TO_EXT:
+                mime = offered
+                break
+        if mime is None:
+            return None
+
+        try:
+            r = subprocess.run(
+                ["wl-paste", "--type", mime],
+                capture_output=True,
+                timeout=2,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+        if r.returncode != 0 or not r.stdout:
+            return None
+
+        ext = _IMAGE_CLIPBOARD_MIME_TO_EXT[mime]
+        folder = Path(tempfile.gettempdir()) / "zeus-clipboard"
+        suffix = int(time.time() * 1000) % 1000
+        filename = f"paste-{time.strftime('%Y%m%d-%H%M%S')}-{suffix:03d}.{ext}"
+        path = folder / filename
+
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(r.stdout)
+        except OSError:
+            return None
+        return path
+
+    def action_paste(self) -> None:
+        """Paste text from clipboard, or save images and insert their path."""
+        offered_types = self._wl_paste_types()
+
+        text = self._paste_text_from_wl_clipboard(offered_types)
+        if text:
+            self.insert(text)
+            return
+
+        image_path = self._paste_image_from_wl_clipboard(offered_types)
+        if image_path is not None:
+            self.insert(str(image_path))
+            return
+
         # Fallback to Textual internal clipboard
         super().action_paste()
 

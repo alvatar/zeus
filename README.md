@@ -75,7 +75,7 @@ zeus kill fix-auth                   # Close an agent's window
 | `Ctrl+Enter` | Teleport to selected agent / open tmux client |
 | `Ctrl+S` | Send interact input |
 | `Ctrl+W` | Queue interact input (Alt+Enter in pi) |
-| `Ctrl+Y` | Paste clipboard into interact input |
+| `Ctrl+Y` | Paste clipboard text; if image, save temp file and insert path |
 | `q` | Stop selected agent (send ESC) |
 | `Ctrl+Q` | Stop selected agent from any focus (including input) |
 | `k` | Kill selected agent / tmux session (with confirmation) |
