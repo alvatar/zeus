@@ -350,7 +350,9 @@ class ZeusApp(App):
 
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             akey: str = f"{a.socket}:{a.kitty_id}"
-            waiting: bool = akey in self._action_needed
+            waiting: bool = (
+                a.state == State.IDLE and akey in self._action_needed
+            )
 
             if waiting:
                 icon = "⏸"
