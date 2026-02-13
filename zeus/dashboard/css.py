@@ -39,7 +39,9 @@ Screen {
     margin: 0 2 0 0;
 }
 
-
+#table-container {
+    background: #000000;
+}
 
 #agent-table {
     height: 1fr;
@@ -67,10 +69,7 @@ DataTable > .datatable--odd-row {
 }
 
 #status-line {
-    height: 1;
-    padding: 0 1;
-    background: #0a1a2a;
-    color: #447777;
+    display: none;
 }
 
 #openai-usage-bar {
@@ -84,6 +83,7 @@ DataTable > .datatable--odd-row {
     max-height: 8;
     color: #cccccc;
     padding: 0 2;
+    margin: 0 0 1 0;
     display: none;
 }
 
@@ -91,25 +91,31 @@ DataTable > .datatable--odd-row {
     display: block;
 }
 
-#main-content {
-    height: 1fr;
-}
-
-#table-container {
-    width: 1fr;
-    background: #000000;
-}
-
 #interact-panel {
-    display: none;
+    dock: bottom;
+    height: 75vh;
+    margin-bottom: 1;
     padding: 0 1;
     background: #0a0a0a;
+    border-top: solid #00d7d7;
+    display: none;
 }
 
-#interact-panel.visible.split {
+#interact-panel.visible {
     display: block;
+}
+
+#interact-panel.split {
+    dock: right;
     width: 50%;
+    height: 100%;
+    margin-bottom: 0;
+    border-top: none;
     border-left: solid #00d7d7;
+}
+
+#interact-panel.split.visible {
+    display: block;
 }
 
 #interact-summary {
@@ -130,9 +136,9 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-input {
-    height: auto;
-    min-height: 1;
-    max-height: 8;
+    dock: bottom;
+    height: 3;
+    min-height: 3;
     background: #0a0a0a;
     border: none;
     border-top: solid #333333;

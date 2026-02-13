@@ -822,6 +822,15 @@ class ZeusApp(App):
                 self.query_one("#interact-input", ZeusTextArea).focus()
 
 
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        """Resize interact input to fit content (1 line min, 8 max)."""
+        ta = event.text_area
+        if ta.id != "interact-input":
+            return
+        lines = ta.document.line_count
+        h = max(1, min(8, lines)) + 2  # +2 for border + padding
+        ta.styles.height = h
+
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
     ) -> None:
