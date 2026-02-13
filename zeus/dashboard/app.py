@@ -1280,17 +1280,17 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        # Strip pi's input area + status bar: cut at 2nd horizontal
-        # line from the bottom (lines made of ─ characters).
-        # Only search the last 6 lines — pi chrome is always there.
+        # Strip pi's input area + status bar: scan from the absolute
+        # bottom to find the 2 separator lines (all ─ characters).
+        # The last line is always the status bar, then separator,
+        # then input area, then separator. Content ─ lines are above.
         _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
         lines = screen_text.splitlines(keepends=True)
         sep_count = 0
         cut_at = len(lines)
-        search_start = max(0, len(lines) - 6)
-        for i in range(len(lines) - 1, search_start - 1, -1):
+        for i in range(len(lines) - 1, -1, -1):
             plain = _ansi_re.sub("", lines[i]).strip()
-            if plain and all(c == "─" for c in plain):
+            if len(plain) >= 20 and all(c == "─" for c in plain):
                 sep_count += 1
                 if sep_count == 2:
                     cut_at = i
