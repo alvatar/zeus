@@ -68,7 +68,7 @@ class ZeusApp(App):
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
         Binding("enter", "open_interact", "Interact", priority=True),
-        Binding("shift+enter", "focus_agent", "Teleport"),
+        Binding("shift+enter", "focus_agent", "Teleport", priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
