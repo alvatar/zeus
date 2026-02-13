@@ -67,7 +67,7 @@ class ZeusApp(App):
         Binding("q", "quit", "Quit"),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
-        Binding("enter", "open_interact", "Interact", priority=True),
+        Binding("enter", "open_interact", "Interact", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
@@ -637,6 +637,14 @@ class ZeusApp(App):
             self.notify(f"Attached: {sess.name}", timeout=2)
 
     # ── Event handlers ────────────────────────────────────────────────
+
+    def on_key(self, event: object) -> None:
+        """Intercept Enter when DataTable has focus to open interact."""
+        key = getattr(event, "key", "")
+        if key == "enter" and isinstance(self.focused, DataTable):
+            event.prevent_default()  # type: ignore[attr-defined]
+            event.stop()  # type: ignore[attr-defined]
+            self.action_open_interact()
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
