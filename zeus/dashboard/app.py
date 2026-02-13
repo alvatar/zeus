@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 from enum import Enum
 import os
 import subprocess
@@ -18,10 +19,13 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Static, Label, Input
+from textual import work
 from rich.text import Text
 
 from ..config import POLL_INTERVAL
-from ..models import AgentWindow, TmuxSession, State
+from ..models import (
+    AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
+)
 from ..process import _fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
@@ -40,6 +44,19 @@ from .screens import (
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
 )
+
+
+@dataclass
+class PollResult:
+    """Data gathered by the background poll worker."""
+    agents: list[AgentWindow] = field(default_factory=list)
+    usage: UsageData = field(default_factory=UsageData)
+    openai: OpenAIUsageData = field(default_factory=OpenAIUsageData)
+    # State tracking deltas computed in the worker
+    state_changed_at: dict[int, float] = field(default_factory=dict)
+    prev_states: dict[int, State] = field(default_factory=dict)
+    idle_since: dict[int, float] = field(default_factory=dict)
+    idle_notified: set[int] = field(default_factory=set)
 
 
 class ZeusApp(App):
@@ -115,14 +132,20 @@ class ZeusApp(App):
         clock.update(f"  {time.strftime('%H:%M:%S')}")
 
     def poll_and_update(self) -> None:
-        self.agents = discover_agents()
+        """Kick off background data gathering."""
+        self._poll_worker()
+
+    @work(thread=True, exclusive=True, group="poll")
+    def _poll_worker(self) -> None:
+        """Gather all data in a background thread (no UI access)."""
+        agents = discover_agents()
         pid_ws: dict[int, str] = build_pid_workspace_map()
         tmux_sessions: list[TmuxSession] = discover_tmux_sessions()
 
-        # Proactively populate OpenAI cache (throttled)
-        _ = read_openai_usage()
+        usage = read_usage()
+        openai = read_openai_usage()
 
-        for a in self.agents:
+        for a in agents:
             screen: str = get_screen_text(a)
             a._screen_text = screen
             a.state = detect_state(screen)
@@ -132,53 +155,83 @@ class ZeusApp(App):
             a.workspace = pid_ws.get(a.kitty_pid, "?")
             a.proc_metrics = read_process_metrics(a.kitty_pid)
 
-            # Track state transitions
-            now: float = time.time()
-            old: State | None = self.prev_states.get(a.kitty_id)
-            if a.kitty_id not in self.state_changed_at:
-                self.state_changed_at[a.kitty_id] = now
+        # Read tmux pane metrics in the worker too
+        match_tmux_to_agents(agents, tmux_sessions)
+        for a in agents:
+            for sess in a.tmux_sessions:
+                if sess.pane_pid:
+                    sess._proc_metrics = read_process_metrics(sess.pane_pid)
+
+        # Compute state tracking (uses mutable app state, but exclusive
+        # guarantees only one worker touches these at a time)
+        now: float = time.time()
+        state_changed_at = dict(self.state_changed_at)
+        prev_states = dict(self.prev_states)
+        idle_since = dict(self.idle_since)
+        idle_notified = set(self.idle_notified)
+
+        for a in agents:
+            old: State | None = prev_states.get(a.kitty_id)
+            if a.kitty_id not in state_changed_at:
+                state_changed_at[a.kitty_id] = now
             elif old is not None and old != a.state:
-                self.state_changed_at[a.kitty_id] = now
+                state_changed_at[a.kitty_id] = now
 
             if a.state == State.IDLE:
                 if old == State.WORKING:
-                    self.idle_since[a.kitty_id] = now
-                    self.idle_notified.discard(a.kitty_id)
+                    idle_since[a.kitty_id] = now
+                    idle_notified.discard(a.kitty_id)
             else:
-                self.idle_since.pop(a.kitty_id, None)
-                self.idle_notified.discard(a.kitty_id)
-            self.prev_states[a.kitty_id] = a.state
+                idle_since.pop(a.kitty_id, None)
+                idle_notified.discard(a.kitty_id)
+            prev_states[a.kitty_id] = a.state
 
-        match_tmux_to_agents(self.agents, tmux_sessions)
+        result = PollResult(
+            agents=agents,
+            usage=usage,
+            openai=openai,
+            state_changed_at=state_changed_at,
+            prev_states=prev_states,
+            idle_since=idle_since,
+            idle_notified=idle_notified,
+        )
+        self.call_from_thread(self._apply_poll_result, result)
+
+    def _apply_poll_result(self, r: PollResult) -> None:
+        """Apply gathered data to the UI (runs on the main thread)."""
+        # Commit state tracking
+        self.agents = r.agents
+        self.prev_states = r.prev_states
+        self.state_changed_at = r.state_changed_at
+        self.idle_since = r.idle_since
+        self.idle_notified = r.idle_notified
 
         # Update Claude usage bars
-        usage = read_usage()
-        if usage.available:
+        if r.usage.available:
             sess_bar = self.query_one("#usage-session", UsageBar)
-            sess_bar.pct = usage.session_pct
-            sess_left: str = _time_left(usage.session_resets_at)
+            sess_bar.pct = r.usage.session_pct
+            sess_left: str = _time_left(r.usage.session_resets_at)
             sess_bar.extra_text = f"({sess_left})" if sess_left else ""
 
             week_bar = self.query_one("#usage-week", UsageBar)
-            week_bar.pct = usage.week_pct
+            week_bar.pct = r.usage.week_pct
 
             extra_bar = self.query_one("#usage-extra", UsageBar)
-            extra_bar.pct = usage.extra_pct
-            if usage.extra_limit > 0:
+            extra_bar.pct = r.usage.extra_pct
+            if r.usage.extra_limit > 0:
                 extra_bar.extra_text = (
-                    f"${usage.extra_used / 100:.2f}"
-                    f"/${usage.extra_limit / 100:.2f}"
+                    f"${r.usage.extra_used / 100:.2f}"
+                    f"/${r.usage.extra_limit / 100:.2f}"
                 )
 
         # Update OpenAI usage bars
-        openai = read_openai_usage()
         o_sess = self.query_one("#openai-session", UsageBar)
         o_week = self.query_one("#openai-week", UsageBar)
-        if openai.available:
-            o_sess.pct = openai.requests_pct
-            left: str = _time_left(openai.requests_resets_at)
+        if r.openai.available:
+            o_sess.pct = r.openai.requests_pct
+            left: str = _time_left(r.openai.requests_resets_at)
             o_sess.extra_text = f"({left})" if left else ""
-            o_week.pct = openai.tokens_pct
+            o_week.pct = r.openai.tokens_pct
             o_week.extra_text = ""
         else:
             o_sess.pct = 0
@@ -302,13 +355,12 @@ class ZeusApp(App):
                 tmux_cmd: str | Text
                 tmux_age: str | Text
                 cleaned_cmd: str = _clean_tmux_cmd(sess.command)
-                # Read process metrics for the tmux pane process tree
                 cpu_t: str | Text = ""
                 ram_t: str | Text = ""
                 gpu_t: str | Text = ""
                 net_t: str | Text = ""
-                if sess.pane_pid:
-                    pm = read_process_metrics(sess.pane_pid)
+                pm = getattr(sess, '_proc_metrics', None)
+                if pm:
                     cpu_t = f"{pm.cpu_pct:.0f}%"
                     ram_t = f"{pm.ram_mb:.0f}M"
                     gpu_str: str = f"{pm.gpu_pct:.0f}%"

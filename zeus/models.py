@@ -18,6 +18,7 @@ class TmuxSession:
     created: int = 0           # unix timestamp
     attached: bool = False
     pane_pid: int = 0          # shell PID inside the tmux pane
+    _proc_metrics: Optional['ProcessMetrics'] = None
 
 
 @dataclass
