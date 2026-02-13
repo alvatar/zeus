@@ -69,11 +69,7 @@ DataTable > .datatable--odd-row {
 }
 
 #status-line {
-    dock: bottom;
-    height: 1;
-    padding: 0 1;
-    background: #0a1a2a;
-    color: #447777;
+    display: none;
 }
 
 #openai-usage-bar {
@@ -135,12 +131,14 @@ DataTable > .datatable--odd-row {
 #interact-stream {
     height: 1fr;
     overflow-y: auto;
-    padding: 0 1;
+    padding: 0 1 1 1;
     border-top: solid #333333;
 }
 
 #interact-input {
-    height: 2;
+    dock: bottom;
+    height: 3;
+    min-height: 3;
     background: #0a0a0a;
     border: none;
     border-top: solid #333333;

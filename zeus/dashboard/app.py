@@ -84,7 +84,7 @@ class ZeusApp(App):
         Binding("f5", "refresh", "Refresh", show=False),
 
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
-        Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
+        Binding("ctrl+e", "queue_interact", "Queue", show=False, priority=True),
 
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
@@ -166,15 +166,13 @@ class ZeusApp(App):
 
     # Columns that get a fixed width (label → width)
     _COL_WIDTHS: dict[str, int] = {"Elapsed": 5}
-    _COL_WIDTHS_SPLIT: dict[str, int] = {"Elapsed": 4}
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
         table.clear(columns=True)
         cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
-        widths = self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
         for col in cols:
-            w = widths.get(col)
+            w = self._COL_WIDTHS.get(col)
             if w is not None:
                 table.add_column(col, width=w)
             else:
@@ -830,7 +828,7 @@ class ZeusApp(App):
         if ta.id != "interact-input":
             return
         lines = ta.document.line_count
-        h = max(1, min(8, lines)) + 1  # +1 for border-top
+        h = max(1, min(8, lines)) + 2  # +2 for border + padding
         ta.styles.height = h
 
     def on_data_table_row_highlighted(
@@ -1253,14 +1251,14 @@ class ZeusApp(App):
         if not lines:
             stream.update(f"  [tmux:{name}] (no output)")
             return
-        # Trim from top to fit panel (subtract border/chrome)
-        avail = stream.content_size.height - 1
-        if avail > 0 and len(lines) > avail:
+        # Trim from top to fit panel
+        avail = stream.size.height
+        if avail and len(lines) > avail:
             lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        self.call_later(stream.scroll_end, animate=False)
+        stream.scroll_end(animate=False)
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1280,32 +1278,29 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        # Strip pi's bottom chrome. From the bottom the structure is:
-        #   status bar (1 line) → ─── separator → input area → ─── separator
-        # Scan upward: once we find the 1st separator, everything
-        # between it and the 2nd separator is the input area (blank
-        # or short text). If we hit a long non-separator, non-blank
-        # line after the 1st sep, stop — we've left the chrome zone.
+        # Strip pi's input area + status bar: cut at 2nd horizontal
+        # line from the bottom (lines made of ─ characters).
+        # ANSI escapes must be stripped for detection.
         _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
         lines = screen_text.splitlines(keepends=True)
         sep_count = 0
         cut_at = len(lines)
         for i in range(len(lines) - 1, -1, -1):
             plain = _ansi_re.sub("", lines[i]).strip()
-            is_sep = len(plain) >= 20 and all(c == "─" for c in plain)
-            if is_sep:
+            if plain and all(c == "─" for c in plain):
                 sep_count += 1
                 if sep_count == 2:
                     cut_at = i
                     break
-            elif sep_count == 1 and len(plain) > 60:
-                # Long content line after 1st separator — not chrome
-                break
         lines = lines[:cut_at]
+        # Trim from top so bottom of output is always visible.
+        avail = stream.size.height
+        if avail and len(lines) > avail:
+            lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        self.call_later(stream.scroll_end, animate=False)
+        stream.scroll_end(animate=False)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
