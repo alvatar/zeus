@@ -628,6 +628,10 @@ class ZeusApp(App):
         )
         self.notify(f"ESC → {agent.name}", timeout=2)
 
+    def on_app_focus(self, event: object) -> None:
+        """When terminal window gains focus, focus the agent table."""
+        self.query_one("#agent-table", DataTable).focus()
+
     def action_focus_agent(self) -> None:
         """Ctrl+Enter: teleport to the agent's kitty window or tmux client."""
         tmux = self._get_selected_tmux()
