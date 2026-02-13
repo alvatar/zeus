@@ -39,9 +39,7 @@ Screen {
     margin: 0 2 0 0;
 }
 
-#table-container {
-    background: #000000;
-}
+
 
 #agent-table {
     height: 1fr;
@@ -94,30 +92,25 @@ DataTable > .datatable--odd-row {
     display: block;
 }
 
+#main-content {
+    height: 1fr;
+}
+
+#table-container {
+    width: 1fr;
+    background: #000000;
+}
+
 #interact-panel {
-    dock: bottom;
-    height: 75vh;
-    margin-bottom: 1;
+    display: none;
     padding: 0 1;
     background: #0a0a0a;
-    border-top: solid #00d7d7;
-    display: none;
 }
 
-#interact-panel.visible {
+#interact-panel.visible.split {
     display: block;
-}
-
-#interact-panel.split {
-    dock: right;
     width: 50%;
-    height: 1fr;
-    border-top: none;
     border-left: solid #00d7d7;
-}
-
-#interact-panel.split.visible {
-    display: block;
 }
 
 #interact-summary {

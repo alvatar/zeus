@@ -131,24 +131,27 @@ class ZeusApp(App):
             ),
             id="top-bars",
         )
-        yield Vertical(
-            ZeusDataTable(
-                id="agent-table",
-                cursor_foreground_priority="renderable",
-                cursor_background_priority="css",
+        yield Horizontal(
+            Vertical(
+                ZeusDataTable(
+                    id="agent-table",
+                    cursor_foreground_priority="renderable",
+                    cursor_background_priority="css",
+                ),
+                Static("", id="left-summary"),
+                id="table-container",
             ),
-            Static("", id="left-summary"),
-            id="table-container",
-        )
-        yield Vertical(
-            Static("", id="interact-summary"),
-            Static("", id="interact-stream"),
-            ZeusTextArea(
-                "",
-                id="interact-input",
+            Vertical(
+                Static("", id="interact-summary"),
+                Static("", id="interact-stream"),
+                ZeusTextArea(
+                    "",
+                    id="interact-input",
+                ),
+                id="interact-panel",
+                classes="visible split",
             ),
-            id="interact-panel",
-            classes="visible split",
+            id="main-content",
         )
         yield Static("", id="status-line")
 
