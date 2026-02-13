@@ -15,10 +15,14 @@ from .models import AgentWindow
 from .sessions import find_current_session, fork_session
 
 
-def kitty_cmd(socket: str, *args: str) -> str | None:
+def kitty_cmd(
+    socket: str, *args: str, timeout: float = 3,
+) -> str | None:
     cmd: list[str] = ["kitty", "@", "--to", f"unix:{socket}"] + list(args)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+        )
         if r.returncode == 0:
             return r.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
