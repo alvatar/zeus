@@ -75,7 +75,7 @@ class ZeusApp(App):
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("e", "toggle_expand", "Expand"),
         Binding("d", "toggle_interact", "Interact"),
-        Binding("ctrl+d", "focus_interact", "Focus", show=False, priority=True),
+        Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
