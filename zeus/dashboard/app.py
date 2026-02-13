@@ -71,8 +71,8 @@ class ZeusApp(App):
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
-        Binding("e", "toggle_expand", "Expand"),
-        Binding("d", "toggle_sort", "Sort"),
+        Binding("d", "toggle_expand", "Detail"),
+        Binding("f4", "toggle_sort", "Sort"),
     ]
 
     agents: list[AgentWindow] = []
@@ -751,23 +751,25 @@ class ZeusApp(App):
             panel.remove_class("visible")
 
     def _update_log_panel(self) -> None:
-        """Update the log panel with the last 20 lines of selected item."""
+        """Update the log panel with recent output of selected item."""
         panel = self.query_one("#log-panel", Static)
         if not self._log_visible:
             return
+
+        max_lines: int = 200
 
         tmux = self._get_selected_tmux()
         if tmux:
             try:
                 r = subprocess.run(
                     ["tmux", "capture-pane", "-t", tmux.name,
-                     "-p", "-S", "-20"],
+                     "-p", "-S", f"-{max_lines}"],
                     capture_output=True, text=True, timeout=3)
                 if r.returncode == 0 and r.stdout.strip():
                     lines: list[str] = r.stdout.splitlines()
                     recent: list[str] = [
                         l for l in lines if l.strip()
-                    ][-20:]
+                    ][-max_lines:]
                     header: str = (
                         f"[bold #00d787]── tmux: {tmux.name} ──[/]"
                     )
@@ -786,7 +788,7 @@ class ZeusApp(App):
             panel.update("  No agent selected")
             return
         lines = agent._screen_text.splitlines()
-        recent = [l for l in lines if l.strip()][-20:]
+        recent = [l for l in lines if l.strip()][-max_lines:]
         if not recent:
             panel.update(f"  [{agent.name}] (no output)")
             return

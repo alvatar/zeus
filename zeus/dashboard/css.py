@@ -84,7 +84,7 @@ DataTable > .datatable--odd-row {
 
 #log-panel {
     dock: bottom;
-    height: 22;
+    height: 75vh;
     padding: 0 1;
     background: #0a0a0a;
     color: #888888;
