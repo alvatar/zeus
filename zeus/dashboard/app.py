@@ -1282,12 +1282,13 @@ class ZeusApp(App):
             return
         # Strip pi's input area + status bar: cut at 2nd horizontal
         # line from the bottom (lines made of ─ characters).
-        # ANSI escapes must be stripped for detection.
+        # Only search the last 6 lines — pi chrome is always there.
         _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
         lines = screen_text.splitlines(keepends=True)
         sep_count = 0
         cut_at = len(lines)
-        for i in range(len(lines) - 1, -1, -1):
+        search_start = max(0, len(lines) - 6)
+        for i in range(len(lines) - 1, search_start - 1, -1):
             plain = _ansi_re.sub("", lines[i]).strip()
             if plain and all(c == "─" for c in plain):
                 sep_count += 1
