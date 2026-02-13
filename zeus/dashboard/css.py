@@ -82,6 +82,18 @@ DataTable > .datatable--odd-row {
     background: #050f15;
 }
 
+#left-summary {
+    height: auto;
+    max-height: 8;
+    color: #cccccc;
+    padding: 0 2;
+    display: none;
+}
+
+#left-summary.visible {
+    display: block;
+}
+
 #interact-panel {
     dock: bottom;
     height: 75vh;

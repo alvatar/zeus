@@ -97,8 +97,8 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.STATE_ELAPSED
     summary_model: str = SUMMARY_MODEL
-    _summaries_enabled: bool = False
-    _split_mode: bool = False
+    _summaries_enabled: bool = True
+    _split_mode: bool = True
     _interact_visible: bool = True
     _highlight_timer: object | None = None
     _interact_agent_key: str | None = None
@@ -137,6 +137,7 @@ class ZeusApp(App):
                 cursor_foreground_priority="renderable",
                 cursor_background_priority="css",
             ),
+            Static("", id="left-summary"),
             id="table-container",
         )
         yield Vertical(
@@ -147,7 +148,7 @@ class ZeusApp(App):
                 id="interact-input",
             ),
             id="interact-panel",
-            classes="visible",
+            classes="visible split",
         )
         yield Static("", id="status-line")
 
@@ -661,14 +662,46 @@ class ZeusApp(App):
         if agent:
             focus_window(agent)
 
+    def _update_summary_widget(
+        self, name: str, content: str | None, generating: str | None = None,
+        agent: "AgentWindow | None" = None,
+    ) -> None:
+        """Route summary content to the correct widget based on layout."""
+        left_w = self.query_one("#left-summary", Static)
+        interact_w = self.query_one("#interact-summary", Static)
+        if self._split_mode:
+            target = left_w
+            interact_w.add_class("hidden")
+        else:
+            target = interact_w
+            left_w.remove_class("visible")
+
+        if content:
+            target.remove_class("hidden")
+            target.add_class("visible")
+            target.update(
+                f"[bold #00d7d7]── {name} ──[/]\n\n{content}"
+            )
+        elif generating:
+            target.remove_class("hidden")
+            target.add_class("visible")
+            target.update(
+                f"[bold #00d7d7]── {name} ──[/]\n\n"
+                f"[dim]Generating {generating}…[/]"
+            )
+            if agent:
+                self._generate_on_demand_summary(agent)
+        else:
+            target.add_class("hidden")
+            target.remove_class("visible")
+
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
         tmux = self._get_selected_tmux()
         if tmux:
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
-            summary_w = self.query_one("#interact-summary", Static)
-            summary_w.add_class("hidden")
+            self._update_summary_widget(tmux.name, None)
             self._update_interact_stream()
             return
         agent = self._get_selected_agent()
@@ -677,24 +710,17 @@ class ZeusApp(App):
         key = f"{agent.socket}:{agent.kitty_id}"
         self._interact_agent_key = key
         self._interact_tmux_name = None
-        summary_w = self.query_one("#interact-summary", Static)
         if agent.state == State.IDLE and key in self._idle_summaries:
-            summary_w.remove_class("hidden")
-            summary_w.update(
-                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                f"{self._idle_summaries[key]}"
+            self._update_summary_widget(
+                agent.name, self._idle_summaries[key],
             )
         elif self._summaries_enabled:
-            summary_w.remove_class("hidden")
             label = "status" if agent.state == State.WORKING else "triage"
-            summary_w.update(
-                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                f"[dim]Generating {label}…[/]"
+            self._update_summary_widget(
+                agent.name, None, generating=label, agent=agent,
             )
-            self._generate_on_demand_summary(agent)
         else:
-            summary_w.add_class("hidden"
-            )
+            self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
@@ -801,7 +827,7 @@ class ZeusApp(App):
             self._highlight_timer.stop()
         # Schedule interact refresh after 0.5s
         self._highlight_timer = self.set_timer(
-            0.5, self._on_highlight_settled,
+            0.3, self._on_highlight_settled,
         )
 
     def _on_highlight_settled(self) -> None:
@@ -1005,8 +1031,12 @@ class ZeusApp(App):
             panel.add_class("split")
         else:
             panel.remove_class("split")
+            self.query_one("#left-summary", Static).remove_class("visible")
         self._setup_table_columns()
         self.poll_and_update()
+        # Re-route summary to correct widget
+        if self._interact_visible:
+            self._refresh_interact_panel()
 
     def action_toggle_summaries(self) -> None:
         self._summaries_enabled = not self._summaries_enabled
@@ -1059,44 +1089,11 @@ class ZeusApp(App):
             self.query_one("#agent-table", DataTable).focus()
             return
 
-        tmux = self._get_selected_tmux()
-        agent = self._get_selected_agent()
-        if not tmux and not agent:
-            self.notify("No agent selected", timeout=2)
-            return
-
         self._interact_visible = True
         panel.add_class("visible")
-        summary_w = self.query_one("#interact-summary", Static)
         ta = self.query_one("#interact-input", ZeusTextArea)
         ta.clear()
-
-        if tmux:
-            self._interact_agent_key = None
-            self._interact_tmux_name = tmux.name
-            summary_w.add_class("hidden")
-        else:
-            assert agent is not None
-            key = f"{agent.socket}:{agent.kitty_id}"
-            self._interact_agent_key = key
-            self._interact_tmux_name = None
-            if agent.state == State.IDLE and key in self._idle_summaries:
-                summary_w.remove_class("hidden")
-                summary_w.update(
-                    f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                    f"{self._idle_summaries[key]}"
-                )
-            elif self._summaries_enabled:
-                summary_w.remove_class("hidden")
-                label = "status" if agent.state == State.WORKING else "triage"
-                summary_w.update(
-                    f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                    f"[dim]Generating {label}…[/]"
-                )
-                self._generate_on_demand_summary(agent)
-            else:
-                summary_w.add_class("hidden")
-        self._update_interact_stream()
+        self._refresh_interact_panel()
 
     # ── Summary generation ────────────────────────────────────────────
 
@@ -1192,13 +1189,8 @@ class ZeusApp(App):
         self._idle_summary_pending.discard(key)
 
     def _apply_interact_summary(self, name: str, summary: str) -> None:
-        """Apply generated summary to the interact panel (main thread)."""
-        if not self._interact_visible:
-            return
-        panel = self.query_one("#interact-summary", Static)
-        panel.update(
-            f"[bold #00d7d7]── {name} ──[/]\n\n{summary}"
-        )
+        """Apply generated summary to the correct widget (main thread)."""
+        self._update_summary_widget(name, summary)
 
     def _update_interact_stream(self) -> None:
         """Kick off background fetch for interact stream."""
