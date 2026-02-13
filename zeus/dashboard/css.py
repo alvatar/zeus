@@ -211,6 +211,37 @@ RenameScreen, RenameTmuxScreen {
 }
 """
 
+HELP_CSS = """
+HelpScreen {
+    align: center middle;
+}
+
+#help-dialog {
+    width: 50;
+    height: auto;
+    max-height: 30;
+    border: solid #00d7d7;
+    background: #0a0a0a;
+    padding: 1 3;
+}
+
+#help-dialog Label {
+    width: 100%;
+    margin: 0;
+    color: #cccccc;
+}
+
+#help-dialog .help-title {
+    color: #00d7d7;
+    text-style: bold;
+    margin: 0 0 1 0;
+}
+
+#help-dialog .help-key {
+    color: #00d7d7;
+}
+"""
+
 CONFIRM_KILL_CSS = """
 ConfirmKillScreen, ConfirmKillTmuxScreen {
     align: center middle;

@@ -1,4 +1,4 @@
-"""Modal screens: new agent, sub-agent, rename, confirm kill."""
+"""Modal screens: new agent, sub-agent, rename, confirm kill, help."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from .css import (
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
+    HELP_CSS,
 )
 
 if TYPE_CHECKING:
@@ -292,3 +293,41 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
     def action_confirm(self) -> None:
         self.zeus.do_kill_tmux(self.sess)
         self.dismiss()
+
+
+# ── Help ──────────────────────────────────────────────────────────────
+
+_HELP_BINDINGS: list[tuple[str, str]] = [
+    ("Enter", "Focus / attach selected"),
+    ("d", "Toggle detail panel"),
+    ("n", "New agent"),
+    ("s", "Spawn sub-agent"),
+    ("k", "Kill agent / tmux session"),
+    ("r", "Rename"),
+    ("F4", "Toggle sort mode"),
+    ("F5", "Force refresh"),
+    ("?", "This help"),
+    ("q / Esc", "Quit"),
+]
+
+
+class HelpScreen(ModalScreen):
+    CSS = HELP_CSS
+    BINDINGS = [Binding("escape", "dismiss", "Close", show=False)]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help-dialog"):
+            yield Label("⚡ Zeus — Keybindings", classes="help-title")
+            for key, desc in _HELP_BINDINGS:
+                yield Label(
+                    f"  [bold #00d7d7]{key:<12}[/]  {desc}"
+                )
+            yield Label("")
+            yield Label(
+                "  [dim]Press any key to close[/]",
+            )
+
+    def on_key(self, event: object) -> None:
+        self.dismiss()
+        event.stop()  # type: ignore[attr-defined]
+        event.prevent_default()  # type: ignore[attr-defined]

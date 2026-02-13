@@ -43,6 +43,7 @@ from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
+    HelpScreen,
 )
 
 
@@ -73,6 +74,7 @@ class ZeusApp(App):
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("d", "toggle_expand", "Detail"),
         Binding("f4", "toggle_sort", "Sort"),
+        Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
     agents: list[AgentWindow] = []
@@ -725,6 +727,11 @@ class ZeusApp(App):
             self.notify(f"Rename failed: {e}", timeout=3)
 
     # ── Log panel ─────────────────────────────────────────────────────
+
+    def action_show_help(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
+        self.push_screen(HelpScreen())
 
     def action_toggle_sort(self) -> None:
         if isinstance(self.focused, Input):
