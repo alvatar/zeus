@@ -1097,7 +1097,13 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        t = Text.from_ansi(screen_text)
+        # Only keep lines that fit the panel — trim from top so
+        # the bottom of the kitty screen is always visible.
+        lines = screen_text.splitlines(keepends=True)
+        avail = stream.size.height
+        if avail and len(lines) > avail:
+            lines = lines[-avail:]
+        t = Text.from_ansi("".join(lines))
         stream.update(t)
         stream.scroll_end(animate=False)
 
