@@ -1253,9 +1253,9 @@ class ZeusApp(App):
         if not lines:
             stream.update(f"  [tmux:{name}] (no output)")
             return
-        # Trim from top to fit panel
-        avail = stream.size.height
-        if avail and len(lines) > avail:
+        # Trim from top to fit panel (subtract border/chrome)
+        avail = stream.content_size.height - 1
+        if avail > 0 and len(lines) > avail:
             lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
@@ -1296,8 +1296,8 @@ class ZeusApp(App):
                     break
         lines = lines[:cut_at]
         # Trim from top so bottom of output is always visible.
-        avail = stream.size.height
-        if avail and len(lines) > avail:
+        avail = stream.content_size.height - 1
+        if avail > 0 and len(lines) > avail:
             lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)

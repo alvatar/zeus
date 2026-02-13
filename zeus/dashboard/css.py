@@ -135,7 +135,7 @@ DataTable > .datatable--odd-row {
 #interact-stream {
     height: 1fr;
     overflow-y: auto;
-    padding: 0 1 2 1;
+    padding: 0 1;
     border-top: solid #333333;
 }
 
