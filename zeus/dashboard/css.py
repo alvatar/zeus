@@ -119,18 +119,18 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-input {
-    dock: bottom;
+    dock: top;
     height: 3;
     background: #0a0a0a;
     border: none;
-    border-top: solid #333333;
+    border-bottom: solid #333333;
     padding: 0 1;
     color: #cccccc;
 }
 
 #interact-input:focus {
     border: none;
-    border-top: solid #00d7d7;
+    border-bottom: solid #00d7d7;
 }
 
 #interact-input>.input--cursor {

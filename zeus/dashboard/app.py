@@ -122,11 +122,11 @@ class ZeusApp(App):
         )
         yield Static("", id="log-panel")
         yield Vertical(
-            Static("[dim]Loading summary…[/]", id="interact-summary"),
             Input(
                 placeholder="send to agent…",
                 id="interact-input",
             ),
+            Static("[dim]Loading summary…[/]", id="interact-summary"),
             id="interact-panel",
         )
         yield Static("", id="status-line")
