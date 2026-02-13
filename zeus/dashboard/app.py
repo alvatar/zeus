@@ -11,7 +11,7 @@ import threading
 
 
 class SortMode(Enum):
-    STATE_TIME = "state+time"
+    STATE_ELAPSED = "state+elapsed"
     ALPHA = "alpha"
 
 from textual.app import App, ComposeResult
@@ -59,7 +59,7 @@ class ZeusApp(App):
     ]
 
     agents: list[AgentWindow] = []
-    sort_mode: SortMode = SortMode.STATE_TIME
+    sort_mode: SortMode = SortMode.STATE_ELAPSED
     _log_visible: bool = False
     prev_states: dict[int, State] = {}
     state_changed_at: dict[int, float] = {}
@@ -102,8 +102,8 @@ class ZeusApp(App):
         table.cursor_type = "row"
         table.zebra_stripes = True
         table.add_columns(
-            "Name", "State", "Model/Cmd", "Ctx", "CPU", "RAM",
-            "GPU", "Net", "WS", "CWD", "Tokens",
+            "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+            "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
         )
         self.poll_and_update()
         self.set_interval(POLL_INTERVAL, self.poll_and_update)
@@ -228,6 +228,16 @@ class ZeusApp(App):
         for kids in children_of.values():
             kids.sort(key=sort_key)
 
+        def _fmt_duration(seconds: float) -> str:
+            s = int(seconds)
+            if s < 60:
+                return f"{s}s"
+            if s < 3600:
+                return f"{s // 60}m"
+            if s < 86400:
+                return f"{s // 3600}h{(s % 3600) // 60}m"
+            return f"{s // 86400}d{(s % 86400) // 3600}h"
+
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             icon: str = {"WORKING": "▶", "IDLE": "⏹"}[a.state.value]
             state_color: str = {
@@ -235,8 +245,13 @@ class ZeusApp(App):
             }[a.state.value]
             name_text: str = f"{indent}🧬 {a.name}" if indent else a.name
             state_text = Text(
-                f"{icon} {a.state.value}", style=f"bold {state_color}"
+                f"{icon} {a.state.value}",
+                style=f"bold {state_color}",
             )
+            elapsed: float = time.time() - self.state_changed_at.get(
+                a.kitty_id, time.time()
+            )
+            elapsed_text = Text(_fmt_duration(elapsed), style="#cccccc")
             ctx_str: str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
             tok_str: str = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
@@ -257,7 +272,8 @@ class ZeusApp(App):
 
             row_key: str = f"{a.socket}:{a.kitty_id}"
             table.add_row(
-                name_text, state_text, a.model or "—", ctx_str,
+                name_text, state_text, elapsed_text,
+                a.model or "—", ctx_str,
                 cpu_text, ram_text, gpu_text, net_text,
                 a.workspace or "?", a.cwd, tok_str,
                 key=row_key,
@@ -318,7 +334,7 @@ class ZeusApp(App):
                             v.stylize(dim)
                 tmux_key: str = f"tmux:{sess.name}"
                 table.add_row(
-                    tmux_name, tmux_age, tmux_cmd,
+                    tmux_name, tmux_age, "", tmux_cmd,
                     "", cpu_t, ram_t, gpu_t, net_t, "", sess.cwd, "",
                     key=tmux_key,
                 )
@@ -663,10 +679,10 @@ class ZeusApp(App):
             return
         if len(self.screen_stack) > 1:
             return
-        if self.sort_mode == SortMode.STATE_TIME:
+        if self.sort_mode == SortMode.STATE_ELAPSED:
             self.sort_mode = SortMode.ALPHA
         else:
-            self.sort_mode = SortMode.STATE_TIME
+            self.sort_mode = SortMode.STATE_ELAPSED
         self.poll_and_update()
 
     def action_toggle_expand(self) -> None:
