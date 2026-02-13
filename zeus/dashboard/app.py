@@ -329,9 +329,14 @@ class ZeusApp(App):
                 children_of.setdefault(a.parent_name, []).append(a)
 
         def _state_sort_key(a: AgentWindow) -> tuple[int, float, str]:
-            # IDLE first, then oldest state change first, then name
-            pri: int = 0 if a.state == State.IDLE else 1
+            # WAITING (0) → WORKING (1) → IDLE (2)
             akey: str = f"{a.socket}:{a.kitty_id}"
+            if a.state == State.IDLE and akey in self._action_needed:
+                pri = 0  # WAITING
+            elif a.state == State.WORKING:
+                pri = 1
+            else:
+                pri = 2  # IDLE
             changed_at: float = self.state_changed_at.get(akey, time.time())
             return (pri, changed_at, a.name.lower())
 
