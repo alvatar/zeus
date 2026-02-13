@@ -67,14 +67,15 @@ class ZeusApp(App):
         Binding("q", "quit", "Quit"),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
-        Binding("enter", "focus_agent", "Focus Agent"),
+        Binding("enter", "open_interact", "Interact"),
+        Binding("shift+enter", "focus_agent", "Teleport"),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("e", "toggle_expand", "Expand"),
-        Binding("f", "toggle_interact", "Interact"),
+
         Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("f3", "change_model", "Model", show=False),
@@ -504,10 +505,19 @@ class ZeusApp(App):
 
     # ── Actions ───────────────────────────────────────────────────────
 
-    def action_focus_agent(self) -> None:
-        if self._interact_visible:
-            self._refresh_interact_panel()
+    def action_open_interact(self) -> None:
+        """Enter: open interact panel or refresh it for the selected agent."""
+        if isinstance(self.focused, (Input, TextArea)):
             return
+        if len(self.screen_stack) > 1:
+            return
+        if not self._interact_visible:
+            self.action_toggle_interact()
+        else:
+            self._refresh_interact_panel()
+
+    def action_focus_agent(self) -> None:
+        """Shift+Enter: always teleport to the agent's kitty window."""
         agent = self._get_selected_agent()
         if agent:
             focus_window(agent)
@@ -627,6 +637,8 @@ class ZeusApp(App):
     def on_data_table_row_selected(
         self, event: DataTable.RowSelected
     ) -> None:
+        if self._interact_visible:
+            return  # handled by action_open_interact
         self._activate_selected_row()
 
     _last_kill_time: float = 0.0

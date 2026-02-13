@@ -299,9 +299,9 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
 # ── Help ──────────────────────────────────────────────────────────────
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
-    ("Enter", "Focus / attach selected"),
+    ("Enter", "Open / refresh interact panel"),
+    ("Shift+Enter", "Teleport to agent"),
     ("e", "Expand agent output"),
-    ("f", "Interact with agent"),
     ("Ctrl+f", "Toggle focus: input ↔ table"),
     ("Ctrl+s", "Send message to agent"),
     ("n", "New agent"),
