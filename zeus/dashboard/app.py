@@ -1368,12 +1368,13 @@ class ZeusApp(App):
         if not agent:
             self.notify("Agent no longer available", timeout=2)
             return
-        # Send text, then Alt+Enter via kitty keyboard protocol CSI 13;3u
+        # Send text, Alt+Enter to queue, then Ctrl+U to clear pi's input
         kitty_cmd(
             agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", text + "\x1b[13;3u",
+            f"id:{agent.kitty_id}", text + "\x1b[13;3u\x15",
         )
         ta.clear()
+        ta.styles.height = 3
 
     def action_refresh(self) -> None:
         self.poll_and_update()
