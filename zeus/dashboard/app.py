@@ -64,7 +64,7 @@ class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
+        Binding("q", "stop_agent", "Stop Agent"),
         Binding("f10", "quit", "Quit"),
         Binding("escape", "close_panel", "Close", show=False),
         Binding("enter", "open_interact", "Interact", show=False),
@@ -524,6 +524,21 @@ class ZeusApp(App):
             self.action_toggle_interact()
         else:
             self._refresh_interact_panel()
+
+    def action_stop_agent(self) -> None:
+        """Send ESC to the selected agent to stop it."""
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        if len(self.screen_stack) > 1:
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            return
+        kitty_cmd(
+            agent.socket, "send-text", "--match",
+            f"id:{agent.kitty_id}", "\x1b",
+        )
+        self.notify(f"ESC → {agent.name}", timeout=2)
 
     def action_focus_agent(self) -> None:
         """Shift+Enter: always teleport to the agent's kitty window."""

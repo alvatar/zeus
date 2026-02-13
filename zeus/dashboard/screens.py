@@ -313,7 +313,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("F5", "Force refresh"),
     ("Esc", "Close panel"),
     ("?", "This help"),
-    ("q / F10", "Quit"),
+    ("q", "Stop agent (send ESC)"),
+    ("F10", "Quit Zeus"),
 ]
 
 
