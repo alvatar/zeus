@@ -18,7 +18,7 @@ class SortMode(Enum):
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DataTable, Static, Label, Input
+from textual.widgets import DataTable, Static, Label, Input, TextArea
 from textual import work
 from rich.text import Text
 
@@ -74,8 +74,9 @@ class ZeusApp(App):
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("e", "toggle_expand", "Expand"),
-        Binding("d", "toggle_interact", "Interact"),
+        Binding("f", "toggle_interact", "Interact"),
         Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
+        Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
@@ -124,8 +125,8 @@ class ZeusApp(App):
         )
         yield Static("", id="log-panel")
         yield Vertical(
-            Input(
-                placeholder="send to agent…",
+            TextArea(
+                "",
                 id="interact-input",
             ),
             Static("[dim]Loading summary…[/]", id="interact-summary"),
@@ -528,7 +529,7 @@ class ZeusApp(App):
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
-        self.query_one("#interact-input", Input).focus()
+        self.query_one("#interact-input", TextArea).focus()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
         """Focus the sway window running an attached tmux session."""
@@ -657,7 +658,7 @@ class ZeusApp(App):
     # ── Kill ──────────────────────────────────────────────────────────
 
     def action_kill_agent(self) -> None:
-        if isinstance(self.focused, Input):
+        if isinstance(self.focused, (Input, TextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -734,7 +735,7 @@ class ZeusApp(App):
         self.push_screen(NewAgentScreen())
 
     def action_spawn_subagent(self) -> None:
-        if isinstance(self.focused, Input):
+        if isinstance(self.focused, (Input, TextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -763,7 +764,7 @@ class ZeusApp(App):
             )
 
     def action_rename(self) -> None:
-        if isinstance(self.focused, Input):
+        if isinstance(self.focused, (Input, TextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -806,7 +807,7 @@ class ZeusApp(App):
         self.push_screen(HelpScreen())
 
     def action_toggle_sort(self) -> None:
-        if isinstance(self.focused, Input):
+        if isinstance(self.focused, (Input, TextArea)):
             return
         if len(self.screen_stack) > 1:
             return
@@ -852,8 +853,9 @@ class ZeusApp(App):
         self._interact_agent_key = key
         panel.add_class("visible")
         summary_w = self.query_one("#interact-summary", Static)
-        self.query_one("#interact-input", Input).value = ""
-        self.query_one("#interact-input", Input).focus()
+        ta = self.query_one("#interact-input", TextArea)
+        ta.clear()
+        ta.focus()
 
         if agent.state == State.IDLE and key in self._idle_summaries:
             # Show pre-computed summary instantly
@@ -873,7 +875,7 @@ class ZeusApp(App):
         """Toggle focus between interact input and agent table."""
         if not self._interact_visible:
             return
-        inp = self.query_one("#interact-input", Input)
+        inp = self.query_one("#interact-input", TextArea)
         table = self.query_one("#agent-table", DataTable)
         if self.focused is inp:
             table.focus()
@@ -976,14 +978,14 @@ class ZeusApp(App):
             f"id:{agent.kitty_id}", text + "\r",
         )
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle Enter in the interact input."""
-        if event.input.id != "interact-input":
+    def action_send_interact(self) -> None:
+        """Send text from interact input to the agent (Ctrl+Enter)."""
+        if not self._interact_visible:
             return
-        text = event.input.value.strip()
+        ta = self.query_one("#interact-input", TextArea)
+        text = ta.text.strip()
         if not text:
             return
-        # Find the agent we're interacting with
         agent: AgentWindow | None = None
         if self._interact_agent_key:
             for a in self.agents:
@@ -994,11 +996,11 @@ class ZeusApp(App):
             self.notify("Agent no longer available", timeout=2)
             return
         self._send_text_to_agent(agent, text)
-        event.input.value = ""
+        ta.clear()
         self.notify(f"Sent to {agent.name}", timeout=2)
 
     def action_toggle_expand(self) -> None:
-        if isinstance(self.focused, Input):
+        if isinstance(self.focused, (Input, TextArea)):
             return
         if len(self.screen_stack) > 1:
             return

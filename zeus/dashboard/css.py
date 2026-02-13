@@ -120,7 +120,7 @@ DataTable > .datatable--odd-row {
 
 #interact-input {
     dock: top;
-    height: 3;
+    height: 5;
     background: #0a0a0a;
     border: none;
     border-bottom: solid #333333;
@@ -131,14 +131,6 @@ DataTable > .datatable--odd-row {
 #interact-input:focus {
     border: none;
     border-bottom: solid #00d7d7;
-}
-
-#interact-input>.input--cursor {
-    color: #00d7d7;
-}
-
-#interact-input>.input--placeholder {
-    color: #555555;
 }
 
 #empty-message {
