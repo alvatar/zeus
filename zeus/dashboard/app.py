@@ -210,27 +210,17 @@ class ZeusApp(App):
             )
 
             pm = a.proc_metrics
-            cpu_c: str = (
-                "#ff3333" if pm.cpu_pct >= 90
-                else "#ff8800" if pm.cpu_pct >= 50
-                else "#00d7d7"
-            )
-            cpu_text = Text(f"{pm.cpu_pct:.0f}%", style=cpu_c)
-            ram_text = Text(f"{pm.ram_mb:.0f}M", style="#00d7d7")
-            gpu_c: str = (
-                "#ff3333" if pm.gpu_pct >= 90
-                else "#ff8800" if pm.gpu_pct >= 50
-                else "#00d7d7"
-            )
+            cpu_text = f"{pm.cpu_pct:.0f}%"
+            ram_text = f"{pm.ram_mb:.0f}M"
             gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-            gpu_text = Text(gpu_str, style=gpu_c)
+            gpu_text = gpu_str
             net_str: str = (
                 f"↓{_fmt_bytes(pm.io_read_bps)} "
                 f"↑{_fmt_bytes(pm.io_write_bps)}"
             )
-            net_text = Text(net_str, style="#00d7d7")
+            net_text = net_str
 
             row_key: str = f"{a.socket}:{a.kitty_id}"
             table.add_row(
@@ -270,27 +260,17 @@ class ZeusApp(App):
                 net_t: str | Text = ""
                 if sess.pane_pid:
                     pm = read_process_metrics(sess.pane_pid)
-                    cpu_c: str = (
-                        "#ff3333" if pm.cpu_pct >= 90
-                        else "#ff8800" if pm.cpu_pct >= 50
-                        else "#00d7d7"
-                    )
-                    cpu_t = Text(f"{pm.cpu_pct:.0f}%", style=cpu_c)
-                    ram_t = Text(f"{pm.ram_mb:.0f}M", style="#00d7d7")
+                    cpu_t = f"{pm.cpu_pct:.0f}%"
+                    ram_t = f"{pm.ram_mb:.0f}M"
                     gpu_str: str = f"{pm.gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-                    gpu_c: str = (
-                        "#ff3333" if pm.gpu_pct >= 90
-                        else "#ff8800" if pm.gpu_pct >= 50
-                        else "#00d7d7"
-                    )
-                    gpu_t = Text(gpu_str, style=gpu_c)
+                    gpu_t = gpu_str
                     net_str: str = (
                         f"↓{_fmt_bytes(pm.io_read_bps)} "
                         f"↑{_fmt_bytes(pm.io_write_bps)}"
                     )
-                    net_t = Text(net_str, style="#00d7d7")
+                    net_t = net_str
                 if sess.attached:
                     tmux_name = f"  └ 🔍 {sess.name}"
                     tmux_cmd = cleaned_cmd
