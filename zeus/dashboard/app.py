@@ -495,10 +495,7 @@ class ZeusApp(App):
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
             )
-            elapsed_text = Text(
-                _fmt_duration(elapsed),
-                style=f"#cccccc {row_bg}".strip(),
-            )
+            elapsed_text: str | Text = _fmt_duration(elapsed)
             ctx_cell: str | Text = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
             tok_cell: str | Text = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
@@ -517,6 +514,7 @@ class ZeusApp(App):
             )
 
             if row_bg:
+                elapsed_text = Text(str(elapsed_text), style=row_bg)
                 ctx_cell = Text(str(ctx_cell), style=row_bg)
                 cpu_cell = Text(str(cpu_cell), style=row_bg)
                 ram_cell = Text(str(ram_cell), style=row_bg)
