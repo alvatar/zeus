@@ -1260,7 +1260,7 @@ class ZeusApp(App):
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        stream.scroll_end(animate=False)
+        self.call_later(stream.scroll_end, animate=False)
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1298,7 +1298,7 @@ class ZeusApp(App):
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        stream.scroll_end(animate=False)
+        self.call_later(stream.scroll_end, animate=False)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
