@@ -830,7 +830,7 @@ class ZeusApp(App):
         if ta.id != "interact-input":
             return
         lines = ta.document.line_count
-        h = max(1, min(8, lines)) + 2  # +2 for border + padding
+        h = max(1, min(8, lines)) + 1  # +1 for border-top
         ta.styles.height = h
 
     def on_data_table_row_highlighted(

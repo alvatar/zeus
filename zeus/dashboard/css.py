@@ -140,7 +140,7 @@ DataTable > .datatable--odd-row {
 }
 
 #interact-input {
-    height: 3;
+    height: 2;
     background: #0a0a0a;
     border: none;
     border-top: solid #333333;
