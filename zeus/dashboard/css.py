@@ -111,8 +111,7 @@ DataTable > .datatable--odd-row {
 #interact-panel.split {
     dock: right;
     width: 50%;
-    height: 100%;
-    margin-bottom: 2;
+    height: 1fr;
     border-top: none;
     border-left: solid #00d7d7;
 }
