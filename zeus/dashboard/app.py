@@ -54,10 +54,10 @@ class PollResult:
     usage: UsageData = field(default_factory=UsageData)
     openai: OpenAIUsageData = field(default_factory=OpenAIUsageData)
     # State tracking deltas computed in the worker
-    state_changed_at: dict[int, float] = field(default_factory=dict)
-    prev_states: dict[int, State] = field(default_factory=dict)
-    idle_since: dict[int, float] = field(default_factory=dict)
-    idle_notified: set[int] = field(default_factory=set)
+    state_changed_at: dict[str, float] = field(default_factory=dict)
+    prev_states: dict[str, State] = field(default_factory=dict)
+    idle_since: dict[str, float] = field(default_factory=dict)
+    idle_notified: set[str] = field(default_factory=set)
 
 
 class ZeusApp(App):
@@ -90,10 +90,10 @@ class ZeusApp(App):
     _interact_agent_key: str | None = None
     _idle_summaries: dict[str, str] = {}
     _idle_summary_pending: set[str] = set()
-    prev_states: dict[int, State] = {}
-    state_changed_at: dict[int, float] = {}
-    idle_since: dict[int, float] = {}
-    idle_notified: set[int] = set()
+    prev_states: dict[str, State] = {}
+    state_changed_at: dict[str, float] = {}
+    idle_since: dict[str, float] = {}
+    idle_notified: set[str] = set()
 
     def compose(self) -> ComposeResult:
         yield Horizontal(
@@ -191,20 +191,21 @@ class ZeusApp(App):
         idle_notified = set(self.idle_notified)
 
         for a in agents:
-            old: State | None = prev_states.get(a.kitty_id)
-            if a.kitty_id not in state_changed_at:
-                state_changed_at[a.kitty_id] = now
+            akey: str = f"{a.socket}:{a.kitty_id}"
+            old: State | None = prev_states.get(akey)
+            if akey not in state_changed_at:
+                state_changed_at[akey] = now
             elif old is not None and old != a.state:
-                state_changed_at[a.kitty_id] = now
+                state_changed_at[akey] = now
 
             if a.state == State.IDLE:
                 if old == State.WORKING:
-                    idle_since[a.kitty_id] = now
-                    idle_notified.discard(a.kitty_id)
+                    idle_since[akey] = now
+                    idle_notified.discard(akey)
             else:
-                idle_since.pop(a.kitty_id, None)
-                idle_notified.discard(a.kitty_id)
-            prev_states[a.kitty_id] = a.state
+                idle_since.pop(akey, None)
+                idle_notified.discard(akey)
+            prev_states[akey] = a.state
 
         result = PollResult(
             agents=agents,
@@ -306,7 +307,8 @@ class ZeusApp(App):
         def _state_sort_key(a: AgentWindow) -> tuple[int, float, str]:
             # IDLE first, then oldest state change first, then name
             pri: int = 0 if a.state == State.IDLE else 1
-            changed_at: float = self.state_changed_at.get(a.kitty_id, time.time())
+            akey: str = f"{a.socket}:{a.kitty_id}"
+            changed_at: float = self.state_changed_at.get(akey, time.time())
             return (pri, changed_at, a.name.lower())
 
         def _alpha_sort_key(a: AgentWindow) -> str:
@@ -341,8 +343,9 @@ class ZeusApp(App):
                 f"{icon} {a.state.value}",
                 style=f"bold {state_color}",
             )
+            akey: str = f"{a.socket}:{a.kitty_id}"
             elapsed: float = time.time() - self.state_changed_at.get(
-                a.kitty_id, time.time()
+                akey, time.time()
             )
             elapsed_text = Text(_fmt_duration(elapsed), style="#cccccc")
             ctx_str: str = f"{a.ctx_pct:.0f}%" if a.ctx_pct else "—"
