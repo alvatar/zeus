@@ -1079,26 +1079,23 @@ class ZeusApp(App):
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
-        """Fetch screen text in background thread."""
-        screen_text = get_screen_text(agent)
-        lines = screen_text.splitlines()
-        recent = [l for l in lines if l.strip()]
-        self.call_from_thread(self._apply_interact_stream, agent.name, recent)
+        """Fetch screen text with ANSI formatting in background thread."""
+        screen_text = get_screen_text(agent, ansi=True)
+        self.call_from_thread(
+            self._apply_interact_stream, agent.name, screen_text,
+        )
 
     def _apply_interact_stream(
-        self, name: str, recent: list[str]
+        self, name: str, screen_text: str,
     ) -> None:
         """Apply fetched stream content on the main thread."""
         if not self._interact_visible:
             return
         stream = self.query_one("#interact-stream", Static)
-        if not recent:
+        if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        t = Text()
-        t.append("── output ──\n", style="bold #00d7d7")
-        for line in recent:
-            t.append(f"  {line.rstrip()}\n")
+        t = Text.from_ansi(screen_text)
         stream.update(t)
         stream.scroll_end(animate=False)
 
@@ -1186,16 +1183,11 @@ class ZeusApp(App):
         if not agent:
             panel.update("  No agent selected")
             return
-        screen_text = get_screen_text(agent)
-        lines = screen_text.splitlines()
-        recent = [l for l in lines if l.strip()][-max_lines:]
-        if not recent:
+        screen_text = get_screen_text(agent, ansi=True)
+        if not screen_text or not screen_text.strip():
             panel.update(f"  [{agent.name}] (no output)")
             return
-        t = Text()
-        t.append(f"── {agent.name} ──\n", style="bold #00d7d7")
-        for line in recent:
-            t.append(f"  {line.rstrip()}\n")
+        t = Text.from_ansi(screen_text)
         panel.update(t)
 
     def action_refresh(self) -> None:
