@@ -72,7 +72,8 @@ class ZeusApp(App):
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
-        Binding("d", "toggle_expand", "Detail"),
+        Binding("e", "toggle_expand", "Expand"),
+        Binding("d", "toggle_interact", "Interact"),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
@@ -743,6 +744,14 @@ class ZeusApp(App):
         else:
             self.sort_mode = SortMode.STATE_ELAPSED
         self.poll_and_update()
+
+    def action_toggle_interact(self) -> None:
+        if isinstance(self.focused, Input):
+            return
+        if len(self.screen_stack) > 1:
+            return
+        # TODO: open interaction panel for selected agent
+        self.notify("Interact panel — coming soon", timeout=2)
 
     def action_toggle_expand(self) -> None:
         if isinstance(self.focused, Input):
