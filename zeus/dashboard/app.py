@@ -98,6 +98,7 @@ class ZeusApp(App):
     _log_visible: bool = False
     _interact_visible: bool = False
     _interact_agent_key: str | None = None
+    _interact_tmux_name: str | None = None
     _idle_summaries: dict[str, str] = {}
     _idle_summary_pending: set[str] = set()
     _action_needed: set[str] = set()
@@ -605,12 +606,23 @@ class ZeusApp(App):
             focus_window(agent)
 
     def _refresh_interact_panel(self) -> None:
-        """Refresh the interact panel for the currently selected agent."""
+        """Refresh the interact panel for the currently selected item."""
+        tmux = self._get_selected_tmux()
+        if tmux:
+            self._interact_agent_key = None
+            self._interact_tmux_name = tmux.name
+            summary_w = self.query_one("#interact-summary", Static)
+            summary_w.update(
+                f"[bold #00d787]── tmux: {tmux.name} ──[/]"
+            )
+            self._update_interact_stream()
+            return
         agent = self._get_selected_agent()
         if not agent:
             return
         key = f"{agent.socket}:{agent.kitty_id}"
         self._interact_agent_key = key
+        self._interact_tmux_name = None
         summary_w = self.query_one("#interact-summary", Static)
         if agent.state == State.IDLE and key in self._idle_summaries:
             summary_w.update(
@@ -925,6 +937,7 @@ class ZeusApp(App):
         if self._interact_visible:
             self._interact_visible = False
             self._interact_agent_key = None
+            self._interact_tmux_name = None
             self.query_one("#interact-panel", Vertical).remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
             return
@@ -940,38 +953,51 @@ class ZeusApp(App):
         if self._interact_visible:
             self._interact_visible = False
             self._interact_agent_key = None
+            self._interact_tmux_name = None
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
             return
-        agent = self._get_selected_agent()
-        if not agent:
-            self.notify("No agent selected", timeout=2)
-            return
+
         # Close expand panel if open
         if self._log_visible:
             self._log_visible = False
             self.query_one("#log-panel", Static).remove_class("visible")
+
+        tmux = self._get_selected_tmux()
+        agent = self._get_selected_agent()
+        if not tmux and not agent:
+            self.notify("No agent selected", timeout=2)
+            return
+
         self._interact_visible = True
-        key = f"{agent.socket}:{agent.kitty_id}"
-        self._interact_agent_key = key
         panel.add_class("visible")
         summary_w = self.query_one("#interact-summary", Static)
         ta = self.query_one("#interact-input", ZeusTextArea)
         ta.clear()
 
-        if agent.state == State.IDLE and key in self._idle_summaries:
-            # Show pre-computed summary instantly
+        if tmux:
+            self._interact_agent_key = None
+            self._interact_tmux_name = tmux.name
             summary_w.update(
-                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                f"{self._idle_summaries[key]}"
+                f"[bold #00d787]── tmux: {tmux.name} ──[/]"
             )
         else:
-            label = "status" if agent.state == State.WORKING else "triage"
-            summary_w.update(
-                f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
-                f"[dim]Generating {label}…[/]"
-            )
-            self._generate_on_demand_summary(agent)
+            assert agent is not None
+            key = f"{agent.socket}:{agent.kitty_id}"
+            self._interact_agent_key = key
+            self._interact_tmux_name = None
+            if agent.state == State.IDLE and key in self._idle_summaries:
+                summary_w.update(
+                    f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                    f"{self._idle_summaries[key]}"
+                )
+            else:
+                label = "status" if agent.state == State.WORKING else "triage"
+                summary_w.update(
+                    f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
+                    f"[dim]Generating {label}…[/]"
+                )
+                self._generate_on_demand_summary(agent)
         self._update_interact_stream()
 
     def action_focus_interact(self) -> None:
@@ -1089,7 +1115,12 @@ class ZeusApp(App):
 
     def _update_interact_stream(self) -> None:
         """Kick off background fetch for interact stream."""
-        if not self._interact_visible or not self._interact_agent_key:
+        if not self._interact_visible:
+            return
+        if self._interact_tmux_name:
+            self._fetch_interact_tmux_stream(self._interact_tmux_name)
+            return
+        if not self._interact_agent_key:
             return
         agent: AgentWindow | None = None
         for a in self.agents:
@@ -1099,6 +1130,22 @@ class ZeusApp(App):
         if not agent:
             return
         self._fetch_interact_stream(agent)
+
+    @work(thread=True, exclusive=True, group="interact_stream")
+    def _fetch_interact_tmux_stream(self, sess_name: str) -> None:
+        """Fetch tmux pane content in background thread."""
+        try:
+            r = subprocess.run(
+                ["tmux", "capture-pane", "-t", sess_name,
+                 "-p", "-e", "-S", "-200"],
+                capture_output=True, text=True, timeout=3,
+            )
+            text = r.stdout if r.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            text = ""
+        self.call_from_thread(
+            self._apply_interact_stream, sess_name, text,
+        )
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1150,12 +1197,24 @@ class ZeusApp(App):
         )
 
     def action_send_interact(self) -> None:
-        """Send text from interact input to the agent (Ctrl+Enter)."""
+        """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if not self._interact_visible:
             return
         ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()
         if not text:
+            return
+        if self._interact_tmux_name:
+            try:
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", self._interact_tmux_name,
+                     text, "Enter"],
+                    capture_output=True, timeout=3,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+            ta.clear()
+            self.notify(f"Sent to tmux:{self._interact_tmux_name}", timeout=2)
             return
         agent: AgentWindow | None = None
         if self._interact_agent_key:
@@ -1179,6 +1238,7 @@ class ZeusApp(App):
         if self._interact_visible:
             self._interact_visible = False
             self._interact_agent_key = None
+            self._interact_tmux_name = None
             self.query_one("#interact-panel", Vertical).remove_class("visible")
         self._log_visible = not self._log_visible
         panel = self.query_one("#log-panel", Static)
