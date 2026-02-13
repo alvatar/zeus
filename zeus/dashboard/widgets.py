@@ -58,6 +58,20 @@ class ZeusDataTable(DataTable):
         color: auto;
         text-style: none;
     }
+    ZeusDataTable > .datatable--fixed {
+        background: #000000;
+        color: auto;
+    }
+    ZeusDataTable > .datatable--fixed-cursor {
+        background: #000000;
+        color: auto;
+        text-style: none;
+    }
+    ZeusDataTable:focus > .datatable--fixed-cursor {
+        background: #000000;
+        color: auto;
+        text-style: none;
+    }
     """
 
 

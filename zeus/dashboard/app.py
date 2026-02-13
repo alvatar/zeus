@@ -14,6 +14,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
 from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
+from textual.widget import Widget
 from rich.text import Text
 
 
@@ -138,7 +139,8 @@ class ZeusApp(App):
                 ZeusDataTable(
                     id="agent-table",
                     cursor_foreground_priority="renderable",
-                    cursor_background_priority="css",
+                    cursor_background_priority="renderable",
+                    fixed_columns=1,
                 ),
                 Static("", id="left-summary"),
                 id="table-container",
@@ -158,17 +160,22 @@ class ZeusApp(App):
         yield Static("", id="status-line")
 
     _FULL_COLUMNS = (
-        "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
     )
     _SPLIT_COLUMNS = (
-        "Name", "State", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net",
     )
 
     # Columns that get a fixed width (label → width)
-    _COL_WIDTHS: dict[str, int] = {"Elapsed": 5}
-    _COL_WIDTHS_SPLIT: dict[str, int] = {"Name": 16, "Elapsed": 4, "Model/Cmd": 32}
+    _COL_WIDTHS: dict[str, int] = {"State": 10, "Elapsed": 5}
+    _COL_WIDTHS_SPLIT: dict[str, int] = {
+        "Name": 16,
+        "State": 10,
+        "Elapsed": 4,
+        "Model/Cmd": 32,
+    }
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
@@ -184,6 +191,7 @@ class ZeusApp(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#agent-table", DataTable)
+        table.show_row_labels = False
         table.cursor_type = "row"
         table.zebra_stripes = True
         self._setup_table_columns()
@@ -191,6 +199,40 @@ class ZeusApp(App):
         self.set_interval(POLL_INTERVAL, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_interact_stream)
+
+    def _pulse_widget(self, selector: str, low_opacity: float) -> None:
+        """Run a clearly-visible single-beat opacity pulse on a widget."""
+        try:
+            widget = self.query_one(selector, Widget)
+        except LookupError:
+            return
+
+        down = 0.14
+        up = 0.24
+
+        widget.styles.opacity = 1.0
+        widget.styles.animate(
+            "opacity",
+            low_opacity,
+            duration=down,
+            easing="out_cubic",
+        )
+        self.set_timer(
+            down,
+            lambda w=widget: w.styles.animate(
+                "opacity",
+                1.0,
+                duration=up,
+                easing="in_out_cubic",
+            ),
+        )
+
+    def _pulse_agent_table(self) -> None:
+        self._pulse_widget("#agent-table", low_opacity=0.60)
+
+    def _pulse_summary_widget(self) -> None:
+        target = "#left-summary" if self._split_mode else "#interact-summary"
+        self._pulse_widget(target, low_opacity=0.45)
 
     def update_clock(self) -> None:
         clock = self.query_one("#title-clock", Static)
@@ -283,15 +325,26 @@ class ZeusApp(App):
         self.idle_since = r.idle_since
         self.idle_notified = r.idle_notified
 
-        # Pre-compute summaries for agents that just became IDLE
+        state_changed_any = any(
+            (
+                old_states.get(f"{a.socket}:{a.kitty_id}") is not None
+                and old_states.get(f"{a.socket}:{a.kitty_id}") != a.state
+            )
+            for a in self.agents
+        )
+
+        # Pre-compute summaries only when an agent transitions WORKING -> IDLE
         live_keys: set[str] = set()
         for a in self.agents:
             key = f"{a.socket}:{a.kitty_id}"
             live_keys.add(key)
-            if self._summaries_enabled \
-                    and a.state == State.IDLE \
-                    and key not in self._idle_summaries \
-                    and key not in self._idle_summary_pending:
+            old_state = old_states.get(key)
+            just_became_idle = (
+                self._summaries_enabled
+                and old_state == State.WORKING
+                and a.state == State.IDLE
+            )
+            if just_became_idle and key not in self._idle_summary_pending:
                 self._idle_summary_pending.add(key)
                 self._generate_idle_summary(a, key)
             elif a.state == State.WORKING:
@@ -406,6 +459,10 @@ class ZeusApp(App):
                 return f"{s // 3600}h{(s % 3600) // 60}m"
             return f"{s // 86400}d{(s % 86400) // 3600}h"
 
+        state_col_width = (
+            self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
+        ).get("State", 10)
+
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             akey: str = f"{a.socket}:{a.kitty_id}"
             waiting: bool = (
@@ -416,7 +473,7 @@ class ZeusApp(App):
                 icon = "⏸"
                 state_label = "WAITING"
                 state_color = "#d7af00"
-                row_bg = "on #2a2000"
+                row_bg = ""
             elif a.state == State.WORKING:
                 icon = "▶"
                 state_label = "WORKING"
@@ -430,9 +487,10 @@ class ZeusApp(App):
 
             raw_name: str = f"{indent}🧬 {a.name}" if indent else a.name
             name_text = Text(raw_name, style=row_bg) if row_bg else raw_name
+            state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
-                f"{icon} {state_label}",
-                style=f"bold {state_color} {row_bg}".strip(),
+                state_cell,
+                style=f"bold {state_color} on #000000",
             )
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
@@ -468,7 +526,7 @@ class ZeusApp(App):
 
             row_key: str = akey
             row = [
-                name_text, state_text, elapsed_text,
+                state_text, name_text, elapsed_text,
                 Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
                 ctx_cell,
                 cpu_cell, ram_cell, gpu_cell, net_cell,
@@ -534,8 +592,9 @@ class ZeusApp(App):
                         if isinstance(v, Text):
                             v.stylize(dim)
                 tmux_key: str = f"tmux:{sess.name}"
+                state_placeholder = Text(" " * state_col_width, style="on #000000")
                 row = [
-                    tmux_name, tmux_age, "", tmux_cmd,
+                    state_placeholder, tmux_name, tmux_age, tmux_cmd,
                     "", cpu_t, ram_t, gpu_t, net_t,
                 ]
                 if not self._split_mode:
@@ -574,6 +633,9 @@ class ZeusApp(App):
             f"AI: [bold]{model_short if self._summaries_enabled else 'OFF'}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
+
+        if state_changed_any:
+            self._pulse_agent_table()
 
 
     # ── Selection helpers ─────────────────────────────────────────────
@@ -729,15 +791,23 @@ class ZeusApp(App):
         key = f"{agent.socket}:{agent.kitty_id}"
         self._interact_agent_key = key
         self._interact_tmux_name = None
-        if agent.state == State.IDLE and key in self._idle_summaries:
+        if not self._summaries_enabled:
+            self._update_summary_widget(agent.name, None)
+        elif agent.state == State.IDLE and key in self._idle_summaries:
             self._update_summary_widget(
-                agent.name, self._idle_summaries[key],
+                agent.name,
+                self._idle_summaries[key],
             )
-        elif self._summaries_enabled:
-            label = "status" if agent.state == State.WORKING else "triage"
-            self._update_summary_widget(agent.name, None, generating=label)
-            self._generate_on_demand_summary(agent, key)
+        elif agent.state == State.IDLE and key in self._idle_summary_pending:
+            self._update_summary_widget(agent.name, None, generating="triage")
+        elif agent.state == State.IDLE:
+            self._update_summary_widget(
+                agent.name,
+                "[dim]No triage summary yet. Summary is generated only when an"
+                " agent transitions WORKING → IDLE.[/]",
+            )
         else:
+            # While WORKING we don't continuously regenerate summaries.
             self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
 
@@ -1049,14 +1119,6 @@ class ZeusApp(App):
 
     # ── Summary generation ────────────────────────────────────────────
 
-    _WORKING_PROMPT = (
-        "You are a status assistant. A human operator is monitoring "
-        "multiple coding agents. Given the terminal output below, "
-        "summarize what the agent is currently doing.\n"
-        "STRICT LIMIT: max 4 lines of output. No preamble.\n\n"
-        "Terminal output:\n"
-    )
-
     _IDLE_PROMPT = (
         "You are a triage assistant. A human operator is monitoring "
         "multiple coding agents. The agent below is IDLE and waiting. "
@@ -1092,41 +1154,6 @@ class ZeusApp(App):
         except FileNotFoundError:
             return "(pi not found — install pi to enable summaries)"
 
-    @work(thread=True, exclusive=True, group="on_demand_summary")
-    def _generate_on_demand_summary(self, agent: AgentWindow, key: str) -> None:
-        """Generate summary when interact panel is opened/refreshed."""
-        context = self._get_screen_context(agent)
-        if not context.strip():
-            empty = "(no output to summarize)"
-            if agent.state == State.IDLE:
-                self.call_from_thread(self._store_idle_summary, key, empty)
-                self.call_from_thread(self._mark_idle_summary_done, key)
-            self.call_from_thread(
-                self._apply_interact_summary,
-                key,
-                agent.name,
-                empty,
-            )
-            return
-
-        prompt = (
-            self._WORKING_PROMPT + context
-            if agent.state == State.WORKING
-            else self._IDLE_PROMPT + context
-        )
-        summary = self._run_pi_summary(prompt)
-
-        if agent.state == State.IDLE:
-            self.call_from_thread(self._store_idle_summary, key, summary)
-            self.call_from_thread(self._mark_idle_summary_done, key)
-
-        self.call_from_thread(
-            self._apply_interact_summary,
-            key,
-            agent.name,
-            summary,
-        )
-
     def _store_idle_summary(self, key: str, summary: str) -> None:
         """Store an idle summary and update action_needed set."""
         agent = self._get_agent_by_key(key)
@@ -1148,36 +1175,36 @@ class ZeusApp(App):
         """Mark idle summary generation completed."""
         self._idle_summary_pending.discard(key)
 
+    def _finalize_idle_summary(self, key: str, name: str, summary: str) -> None:
+        """Store completed idle summary and refresh interact panel if needed."""
+        self._store_idle_summary(key, summary)
+        self._mark_idle_summary_done(key)
+
+        if not self._interact_visible or self._interact_agent_key != key:
+            return
+        cached = self._idle_summaries.get(key)
+        if cached:
+            self._update_summary_widget(name, cached)
+            self._pulse_summary_widget()
+        else:
+            self._refresh_interact_panel()
+
     @work(thread=True, group="idle_summary")
     def _generate_idle_summary(self, agent: AgentWindow, key: str) -> None:
         """Pre-compute summary for an IDLE agent in the background."""
         context = self._get_screen_context(agent)
         if not context.strip():
-            self.call_from_thread(
-                self._store_idle_summary,
-                key,
-                "(no output to summarize)",
-            )
-            self.call_from_thread(self._mark_idle_summary_done, key)
-            return
+            summary = "(no output to summarize)"
+        else:
+            prompt = self._IDLE_PROMPT + context
+            summary = self._run_pi_summary(prompt)
 
-        prompt = self._IDLE_PROMPT + context
-        summary = self._run_pi_summary(prompt)
-        self.call_from_thread(self._store_idle_summary, key, summary)
-        self.call_from_thread(self._mark_idle_summary_done, key)
-
-    def _apply_interact_summary(
-        self,
-        requested_key: str,
-        name: str,
-        summary: str,
-    ) -> None:
-        """Apply generated summary to widget, guarding against stale selection."""
-        if not self._interact_visible:
-            return
-        if requested_key != self._interact_agent_key:
-            return
-        self._update_summary_widget(name, summary)
+        self.call_from_thread(
+            self._finalize_idle_summary,
+            key,
+            agent.name,
+            summary,
+        )
 
     def _update_interact_stream(self) -> None:
         """Kick off background fetch for interact stream."""
