@@ -1097,9 +1097,20 @@ class ZeusApp(App):
         if not screen_text or not screen_text.strip():
             stream.update(f"  [{name}] (no output)")
             return
-        # Only keep lines that fit the panel — trim from top so
-        # the bottom of the kitty screen is always visible.
+        # Strip pi's input area + status bar: cut at 2nd horizontal
+        # line from the bottom (lines made of ─ characters).
         lines = screen_text.splitlines(keepends=True)
+        sep_count = 0
+        cut_at = len(lines)
+        for i in range(len(lines) - 1, -1, -1):
+            stripped = lines[i].strip()
+            if stripped and all(c == "─" for c in stripped):
+                sep_count += 1
+                if sep_count == 2:
+                    cut_at = i
+                    break
+        lines = lines[:cut_at]
+        # Trim from top so bottom of output is always visible.
         avail = stream.size.height
         if avail and len(lines) > avail:
             lines = lines[-avail:]
