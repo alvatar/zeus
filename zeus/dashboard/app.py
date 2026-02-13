@@ -91,12 +91,14 @@ class ZeusApp(App):
 
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
+        Binding("f6", "toggle_summaries", "Summaries"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.STATE_ELAPSED
     summary_model: str = SUMMARY_MODEL
+    _summaries_enabled: bool = False
     _log_visible: bool = False
     _interact_visible: bool = False
     _interact_agent_key: str | None = None
@@ -249,7 +251,9 @@ class ZeusApp(App):
         for a in self.agents:
             key = f"{a.socket}:{a.kitty_id}"
             live_keys.add(key)
-            if a.state == State.IDLE and key not in self._idle_summaries \
+            if self._summaries_enabled \
+                    and a.state == State.IDLE \
+                    and key not in self._idle_summaries \
                     and key not in self._idle_summary_pending:
                 self._idle_summary_pending.add(key)
                 self._generate_idle_summary(a, key)
@@ -529,7 +533,7 @@ class ZeusApp(App):
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
-            f"Reporter: [bold]{model_short}[/]  │  "
+            f"AI: [bold]{'ON' if self._summaries_enabled else 'OFF'}[/]  │  "
             f"Poll: {POLL_INTERVAL}s"
         )
 
@@ -668,13 +672,17 @@ class ZeusApp(App):
                 f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                 f"{self._idle_summaries[key]}"
             )
-        else:
+        elif self._summaries_enabled:
             label = "status" if agent.state == State.WORKING else "triage"
             summary_w.update(
                 f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
+        else:
+            summary_w.update(
+                f"[bold #00d7d7]── {agent.name} ──[/]"
+            )
         self._update_interact_stream()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
@@ -961,6 +969,14 @@ class ZeusApp(App):
             return
         self.push_screen(HelpScreen())
 
+    def action_toggle_summaries(self) -> None:
+        self._summaries_enabled = not self._summaries_enabled
+        state = "ON" if self._summaries_enabled else "OFF"
+        self.notify(f"AI Summaries: {state}", timeout=2)
+        if self._summaries_enabled:
+            # Trigger summaries for existing idle agents
+            self.poll_and_update()
+
     def action_toggle_sort(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
@@ -1031,13 +1047,17 @@ class ZeusApp(App):
                     f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                     f"{self._idle_summaries[key]}"
                 )
-            else:
+            elif self._summaries_enabled:
                 label = "status" if agent.state == State.WORKING else "triage"
                 summary_w.update(
                     f"[bold #00d7d7]── {agent.name} ──[/]\n\n"
                     f"[dim]Generating {label}…[/]"
                 )
                 self._generate_on_demand_summary(agent)
+            else:
+                summary_w.update(
+                    f"[bold #00d7d7]── {agent.name} ──[/]"
+                )
         self._update_interact_stream()
 
     def action_focus_interact(self) -> None:

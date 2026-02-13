@@ -317,6 +317,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Settings ───"),
     ("F3", "Change summary model"),
     ("F4", "Toggle sort mode"),
+    ("F6", "Toggle AI summaries"),
     ("F5", "Force refresh"),
     ("?", "This help"),
     ("F10", "Quit Zeus"),
