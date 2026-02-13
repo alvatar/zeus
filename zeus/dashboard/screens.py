@@ -13,6 +13,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label
 
+from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
 from .css import (
     NEW_AGENT_CSS,
@@ -79,6 +80,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         directory = os.path.expanduser(directory)
         env: dict[str, str] = os.environ.copy()
         env["AGENTMON_NAME"] = name
+        env["ZEUS_AGENT_ID"] = generate_agent_id()
         subprocess.Popen(
             ["kitty", "--directory", directory, "--hold",
              "bash", "-lc", "pi"],

@@ -3,10 +3,19 @@
 # If a name is given, the kitty window is tracked by zeus and pi starts automatically.
 # If Enter is pressed with no name, a normal untracked kitty opens.
 
+set -euo pipefail
+
 name=$(echo "" | bemenu -p "Agent name (Enter=skip):" -l 0 --fn "monospace 12")
 
 if [ -n "$name" ]; then
-    AGENTMON_NAME="$name" kitty --hold bash -lc "pi"
+    agent_id=$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4().hex)
+PY
+)
+    # Ensure tmux server propagates ZEUS_AGENT_ID when sessions are created.
+    tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
+    AGENTMON_NAME="$name" ZEUS_AGENT_ID="$agent_id" kitty --hold bash -lc "pi"
 else
     kitty
 fi

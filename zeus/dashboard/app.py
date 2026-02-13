@@ -33,7 +33,12 @@ from ..kitty import (
 )
 from ..sessions import find_current_session
 from ..sway import build_pid_workspace_map
-from ..tmux import discover_tmux_sessions, match_tmux_to_agents
+from ..tmux import (
+    backfill_tmux_owner_options,
+    discover_tmux_sessions,
+    ensure_tmux_update_environment,
+    match_tmux_to_agents,
+)
 from ..state import detect_state, parse_footer
 from ..usage import read_usage, read_openai_usage, time_left
 from ..windowing import (
@@ -190,6 +195,7 @@ class ZeusApp(App):
                 table.add_column(col)
 
     def on_mount(self) -> None:
+        ensure_tmux_update_environment()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
         table.cursor_type = "row"
@@ -264,6 +270,7 @@ class ZeusApp(App):
 
         # Read tmux pane metrics in the worker too
         match_tmux_to_agents(agents, tmux_sessions)
+        backfill_tmux_owner_options(agents)
         for a in agents:
             for sess in a.tmux_sessions:
                 if sess.pane_pid:

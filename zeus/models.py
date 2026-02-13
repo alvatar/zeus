@@ -18,6 +18,9 @@ class TmuxSession:
     created: int = 0           # unix timestamp
     attached: bool = False
     pane_pid: int = 0          # shell PID inside the tmux pane
+    owner_id: str = ""        # tmux @zeus_owner (deterministic owner)
+    env_agent_id: str = ""    # ZEUS_AGENT_ID from tmux session env
+    match_source: str = ""    # owner-id/env-id/cwd/screen-exact/screen-fallback
     _proc_metrics: Optional['ProcessMetrics'] = None
 
 
@@ -39,6 +42,7 @@ class AgentWindow:
     pid: int
     kitty_pid: int
     cwd: str
+    agent_id: str = ""
     state: State = State.IDLE
     model: str = ""
     ctx_pct: float = 0.0

@@ -8,8 +8,9 @@ import re
 import shlex
 import subprocess
 from glob import glob
+import uuid
 
-from .config import NAMES_FILE
+from .config import AGENT_IDS_FILE, NAMES_FILE
 from .models import AgentWindow
 from .sessions import find_current_session, fork_session
 from .windowing import focus_pid, move_pid_to_workspace_and_focus_later
@@ -42,9 +43,35 @@ def save_names(names: dict[str, str]) -> None:
     NAMES_FILE.write_text(json.dumps(names))
 
 
+def load_agent_ids() -> dict[str, str]:
+    """Load persisted agent ids: {"socket:kitty_id": "agent_id"}."""
+    try:
+        raw = json.loads(AGENT_IDS_FILE.read_text())
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            str(k): str(v)
+            for k, v in raw.items()
+            if isinstance(k, str) and isinstance(v, str) and v.strip()
+        }
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_agent_ids(ids: dict[str, str]) -> None:
+    AGENT_IDS_FILE.write_text(json.dumps(ids))
+
+
+def generate_agent_id() -> str:
+    """Generate a stable id for agent ownership mapping."""
+    return uuid.uuid4().hex
+
+
 # Backward-compatible aliases for older imports.
 _load_names = load_names
 _save_names = save_names
+_load_agent_ids = load_agent_ids
+_save_agent_ids = save_agent_ids
 
 
 def discover_sockets() -> list[str]:
@@ -89,6 +116,10 @@ def _looks_like_pi_window(win: dict) -> bool:
 
 def discover_agents() -> list[AgentWindow]:
     agents: list[AgentWindow] = []
+    ids: dict[str, str] = load_agent_ids()
+    ids_changed: bool = False
+    live_keys: set[str] = set()
+
     for socket in discover_sockets():
         try:
             kitty_pid = int(socket.rsplit("-", 1)[1])
@@ -112,24 +143,50 @@ def discover_agents() -> list[AgentWindow]:
                             continue
                         name = f"pi-{win['id']}"
 
+                    win_id = int(win["id"])
+                    key = f"{socket}:{win_id}"
+                    live_keys.add(key)
+                    env_agent_id = (env.get("ZEUS_AGENT_ID") or "").strip()
+                    persisted_id = (ids.get(key) or "").strip()
+                    if env_agent_id:
+                        agent_id = env_agent_id
+                    elif persisted_id:
+                        agent_id = persisted_id
+                    else:
+                        agent_id = generate_agent_id()
+
+                    if ids.get(key) != agent_id:
+                        ids[key] = agent_id
+                        ids_changed = True
+
                     agents.append(AgentWindow(
-                        kitty_id=win["id"],
+                        kitty_id=win_id,
                         socket=socket,
                         name=name,
                         pid=win.get("pid", 0),
                         kitty_pid=kitty_pid,
                         cwd=win.get("cwd", ""),
+                        agent_id=agent_id,
                         parent_name=env.get("ZEUS_PARENT", ""),
                     ))
+
+    stale_keys = [k for k in ids if k not in live_keys]
+    if stale_keys:
+        for key in stale_keys:
+            ids.pop(key, None)
+        ids_changed = True
+
+    if ids_changed:
+        save_agent_ids(ids)
 
     # Apply name overrides and fix parent refs
     overrides: dict[str, str] = load_names()
     orig_to_new: dict[str, str] = {}
     for a in agents:
-        key: str = f"{a.socket}:{a.kitty_id}"
-        if key in overrides:
-            orig_to_new[a.name] = overrides[key]
-            a.name = overrides[key]
+        agent_key: str = f"{a.socket}:{a.kitty_id}"
+        if agent_key in overrides:
+            orig_to_new[a.name] = overrides[agent_key]
+            a.name = overrides[agent_key]
     for a in agents:
         if a.parent_name and a.parent_name in orig_to_new:
             a.parent_name = orig_to_new[a.parent_name]
@@ -170,6 +227,7 @@ def spawn_subagent(
     env: dict[str, str] = os.environ.copy()
     env["AGENTMON_NAME"] = name
     env["ZEUS_PARENT"] = agent.name
+    env["ZEUS_AGENT_ID"] = generate_agent_id()
     proc = subprocess.Popen(
         ["kitty", "--directory", cwd, "--hold",
          "bash", "-lc", f"pi --session {forked}"],

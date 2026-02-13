@@ -7,16 +7,25 @@ import os
 import subprocess
 import sys
 
-from .kitty import discover_agents, focus_window, close_window, get_screen_text
+from .kitty import (
+    close_window,
+    discover_agents,
+    focus_window,
+    generate_agent_id,
+    get_screen_text,
+)
 from .state import detect_state, parse_footer
 from .sway import build_pid_workspace_map
+from .tmux import ensure_tmux_update_environment
 
 
 def cmd_new(args: argparse.Namespace) -> None:
+    ensure_tmux_update_environment()
     name: str = args.name
     directory: str = os.path.expanduser(args.directory or os.getcwd())
     env: dict[str, str] = os.environ.copy()
     env["AGENTMON_NAME"] = name
+    env["ZEUS_AGENT_ID"] = generate_agent_id()
     cmd: list[str] = [
         "kitty", "--directory", directory, "--hold", "bash", "-lc", "pi"
     ]

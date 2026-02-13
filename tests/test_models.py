@@ -17,6 +17,7 @@ def test_agent_window_defaults():
         kitty_id=1, socket="/tmp/kitty-123", name="test",
         pid=100, kitty_pid=99, cwd="/home/user",
     )
+    assert a.agent_id == ""
     assert a.state == State.IDLE
     assert a.model == ""
     assert a.tmux_sessions == []
@@ -28,6 +29,9 @@ def test_tmux_session_defaults():
     s = TmuxSession(name="dev", command="bash", cwd="/tmp")
     assert s.created == 0
     assert s.attached is False
+    assert s.owner_id == ""
+    assert s.env_agent_id == ""
+    assert s.match_source == ""
 
 
 def test_usage_data_defaults():

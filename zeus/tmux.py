@@ -7,16 +7,76 @@ import subprocess
 from .models import AgentWindow, TmuxSession
 
 
-def discover_tmux_sessions() -> list[TmuxSession]:
-    """Get all tmux sessions with pane info."""
+def _run_tmux(command: list[str], timeout: float = 3) -> subprocess.CompletedProcess[str] | None:
+    """Run a tmux command and return the completed process or None on hard failure."""
     try:
-        r = subprocess.run(
-            ["tmux", "list-sessions", "-F",
-             "#{session_name}\t#{session_attached}\t#{session_created}"],
-            capture_output=True, text=True, timeout=3)
-        if r.returncode != 0:
-            return []
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
     except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def ensure_tmux_update_environment(var_name: str = "ZEUS_AGENT_ID") -> None:
+    """Ensure tmux server propagates ZEUS_AGENT_ID to newly-created sessions."""
+    r = _run_tmux(["tmux", "show", "-gv", "update-environment"], timeout=2)
+    if r is None or r.returncode != 0:
+        return
+    current: set[str] = {line.strip() for line in r.stdout.splitlines() if line.strip()}
+    if var_name in current:
+        return
+    _run_tmux(["tmux", "set", "-ga", "update-environment", var_name], timeout=2)
+
+
+def _read_tmux_owner_id(session_name: str) -> str:
+    """Read session option @zeus_owner, if present."""
+    r = _run_tmux(
+        ["tmux", "show-options", "-t", session_name, "-qv", "@zeus_owner"],
+        timeout=2,
+    )
+    if r is None or r.returncode != 0:
+        return ""
+    return r.stdout.strip()
+
+
+def _read_tmux_env_agent_id(session_name: str) -> str:
+    """Read ZEUS_AGENT_ID from a tmux session environment, if present."""
+    r = _run_tmux(
+        ["tmux", "show-environment", "-t", session_name, "ZEUS_AGENT_ID"],
+        timeout=2,
+    )
+    if r is None or r.returncode != 0:
+        return ""
+    line = r.stdout.strip()
+    if not line or "=" not in line:
+        return ""
+    key, value = line.split("=", 1)
+    if key != "ZEUS_AGENT_ID":
+        return ""
+    return value.strip()
+
+
+def _stamp_tmux_owner(session_name: str, owner_id: str) -> bool:
+    """Persist deterministic ownership on a tmux session."""
+    if not owner_id.strip():
+        return False
+    r = _run_tmux(
+        ["tmux", "set-option", "-t", session_name, "@zeus_owner", owner_id],
+        timeout=2,
+    )
+    return r is not None and r.returncode == 0
+
+
+def discover_tmux_sessions() -> list[TmuxSession]:
+    """Get all tmux sessions with pane info and Zeus ownership metadata."""
+    r = _run_tmux(
+        ["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_created}"],
+        timeout=3,
+    )
+    if r is None or r.returncode != 0:
         return []
 
     sessions: list[TmuxSession] = []
@@ -30,28 +90,39 @@ def discover_tmux_sessions() -> list[TmuxSession]:
         cmd_str: str = ""
         cwd: str = ""
         pane_pid: int = 0
-        try:
-            p = subprocess.run(
-                ["tmux", "list-panes", "-t", name, "-F",
-                 "#{pane_start_command}\t#{pane_current_path}\t#{pane_pid}"],
-                capture_output=True, text=True, timeout=3)
-            if p.returncode == 0 and p.stdout.strip():
-                pinfo: list[str] = p.stdout.strip().splitlines()[0].split("\t")
-                cmd_str = pinfo[0] if len(pinfo) > 0 else ""
-                cwd = pinfo[1] if len(pinfo) > 1 else ""
-                if len(pinfo) > 2 and pinfo[2].isdigit():
-                    pane_pid = int(pinfo[2])
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+        p = _run_tmux(
+            [
+                "tmux",
+                "list-panes",
+                "-t",
+                name,
+                "-F",
+                "#{pane_start_command}\t#{pane_current_path}\t#{pane_pid}",
+            ],
+            timeout=3,
+        )
+        if p is not None and p.returncode == 0 and p.stdout.strip():
+            pinfo: list[str] = p.stdout.strip().splitlines()[0].split("\t")
+            cmd_str = pinfo[0] if len(pinfo) > 0 else ""
+            cwd = pinfo[1] if len(pinfo) > 1 else ""
+            if len(pinfo) > 2 and pinfo[2].isdigit():
+                pane_pid = int(pinfo[2])
 
-        sessions.append(TmuxSession(
-            name=name,
-            command=cmd_str,
-            cwd=cwd,
-            created=int(created) if created.isdigit() else 0,
-            attached=is_attached,
-            pane_pid=pane_pid,
-        ))
+        owner_id = _read_tmux_owner_id(name)
+        env_agent_id = _read_tmux_env_agent_id(name)
+
+        sessions.append(
+            TmuxSession(
+                name=name,
+                command=cmd_str,
+                cwd=cwd,
+                created=int(created) if created.isdigit() else 0,
+                attached=is_attached,
+                pane_pid=pane_pid,
+                owner_id=owner_id,
+                env_agent_id=env_agent_id,
+            )
+        )
     return sessions
 
 
@@ -62,23 +133,47 @@ def match_tmux_to_agents(
     """Match tmux sessions to agents.
 
     Priority:
-      1. screen text — if exactly one agent's screen mentions this specific
-         tmux session name, assign it there (strongest ownership signal).
-      2. cwd match — tmux session cwd starts with (or equals) agent cwd.
-         Pick the agent with the longest matching cwd.  Among ties, prefer
+      1. @zeus_owner option id → unique agent id match.
+      2. ZEUS_AGENT_ID from tmux session env → unique agent id match.
+      3. screen text — if exactly one agent's screen mentions this specific
+         tmux session name, assign it there.
+      4. cwd match — tmux session cwd starts with (or equals) agent cwd.
+         Pick the agent with the longest matching cwd. Among ties, prefer
          the agent whose screen text mentions this session name.
-      3. screen text fallback — first agent whose screen mentions the name.
+      5. screen text fallback — first agent whose screen mentions the name.
     """
+    agents_by_id: dict[str, list[AgentWindow]] = {}
+    for agent in agents:
+        if agent.agent_id:
+            agents_by_id.setdefault(agent.agent_id, []).append(agent)
+
     for sess in tmux_sessions:
-        # 1. Exact screen-text match on this session's name
+        sess.match_source = ""
+
+        if sess.owner_id:
+            candidates = agents_by_id.get(sess.owner_id, [])
+            if len(candidates) == 1:
+                candidates[0].tmux_sessions.append(sess)
+                sess.match_source = "owner-id"
+                continue
+
+        if sess.env_agent_id:
+            candidates = agents_by_id.get(sess.env_agent_id, [])
+            if len(candidates) == 1:
+                candidates[0].tmux_sessions.append(sess)
+                sess.match_source = "env-id"
+                continue
+
+        # 3. Exact screen-text match on this session's name
         screen_matches: list[AgentWindow] = [
             a for a in agents if sess.name in a._screen_text
         ]
         if len(screen_matches) == 1:
             screen_matches[0].tmux_sessions.append(sess)
+            sess.match_source = "screen-exact"
             continue
 
-        # 2. cwd match (most specific wins, screen-text breaks ties)
+        # 4. cwd match (most specific wins, screen-text breaks ties)
         best_len: int = -1
         cwd_candidates: list[AgentWindow] = []
         if sess.cwd:
@@ -99,9 +194,31 @@ def match_tmux_to_agents(
                 if len(with_screen) == 1:
                     cwd_candidates = with_screen
             cwd_candidates[0].tmux_sessions.append(sess)
+            sess.match_source = "cwd"
             continue
 
-        # 3. Fall back to first screen text match
+        # 5. Fall back to first screen text match
         if screen_matches:
             screen_matches[0].tmux_sessions.append(sess)
+            sess.match_source = "screen-fallback"
             continue
+
+
+def backfill_tmux_owner_options(agents: list[AgentWindow]) -> None:
+    """Stamp @zeus_owner for matched sessions that are currently unstamped.
+
+    We stamp only high-confidence matches to avoid persisting low-confidence
+    associations.
+    """
+    high_confidence_sources: set[str] = {"env-id", "screen-exact", "cwd"}
+
+    for agent in agents:
+        if not agent.agent_id:
+            continue
+        for sess in agent.tmux_sessions:
+            if sess.owner_id:
+                continue
+            if sess.match_source not in high_confidence_sources:
+                continue
+            if _stamp_tmux_owner(sess.name, agent.agent_id):
+                sess.owner_id = agent.agent_id
