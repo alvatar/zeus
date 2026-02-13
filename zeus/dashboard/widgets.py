@@ -29,7 +29,8 @@ class ZeusDataTable(DataTable):
 class ZeusTextArea(TextArea):
     """TextArea with emacs-style alt keybindings and system clipboard paste."""
     BINDINGS = [
-        *TextArea.BINDINGS,
+        b for b in TextArea.BINDINGS if "ctrl+u" not in b.key
+    ] + [
         Binding("alt+f", "cursor_word_right", "Word right", show=False),
         Binding("alt+b", "cursor_word_left", "Word left", show=False),
         Binding("ctrl+u", "clear_all", "Clear", show=False),
