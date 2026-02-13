@@ -87,6 +87,7 @@ class ZeusApp(App):
 
         Binding("ctrl+f", "focus_interact", "Focus", show=False, priority=True),
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
+        Binding("alt+enter", "send_alt_enter", "Alt+Enter", show=False, priority=True),
         Binding("f3", "change_model", "Model", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("question_mark", "show_help", "?", key_display="?"),
@@ -1287,6 +1288,35 @@ class ZeusApp(App):
         self._send_text_to_agent(agent, text)
         ta.clear()
         self.notify(f"Sent to {agent.name}", timeout=2)
+
+    def action_send_alt_enter(self) -> None:
+        """Send Alt+Enter (ESC + CR) to the focused agent/tmux."""
+        if not self._interact_visible:
+            return
+        if self._interact_tmux_name:
+            try:
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", self._interact_tmux_name,
+                     "M-Enter"],
+                    capture_output=True, timeout=3,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+            self.notify(f"Alt+Enter → tmux:{self._interact_tmux_name}", timeout=2)
+            return
+        agent: AgentWindow | None = None
+        if self._interact_agent_key:
+            for a in self.agents:
+                if f"{a.socket}:{a.kitty_id}" == self._interact_agent_key:
+                    agent = a
+                    break
+        if not agent:
+            return
+        kitty_cmd(
+            agent.socket, "send-text", "--match",
+            f"id:{agent.kitty_id}", "\x1b\r",
+        )
+        self.notify(f"Alt+Enter → {agent.name}", timeout=2)
 
     def action_toggle_expand(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
