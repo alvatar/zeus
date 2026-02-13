@@ -528,6 +528,7 @@ class ZeusApp(App):
                 f"[dim]Generating {label}…[/]"
             )
             self._generate_on_demand_summary(agent)
+        self.query_one("#interact-input", Input).focus()
 
     def _focus_tmux_client(self, sess: TmuxSession) -> bool:
         """Focus the sway window running an attached tmux session."""
@@ -628,6 +629,9 @@ class ZeusApp(App):
 
     def _activate_selected_row(self) -> None:
         if time.time() - self._last_kill_time < 1.0:
+            return
+        if self._interact_visible:
+            self._refresh_interact_panel()
             return
         tmux = self._get_selected_tmux()
         if tmux:
@@ -966,10 +970,10 @@ class ZeusApp(App):
         )
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
-        """Send text to the agent's kitty window."""
+        """Send text to the agent's kitty window followed by Enter."""
         kitty_cmd(
             agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", text + "\n",
+            f"id:{agent.kitty_id}", text + "\r",
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
