@@ -6,6 +6,7 @@ import argparse
 from dataclasses import dataclass, field
 from enum import Enum
 import os
+import re
 import subprocess
 import time
 import threading
@@ -1102,12 +1103,14 @@ class ZeusApp(App):
             return
         # Strip pi's input area + status bar: cut at 2nd horizontal
         # line from the bottom (lines made of ─ characters).
+        # ANSI escapes must be stripped for detection.
+        _ansi_re = re.compile(r"\x1b\[[0-9;:]*[A-Za-z]")
         lines = screen_text.splitlines(keepends=True)
         sep_count = 0
         cut_at = len(lines)
         for i in range(len(lines) - 1, -1, -1):
-            stripped = lines[i].strip()
-            if stripped and all(c == "─" for c in stripped):
+            plain = _ansi_re.sub("", lines[i]).strip()
+            if plain and all(c == "─" for c in plain):
                 sep_count += 1
                 if sep_count == 2:
                     cut_at = i
