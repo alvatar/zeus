@@ -1180,9 +1180,31 @@ class ZeusApp(App):
             text = r.stdout if r.returncode == 0 else ""
         except (subprocess.TimeoutExpired, FileNotFoundError):
             text = ""
-        self.call_from_thread(
-            self._apply_interact_stream, sess_name, text,
-        )
+        self.call_from_thread(self._apply_tmux_stream, sess_name, text)
+
+    def _apply_tmux_stream(self, name: str, screen_text: str) -> None:
+        """Apply tmux pane content (no pi separator trimming)."""
+        if not self._interact_visible:
+            return
+        stream = self.query_one("#interact-stream", Static)
+        if not screen_text or not screen_text.strip():
+            stream.update(f"  [tmux:{name}] (no output)")
+            return
+        # Strip trailing blank lines, keep content lines
+        lines = screen_text.splitlines(keepends=True)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        if not lines:
+            stream.update(f"  [tmux:{name}] (no output)")
+            return
+        # Trim from top to fit panel
+        avail = stream.size.height
+        if avail and len(lines) > avail:
+            lines = lines[-avail:]
+        raw = _kitty_ansi_to_standard("".join(lines))
+        t = Text.from_ansi(raw)
+        stream.update(t)
+        stream.scroll_end(animate=False)
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
