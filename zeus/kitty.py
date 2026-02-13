@@ -101,10 +101,11 @@ def discover_agents() -> list[AgentWindow]:
     return agents
 
 
-def get_screen_text(agent: AgentWindow) -> str:
-    text: str | None = kitty_cmd(
-        agent.socket, "get-text", "--match", f"id:{agent.kitty_id}"
-    )
+def get_screen_text(agent: AgentWindow, full: bool = False) -> str:
+    args = ["get-text", "--match", f"id:{agent.kitty_id}"]
+    if full:
+        args.extend(["--extent", "all"])
+    text: str | None = kitty_cmd(agent.socket, *args)
     return text or ""
 
 

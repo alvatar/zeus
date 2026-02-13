@@ -955,7 +955,8 @@ class ZeusApp(App):
     )
 
     def _get_screen_context(self, agent: AgentWindow) -> str:
-        lines = agent._screen_text.splitlines()
+        text = get_screen_text(agent, full=True)
+        lines = text.splitlines()
         recent = [l for l in lines if l.strip()][-200:]
         return "\n".join(recent)
 
@@ -1032,8 +1033,8 @@ class ZeusApp(App):
                 break
         if not agent:
             return
-        # Fetch fresh screen text directly
-        screen_text = get_screen_text(agent)
+        # Fetch fresh screen text with full scrollback
+        screen_text = get_screen_text(agent, full=True)
         stream = self.query_one("#interact-stream", Static)
         lines = screen_text.splitlines()
         recent = [l for l in lines if l.strip()][-200:]
