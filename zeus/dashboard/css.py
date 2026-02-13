@@ -291,7 +291,7 @@ HelpScreen {
 }
 
 #help-dialog {
-    width: 50;
+    width: 70;
     height: auto;
     max-height: 30;
     border: solid #00d7d7;
