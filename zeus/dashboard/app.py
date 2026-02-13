@@ -166,13 +166,15 @@ class ZeusApp(App):
 
     # Columns that get a fixed width (label → width)
     _COL_WIDTHS: dict[str, int] = {"Elapsed": 5}
+    _COL_WIDTHS_SPLIT: dict[str, int] = {"Elapsed": 4}
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
         table.clear(columns=True)
         cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
         for col in cols:
-            w = self._COL_WIDTHS.get(col)
+            widths = self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
+            w = widths.get(col)
             if w is not None:
                 table.add_column(col, width=w)
             else:
@@ -1251,14 +1253,13 @@ class ZeusApp(App):
         if not lines:
             stream.update(f"  [tmux:{name}] (no output)")
             return
-        # Trim from top to fit panel
-        avail = stream.size.height
-        if avail and len(lines) > avail:
+        # Trim from top to fit visible area
+        avail = stream.content_region.height
+        if avail > 0 and len(lines) > avail:
             lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        stream.scroll_end(animate=False)
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1287,20 +1288,19 @@ class ZeusApp(App):
         cut_at = len(lines)
         for i in range(len(lines) - 1, -1, -1):
             plain = _ansi_re.sub("", lines[i]).strip()
-            if plain and all(c == "─" for c in plain):
+            if len(plain) >= 20 and all(c == "─" for c in plain):
                 sep_count += 1
                 if sep_count == 2:
                     cut_at = i
                     break
         lines = lines[:cut_at]
-        # Trim from top so bottom of output is always visible.
-        avail = stream.size.height
-        if avail and len(lines) > avail:
+        # Trim from top to fit visible area — Static scroll is unreliable
+        avail = stream.content_region.height
+        if avail > 0 and len(lines) > avail:
             lines = lines[-avail:]
         raw = _kitty_ansi_to_standard("".join(lines))
         t = Text.from_ansi(raw)
         stream.update(t)
-        stream.scroll_end(animate=False)
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
