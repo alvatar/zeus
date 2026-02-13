@@ -112,7 +112,7 @@ DataTable > .datatable--odd-row {
     dock: right;
     width: 50%;
     height: 100%;
-    margin-bottom: 0;
+    margin-bottom: 1;
     border-top: none;
     border-left: solid #00d7d7;
 }
