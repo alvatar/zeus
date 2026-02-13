@@ -62,27 +62,46 @@ def match_tmux_to_agents(
     """Match tmux sessions to agents.
 
     Priority:
-      1. cwd match — tmux session cwd starts with (or equals) agent cwd.
-         Pick the agent with the longest matching cwd (most specific).
-      2. screen text — tmux session name appears in agent screen text.
+      1. screen text — if exactly one agent's screen mentions this specific
+         tmux session name, assign it there (strongest ownership signal).
+      2. cwd match — tmux session cwd starts with (or equals) agent cwd.
+         Pick the agent with the longest matching cwd.  Among ties, prefer
+         the agent whose screen text mentions this session name.
+      3. screen text fallback — first agent whose screen mentions the name.
     """
     for sess in tmux_sessions:
-        # 1. Try cwd match (most specific wins)
-        best_agent: AgentWindow | None = None
-        best_len: int = -1
-        if sess.cwd:
-            for agent in agents:
-                if (agent.cwd
-                        and sess.cwd.startswith(agent.cwd)
-                        and len(agent.cwd) > best_len):
-                    best_agent = agent
-                    best_len = len(agent.cwd)
-        if best_agent:
-            best_agent.tmux_sessions.append(sess)
+        # 1. Exact screen-text match on this session's name
+        screen_matches: list[AgentWindow] = [
+            a for a in agents if sess.name in a._screen_text
+        ]
+        if len(screen_matches) == 1:
+            screen_matches[0].tmux_sessions.append(sess)
             continue
 
-        # 2. Fall back to screen text match
-        for agent in agents:
-            if sess.name in agent._screen_text:
-                agent.tmux_sessions.append(sess)
-                break
+        # 2. cwd match (most specific wins, screen-text breaks ties)
+        best_len: int = -1
+        cwd_candidates: list[AgentWindow] = []
+        if sess.cwd:
+            for agent in agents:
+                if agent.cwd and sess.cwd.startswith(agent.cwd):
+                    if len(agent.cwd) > best_len:
+                        best_len = len(agent.cwd)
+                        cwd_candidates = [agent]
+                    elif len(agent.cwd) == best_len:
+                        cwd_candidates.append(agent)
+        if cwd_candidates:
+            # Among tied cwd candidates, prefer the one with screen mention
+            if len(cwd_candidates) > 1:
+                with_screen = [
+                    a for a in cwd_candidates
+                    if sess.name in a._screen_text
+                ]
+                if len(with_screen) == 1:
+                    cwd_candidates = with_screen
+            cwd_candidates[0].tmux_sessions.append(sess)
+            continue
+
+        # 3. Fall back to first screen text match
+        if screen_matches:
+            screen_matches[0].tmux_sessions.append(sess)
+            continue
