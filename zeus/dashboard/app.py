@@ -707,7 +707,7 @@ class ZeusApp(App):
             )
             color = colors[pri - 1]
             block_style = f"bold {color}" if pri == 1 else color
-            label = f"(s){a.name[:8]}" if is_sub else a.name[:10]
+            label = f"{a.name[:8]}(s)" if is_sub else a.name[:10]
             return f"[{block_style}]{label} ██[/]"
 
         parts: list[str] = []
