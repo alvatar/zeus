@@ -677,15 +677,11 @@ class ZeusApp(App):
             return
         mini.remove_class("hidden")
 
-        _state_colors = {
-            "WORKING": "#00d700",
-            "WAITING": "#d7af00",
-            "IDLE": "#ff3333",
-        }
-        _state_dim = {
-            "WORKING": "#004400",
-            "WAITING": "#444400",
-            "IDLE": "#441111",
+        _state_pri_colors: dict[str, tuple[str, str, str]] = {
+            #              P1          P2          P3
+            "WORKING": ("#00ff00", "#006600", "#003300"),
+            "WAITING": ("#ffdd00", "#776600", "#333300"),
+            "IDLE":    ("#ff4444", "#771111", "#330a0a"),
         }
 
         parts: list[str] = []
@@ -696,15 +692,10 @@ class ZeusApp(App):
                 state_label = "WAITING"
             else:
                 state_label = a.state.value.upper()
-            color = _state_colors.get(state_label, "#555555")
             pri = self._get_priority(a.name)
-            if pri == 3:
-                color = _state_dim.get(state_label, "#333333")
-                block_style = f"{color}"
-            elif pri == 2:
-                block_style = f"{color}"
-            else:
-                block_style = f"bold {color}"
+            colors = _state_pri_colors.get(state_label, ("#555555", "#333333", "#222222"))
+            color = colors[pri - 1]
+            block_style = f"bold {color}" if pri == 1 else color
             name = a.name[:10]
             parts.append(f"[{block_style}]{name} ██[/]")
 
