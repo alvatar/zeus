@@ -468,9 +468,10 @@ class ZeusApp(App):
                 return f"{s // 3600}h{(s % 3600) // 60}m"
             return f"{s // 86400}d{(s % 86400) // 3600}h"
 
+        from .widgets import _gradient_color
+
         def _ctx_gauge(pct: float) -> Text:
             """Single-character circular context gauge with gradient color."""
-            from .widgets import _gradient_color
             p = max(0.0, min(100.0, pct))
             if p < 12.5:
                 ch = "○"
@@ -527,12 +528,17 @@ class ZeusApp(App):
             )
 
             pm = a.proc_metrics
-            cpu_cell: str | Text = f"{pm.cpu_pct:.0f}%"
+            cpu_cell: str | Text = Text(
+                f"{pm.cpu_pct:.0f}%",
+                style=_gradient_color(pm.cpu_pct),
+            )
             ram_cell: str | Text = f"{pm.ram_mb:.0f}M"
             gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-            gpu_cell: str | Text = gpu_str
+            gpu_cell: str | Text = Text(
+                gpu_str, style=_gradient_color(pm.gpu_pct),
+            )
             net_cell: str | Text = (
                 f"↓{fmt_bytes(pm.io_read_bps)} "
                 f"↑{fmt_bytes(pm.io_write_bps)}"
