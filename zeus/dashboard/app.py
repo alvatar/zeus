@@ -41,7 +41,7 @@ from ..tmux import (
     ensure_tmux_update_environment,
     match_tmux_to_agents,
 )
-from ..state import detect_state, parse_footer
+from ..state import detect_state, activity_signature, parse_footer
 from ..usage import read_usage, read_openai_usage, time_left
 from ..windowing import (
     find_ancestor_pid_by_comm,
@@ -139,6 +139,7 @@ class ZeusApp(App):
     _dopamine_armed: bool = True
     _steady_armed: bool = True
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
+    _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
     _minimap_agents: list[str] = []
     prev_states: dict[str, State] = {}
     state_changed_at: dict[str, float] = {}
@@ -270,10 +271,30 @@ class ZeusApp(App):
         usage = read_usage()
         openai = read_openai_usage()
 
+        # Activity fallback: if content keeps changing without spinner,
+        # treat as WORKING until output stabilizes.
+        screen_activity_sig = dict(self._screen_activity_sig)
+
         for a in agents:
+            agent_key = f"{a.socket}:{a.kitty_id}"
             screen: str = get_screen_text(a)
             a._screen_text = screen
-            a.state = detect_state(screen)
+
+            coarse = detect_state(screen)
+            sig = activity_signature(screen)
+            old_sig = screen_activity_sig.get(agent_key)
+            sig_changed = (
+                old_sig is not None
+                and old_sig != sig
+                and bool(old_sig or sig)
+            )
+            a.state = (
+                State.WORKING
+                if coarse == State.IDLE and sig_changed
+                else coarse
+            )
+            screen_activity_sig[agent_key] = sig
+
             a.model, a.ctx_pct, a.tokens_in, a.tokens_out = parse_footer(
                 screen
             )
@@ -322,6 +343,9 @@ class ZeusApp(App):
         }
         idle_since = {k: v for k, v in idle_since.items() if k in live_keys}
         idle_notified &= live_keys
+        self._screen_activity_sig = {
+            k: v for k, v in screen_activity_sig.items() if k in live_keys
+        }
 
         result = PollResult(
             agents=agents,

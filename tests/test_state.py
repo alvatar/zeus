@@ -1,11 +1,16 @@
 """Tests for state detection and footer parsing."""
 
 from zeus.models import State
-from zeus.state import detect_state, parse_footer
+from zeus.state import detect_state, activity_signature, parse_footer
 
 
 def test_detect_working_spinner():
     screen = "Some output\n⠋ Thinking about the problem...\nmore text"
+    assert detect_state(screen) == State.WORKING
+
+
+def test_detect_working_footer_label():
+    screen = "Some output\nstatus: WORKING\n"
     assert detect_state(screen) == State.WORKING
 
 
@@ -16,6 +21,25 @@ def test_detect_idle_no_spinner():
 
 def test_detect_idle_empty():
     assert detect_state("") == State.IDLE
+
+
+def test_activity_signature_strips_footer_and_blanks():
+    screen = (
+        "line 1\n"
+        "\n"
+        "line 2\n"
+        "opus-4-6 Ctx(200K):██░░░░░░░░░░(10%) ↑1k ↓2k\n"
+    )
+    assert activity_signature(screen) == "line 1\nline 2"
+
+
+def test_activity_signature_keeps_recent_tail():
+    lines = [f"line {i}" for i in range(120)]
+    sig = activity_signature("\n".join(lines))
+    kept = sig.splitlines()
+    assert len(kept) == 80
+    assert kept[0] == "line 40"
+    assert kept[-1] == "line 119"
 
 
 def test_parse_footer_full():
