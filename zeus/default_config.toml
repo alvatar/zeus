@@ -26,7 +26,7 @@ P = 1
 Elapsed = 4
 Name = 24
 "Model/Cmd" = 21
-CPU = 8
+CPU = 3
 
 [columns.wide]
 order = ["State", "P", "◉", "Name", "Elapsed", "Model/Cmd", "CPU", "RAM", "GPU", "Net", "WS", "CWD", "Tokens"]
@@ -36,7 +36,7 @@ State = 10
 P = 1
 Elapsed = 5
 "Model/Cmd" = 21
-CPU = 8
+CPU = 3
 
 # ── Mini-map ─────────────────────────────────────────────────────────
 

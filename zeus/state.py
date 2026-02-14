@@ -7,22 +7,29 @@ import re
 from .config import SPINNER_RE, MODEL_RE, CTX_RE, TOKENS_RE
 from .models import State
 
-_WORKING_WORD_RE = re.compile(r"\bWORKING\b", re.IGNORECASE)
+_WORKING_STATUS_RE = re.compile(
+    r"^\s*(?:[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+)?working(?:\.\.\.|…)?\s*$",
+    re.IGNORECASE,
+)
 
 
 def detect_state(screen: str) -> State:
     """Detect coarse state from raw screen text.
 
-    WORKING when:
-    - spinner is present, or
-    - trailing status lines explicitly say WORKING.
+    WORKING when trailing status lines show either:
+    - spinner line (must begin with spinner glyph), or
+    - explicit status line "Working...".
     """
-    if SPINNER_RE.search(screen):
+    tail = [line.strip() for line in screen.splitlines() if line.strip()][-12:]
+
+    # Important: use match on tail lines, not search over full screen,
+    # to avoid false positives from quoted text/code examples.
+    if any(SPINNER_RE.match(line) for line in tail):
         return State.WORKING
 
-    # Pi often shows explicit WORKING in the bottom status area.
-    tail = [line.strip() for line in screen.splitlines() if line.strip()][-6:]
-    if any(_WORKING_WORD_RE.search(line) for line in tail):
+    # Pi can show a dedicated bottom status line like "Working...".
+    # Match only that status shape (not arbitrary prose containing "working").
+    if any(_WORKING_STATUS_RE.match(line) for line in tail):
         return State.WORKING
 
     return State.IDLE

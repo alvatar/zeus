@@ -138,6 +138,7 @@ class ZeusApp(App):
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
     _steady_armed: bool = True
+    _celebration_warmup_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
     _minimap_agents: list[str] = []
@@ -212,6 +213,7 @@ class ZeusApp(App):
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
         self._load_priorities()
+        self._celebration_warmup_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
         table.cursor_type = "row"
@@ -277,7 +279,9 @@ class ZeusApp(App):
 
         for a in agents:
             agent_key = f"{a.socket}:{a.kitty_id}"
-            screen: str = get_screen_text(a)
+            # Use full extent so state detection isn't affected by manual
+            # scrolling/focus changes in the kitty viewport.
+            screen: str = get_screen_text(a, full=True)
             a._screen_text = screen
 
             coarse = detect_state(screen)
@@ -377,7 +381,9 @@ class ZeusApp(App):
             for a in self.agents
         )
 
-        # Pre-compute summaries only when an agent transitions WORKING -> IDLE
+        # Action-needed checks:
+        # - when an agent transitions WORKING -> IDLE
+        # - once when an agent is first seen already IDLE (startup/new window)
         live_keys: set[str] = set()
         for a in self.agents:
             key = f"{a.socket}:{a.kitty_id}"
@@ -387,7 +393,11 @@ class ZeusApp(App):
                 old_state == State.WORKING
                 and a.state == State.IDLE
             )
-            if just_became_idle and key not in self._action_check_pending:
+            first_seen_idle = (
+                old_state is None
+                and a.state == State.IDLE
+            )
+            if (just_became_idle or first_seen_idle) and key not in self._action_check_pending:
                 self._action_check_pending.add(key)
                 self._check_action_needed(a, key)
             elif a.state == State.WORKING:
@@ -891,10 +901,13 @@ class ZeusApp(App):
             wait_pct = raw_waiting / total * 100
             idle_pct = (total - raw_working - raw_waiting) / total * 100
 
-            # Celebration triggers (require ≥10 min of data)
-            min_samples = int(600 / SETTINGS.poll_interval)  # 10 min
-            enough_data = raw_total >= min_samples
-            if enough_data:
+            # Celebration triggers (require ≥10 minutes since app start)
+            warmup_start = self._celebration_warmup_started_at
+            warmup_done = (
+                warmup_start is not None
+                and (time.time() - warmup_start) >= 600
+            )
+            if warmup_done:
                 if eff_pct >= 80 and self._steady_armed:
                     self._steady_armed = False
                     self._show_steady_lad(eff_pct)
@@ -1637,16 +1650,20 @@ class ZeusApp(App):
     # ── Action-needed detection ─────────────────────────────────────
 
     _ACTION_PROMPT = (
-        "You are a triage classifier. An AI coding agent is IDLE. "
-        "Does it need human input to continue? Look at the terminal "
-        "output below and reply with a SINGLE word: YES or NO.\n\n"
-        "Terminal output:\n"
+        "You are a triage classifier. An AI coding agent is currently IDLE. "
+        "Reply YES only if it is explicitly blocked and waiting for human "
+        "input/approval/decision RIGHT NOW. Reply NO if it is done, standing "
+        "by, acknowledged, or otherwise not waiting for human action. "
+        "Prioritize the newest lines; older questions may be superseded by "
+        "later messages. Reply with a SINGLE word: YES or NO.\n\n"
+        "Terminal output (oldest to newest):\n"
     )
 
     def _get_screen_context(self, agent: AgentWindow) -> str:
-        text = get_screen_text(agent)
+        # Full extent keeps classification stable even if user scrolls kitty.
+        text = get_screen_text(agent, full=True)
         lines = text.splitlines()
-        recent = [l for l in lines if l.strip()][-30:]
+        recent = [l for l in lines if l.strip()][-24:]
         return "\n".join(recent)
 
     @work(thread=True, group="action_check")

@@ -10,8 +10,23 @@ def test_detect_working_spinner():
 
 
 def test_detect_working_footer_label():
-    screen = "Some output\nstatus: WORKING\n"
+    screen = "Some output\nWorking...\n"
     assert detect_state(screen) == State.WORKING
+
+
+def test_detect_working_footer_label_with_spinner_glyph():
+    screen = "Some output\n⠋ Working...\n"
+    assert detect_state(screen) == State.WORKING
+
+
+def test_detect_idle_when_working_word_is_plain_prose():
+    screen = "Superproject working tree still has local changes\n"
+    assert detect_state(screen) == State.IDLE
+
+
+def test_detect_idle_when_spinner_is_embedded_in_prose():
+    screen = "- positive: ⠋ Working... -> WORKING\n"
+    assert detect_state(screen) == State.IDLE
 
 
 def test_detect_idle_no_spinner():
