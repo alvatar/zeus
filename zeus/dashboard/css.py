@@ -45,7 +45,7 @@ Screen {
 #mini-map {
     height: auto;
     max-height: 3;
-    margin: 0 1;
+    margin: 1 1 0 1;
     padding: 0 2;
     border: round #1a3a3a;
     background: #050a0e;

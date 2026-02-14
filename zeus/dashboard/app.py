@@ -146,9 +146,9 @@ class ZeusApp(App):
             ),
             id="top-bars",
         )
-        yield Static("", id="mini-map")
         yield Horizontal(
             Vertical(
+                Static("", id="mini-map"),
                 ZeusDataTable(
                     id="agent-table",
                     cursor_foreground_priority="renderable",
