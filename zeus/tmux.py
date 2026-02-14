@@ -25,10 +25,31 @@ def ensure_tmux_update_environment(var_name: str = "ZEUS_AGENT_ID") -> None:
     r = _run_tmux(["tmux", "show", "-gv", "update-environment"], timeout=2)
     if r is None or r.returncode != 0:
         return
-    current: set[str] = {line.strip() for line in r.stdout.splitlines() if line.strip()}
+    # tmux returns space-separated values (possibly across lines)
+    raw = r.stdout.strip()
+    current: set[str] = set()
+    for chunk in raw.replace("\n", " ").split():
+        stripped = chunk.strip()
+        if stripped:
+            current.add(stripped)
+
     if var_name in current:
+        # Clean up duplicates if present (from earlier buggy appends)
+        count = raw.split().count(var_name)
+        if count > 1:
+            _deduplicate_update_environment(current)
         return
     _run_tmux(["tmux", "set", "-ga", "update-environment", var_name], timeout=2)
+
+
+def _deduplicate_update_environment(entries: set[str]) -> None:
+    """Rewrite update-environment with deduplicated entries."""
+    # Reset to default then re-add each unique entry
+    _run_tmux(
+        ["tmux", "set", "-g", "update-environment",
+         " ".join(sorted(entries))],
+        timeout=2,
+    )
 
 
 def _read_tmux_owner_id(session_name: str) -> str:
