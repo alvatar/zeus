@@ -560,18 +560,23 @@ class ZeusApp(App):
             )
 
             row_key: str = akey
-            row = [
-                state_text, pri_cell, name_text, elapsed_text,
-                Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
-                ctx_cell,
-                cpu_cell, ram_cell, gpu_cell, net_cell,
-            ]
-            if not self._split_mode:
-                row.extend([
-                    Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
-                    Text(a.cwd, style=row_bg) if row_bg else a.cwd,
-                    tok_cell,
-                ])
+            cells: dict[str, str | Text] = {
+                "State": state_text,
+                "P": pri_cell,
+                "◉": ctx_cell,
+                "Name": name_text,
+                "Elapsed": elapsed_text,
+                "Model/Cmd": Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
+                "CPU": cpu_cell,
+                "RAM": ram_cell,
+                "GPU": gpu_cell,
+                "Net": net_cell,
+                "WS": Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
+                "CWD": Text(a.cwd, style=row_bg) if row_bg else a.cwd,
+                "Tokens": tok_cell,
+            }
+            cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
+            row = [cells.get(c, "") for c in cols]
             table.add_row(*row, key=row_key)
 
         def _clean_tmux_cmd(cmd: str) -> str:
@@ -633,12 +638,23 @@ class ZeusApp(App):
                             v.stylize(dim)
                 tmux_key: str = f"tmux:{sess.name}"
                 state_placeholder = Text(" " * state_col_width, style="on #000000")
-                row = [
-                    state_placeholder, "", tmux_name, tmux_age, tmux_cmd,
-                    "", cpu_t, ram_t, gpu_t, net_t,
-                ]
-                if not self._split_mode:
-                    row.extend(["", sess.cwd, ""])
+                tcells: dict[str, str | Text] = {
+                    "State": state_placeholder,
+                    "P": "",
+                    "◉": "",
+                    "Name": tmux_name,
+                    "Elapsed": tmux_age,
+                    "Model/Cmd": tmux_cmd,
+                    "CPU": cpu_t,
+                    "RAM": ram_t,
+                    "GPU": gpu_t,
+                    "Net": net_t,
+                    "WS": "",
+                    "CWD": sess.cwd,
+                    "Tokens": "",
+                }
+                cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
+                row = [tcells.get(c, "") for c in cols]
                 table.add_row(*row, key=tmux_key)
 
         for a in top_level:
