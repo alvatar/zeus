@@ -1,4 +1,4 @@
-"""Custom widgets: ZeusDataTable, UsageBar, ZeusTextArea."""
+"""Custom widgets: ZeusDataTable, UsageBar, ZeusTextArea, SplashOverlay."""
 
 from __future__ import annotations
 
@@ -6,12 +6,15 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.widgets import DataTable, Static, TextArea
 from rich.text import Text
+
+if TYPE_CHECKING:
+    from textual.timer import Timer
 
 
 def _as_binding(spec: Binding | tuple[str, ...]) -> Binding:
@@ -193,8 +196,25 @@ class ZeusTextArea(TextArea):
         super().action_paste()
 
 
+def _gradient_color(pct: float) -> str:
+    """Return a hex color smoothly interpolated across a cyan→yellow→red ramp."""
+    p = max(0.0, min(100.0, pct)) / 100.0
+    # Ramp: 0%=#00d7d7 (cyan) → 70%=#d7d700 (yellow) → 100%=#ff3333 (red)
+    if p < 0.70:
+        t = p / 0.70
+        r = int(0x00 + (0xd7 - 0x00) * t)
+        g = int(0xd7 + (0xd7 - 0xd7) * t)
+        b = int(0xd7 + (0x00 - 0xd7) * t)
+    else:
+        t = (p - 0.70) / 0.30
+        r = int(0xd7 + (0xff - 0xd7) * t)
+        g = int(0xd7 + (0x33 - 0xd7) * t)
+        b = int(0x00 + (0x33 - 0x00) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 class UsageBar(Static):
-    """A labeled progress bar showing a percentage."""
+    """A labeled progress bar showing a percentage with smooth gradient."""
     pct: reactive[float] = reactive(0.0)
     label_text: reactive[str] = reactive("")
     extra_text: reactive[str] = reactive("")
@@ -213,13 +233,8 @@ class UsageBar(Static):
         pct: float = self.pct
         width: int = 12
         filled: int = round((min(100, max(0, pct)) / 100) * width)
-        if pct >= 90:
-            color = "#ff3333"
-        elif pct >= 80:
-            color = "#ff8800"
-        else:
-            color = "#00d7d7"
-        bar_empty: str = "#555555"
+        tip_color = _gradient_color(pct)
+        bar_empty: str = "#333333"
 
         pct_str: str = f"{pct:.0f}%"
         pct_field: str = pct_str.rjust(4)
@@ -229,8 +244,83 @@ class UsageBar(Static):
 
         t = Text()
         t.append(f"{self.label_text} ", style="#447777")
-        t.append("█" * filled, style=color)
+        # Per-cell gradient: each filled block gets the color for its position
+        for i in range(filled):
+            cell_pct = ((i + 1) / width) * 100
+            t.append("█", style=_gradient_color(cell_pct))
         t.append("░" * (width - filled), style=bar_empty)
-        t.append(f"{pct_field}", style=f"bold {color}")
+        t.append(f"{pct_field}", style=f"bold {tip_color}")
         t.append(f" {extra}", style="#447777")
         return t
+
+
+# ── Splash overlay ────────────────────────────────────────────────────
+
+_SPLASH_ART: list[str] = [
+    "[#1a3a3a]╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸[/]",
+    "[#00d7d7]███████╗███████╗██╗   ██╗███████╗[/]",
+    "[#00b5b5]╚══███╔╝██╔════╝██║   ██║██╔════╝[/]",
+    "[#009999]  ███╔╝ █████╗  ██║   ██║███████╗[/]",
+    "[#00b5b5] ███╔╝  ██╔══╝  ██║   ██║╚════██║[/]",
+    "[#00d7d7]███████╗███████╗╚██████╔╝███████║[/]",
+    "[#00e8e8]╚══════╝╚══════╝ ╚═════╝ ╚══════╝[/]",
+    "[bold #ffcc00]                ⚡[/]",
+    "[#1a3a3a]╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸[/]",
+    "",
+    "[#3a6a6a]     Agent Fleet Commander[/]",
+]
+
+
+class SplashOverlay(Static):
+    """Animated startup splash with typewriter reveal and fade-out."""
+
+    DEFAULT_CSS = """
+    SplashOverlay {
+        layer: splash;
+        width: 100%;
+        height: 100%;
+        background: #000000;
+        content-align: center middle;
+        overflow: hidden hidden;
+        scrollbar-size: 0 0;
+    }
+    """
+
+    _reveal: int = 0
+    _tick_timer: Timer | None = None
+
+    def on_mount(self) -> None:
+        self._reveal = 0
+        self._tick_timer = self.set_interval(0.09, self._tick)
+
+    def _tick(self) -> None:
+        if self._reveal < len(_SPLASH_ART):
+            self._reveal += 1
+            self.update("\n".join(_SPLASH_ART[: self._reveal]))
+        else:
+            if self._tick_timer:
+                self._tick_timer.stop()
+                self._tick_timer = None
+            self.set_timer(0.8, self._fade_out)
+
+    def _fade_out(self) -> None:
+        self.styles.animate(
+            "opacity", 0.0, duration=0.5, easing="out_cubic",
+        )
+        self.set_timer(0.55, self._do_remove)
+
+    def _do_remove(self) -> None:
+        try:
+            self.remove()
+        except Exception:
+            pass
+
+    def dismiss(self) -> None:
+        """Immediately skip and remove the splash."""
+        if self._tick_timer:
+            self._tick_timer.stop()
+            self._tick_timer = None
+        try:
+            self.remove()
+        except Exception:
+            pass

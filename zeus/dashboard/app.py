@@ -55,7 +55,7 @@ from .stream import (
     strip_pi_input_chrome,
     trim_trailing_blank_lines,
 )
-from .widgets import ZeusDataTable, ZeusTextArea, UsageBar
+from .widgets import ZeusDataTable, ZeusTextArea, UsageBar, SplashOverlay
 from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
@@ -167,6 +167,7 @@ class ZeusApp(App):
             id="main-content",
         )
         yield Static("", id="status-line")
+        yield SplashOverlay(id="splash")
 
     _FULL_COLUMNS = (
         "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
@@ -773,13 +774,13 @@ class ZeusApp(App):
             target.remove_class("hidden")
             target.add_class("visible")
             target.update(
-                f"[bold #00d7d7]── {name} ──[/]\n\n{content}"
+                f"[#00d7d7]─── [bold]{name}[/bold] ───[/]\n\n{content}"
             )
         elif generating:
             target.remove_class("hidden")
             target.add_class("visible")
             target.update(
-                f"[bold #00d7d7]── {name} ──[/]\n\n"
+                f"[#00d7d7]─── [bold]{name}[/bold] ───[/]\n\n"
                 f"[dim]Generating {generating}…[/]"
             )
         else:
@@ -963,8 +964,20 @@ class ZeusApp(App):
 
     # ── Event handlers ────────────────────────────────────────────────
 
+    def _dismiss_splash(self) -> bool:
+        """Dismiss splash if present. Returns True if dismissed."""
+        for splash in self.query(SplashOverlay):
+            splash.dismiss()
+            return True
+        return False
+
     def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
+        if self._dismiss_splash():
+            event.prevent_default()
+            event.stop()
+            return
+
         if event.key == "enter" and isinstance(self.focused, DataTable):
             event.prevent_default()
             event.stop()
@@ -1039,6 +1052,8 @@ class ZeusApp(App):
             self.notify(f"Focused: {agent.name}", timeout=2)
 
     def on_click(self, event: events.Click) -> None:
+        if self._dismiss_splash():
+            return
         if event.chain < 2:
             return
         table = self.query_one("#agent-table", DataTable)

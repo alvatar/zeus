@@ -3,6 +3,9 @@
 APP_CSS = """
 Screen {
     background: #000000;
+    layers: default splash;
+    overflow: hidden;
+    scrollbar-size: 0 0;
 }
 
 #title-bar {
@@ -20,7 +23,7 @@ Screen {
 }
 
 #title-clock {
-    color: #555555;
+    color: #3a5a5a;
 }
 
 #top-bars {
@@ -61,7 +64,7 @@ DataTable {
 
 DataTable > .datatable--header {
     background: #0a1a2a;
-    color: #00d7d7;
+    color: #00aabb;
     text-style: bold;
 }
 
@@ -90,7 +93,7 @@ DataTable > .datatable--odd-row {
 #left-summary {
     height: auto;
     max-height: 8;
-    color: #cccccc;
+    color: #bbbbbb;
     padding: 0 2;
     margin: 0 0 1 0;
     display: none;
@@ -103,13 +106,13 @@ DataTable > .datatable--odd-row {
 #interact-panel {
     display: none;
     padding: 0 1;
-    background: #0a0a0a;
+    background: #080c10;
 }
 
 #interact-panel.visible {
     display: block;
     width: 50%;
-    border-left: solid #00d7d7;
+    border-left: solid #0a3a3a;
 }
 
 #interact-panel.visible.split {
@@ -118,7 +121,7 @@ DataTable > .datatable--odd-row {
 
 #interact-summary {
     height: 6;
-    color: #cccccc;
+    color: #bbbbbb;
     padding: 0 1;
 }
 
@@ -131,14 +134,14 @@ DataTable > .datatable--odd-row {
     overflow-y: auto;
     scrollbar-size: 0 0;
     padding: 0 1 1 1;
-    border-top: solid #333333;
+    border-top: solid #1a3030;
 }
 
 #interact-input {
     height: 3;
-    background: #0a0a0a;
+    background: #0a1018;
     border: none;
-    border-top: solid #333333;
+    border-top: solid #1a3030;
     padding: 0 1;
     color: #cccccc;
 }
