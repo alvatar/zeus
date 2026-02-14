@@ -114,6 +114,7 @@ class ZeusApp(App):
     _highlight_timer: Timer | None = None
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
+    _interact_drafts: dict[str, str] = {}
     _idle_summaries: dict[str, str] = {}
     _idle_summary_pending: set[str] = set()
     _action_needed: set[str] = set()
@@ -801,8 +802,42 @@ class ZeusApp(App):
             target.add_class("hidden")
             target.remove_class("visible")
 
+    def _interact_draft_key(self) -> str | None:
+        """Return a key for the current interact target's draft."""
+        if self._interact_agent_key:
+            return f"agent:{self._interact_agent_key}"
+        if self._interact_tmux_name:
+            return f"tmux:{self._interact_tmux_name}"
+        return None
+
+    def _save_interact_draft(self) -> None:
+        """Stash current input text for the current target."""
+        key = self._interact_draft_key()
+        if key is None:
+            return
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        text = ta.text
+        if text.strip():
+            self._interact_drafts[key] = text
+        else:
+            self._interact_drafts.pop(key, None)
+
+    def _restore_interact_draft(self) -> None:
+        """Restore stashed input text for the current target."""
+        key = self._interact_draft_key()
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        draft = self._interact_drafts.get(key or "", "")
+        self._history_programmatic_change = True
+        try:
+            ta.load_text(draft)
+        finally:
+            self._history_programmatic_change = False
+        lines = ta.document.line_count
+        ta.styles.height = max(1, min(8, lines)) + 2
+
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
+        self._save_interact_draft()
         self._reset_history_nav()
         tmux = self._get_selected_tmux()
         if tmux:
@@ -810,6 +845,7 @@ class ZeusApp(App):
             self._interact_tmux_name = tmux.name
             self._update_summary_widget(tmux.name, None)
             self._update_interact_stream()
+            self._restore_interact_draft()
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -836,6 +872,7 @@ class ZeusApp(App):
             # While WORKING we don't continuously regenerate summaries.
             self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
+        self._restore_interact_draft()
 
     def _get_tmux_client_pid(self, sess_name: str) -> int | None:
         """Return PID of first attached tmux client for a session."""
