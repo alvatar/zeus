@@ -603,12 +603,17 @@ class ZeusApp(App):
                 net_t: str | Text = ""
                 pm = getattr(sess, '_proc_metrics', None)
                 if pm:
-                    cpu_t = f"{pm.cpu_pct:.0f}%"
+                    cpu_t = Text(
+                        f"{pm.cpu_pct:.0f}%",
+                        style=_gradient_color(pm.cpu_pct),
+                    )
                     ram_t = f"{pm.ram_mb:.0f}M"
                     gpu_str: str = f"{pm.gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-                    gpu_t = gpu_str
+                    gpu_t = Text(
+                        gpu_str, style=_gradient_color(pm.gpu_pct),
+                    )
                     net_str: str = (
                         f"↓{fmt_bytes(pm.io_read_bps)} "
                         f"↑{fmt_bytes(pm.io_write_bps)}"
