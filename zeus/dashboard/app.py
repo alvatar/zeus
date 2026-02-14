@@ -127,13 +127,13 @@ class ZeusApp(App):
     _history_nav_index: int | None = None
 
     def compose(self) -> ComposeResult:
-        yield Horizontal(
-            Label("⚡ Zeus", id="title-text"),
-            Static("", id="title-clock"),
-            id="title-bar",
-        )
         yield Container(
             Vertical(
+                Horizontal(
+                    Label("⚡ Zeus", id="title-text"),
+                    Static("", id="title-clock"),
+                    id="title-bar",
+                ),
                 Horizontal(
                     UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
                     UsageBar("Week:", classes="usage-item", id="usage-week"),

@@ -9,11 +9,11 @@ Screen {
 }
 
 #title-bar {
-    dock: top;
     height: 1;
     background: #0a1a2a;
     color: #00d7d7;
     padding: 0 1;
+    margin: 0 0 1 0;
 }
 
 #title-text {
