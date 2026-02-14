@@ -7,7 +7,8 @@ import json
 import re
 from pathlib import Path
 
-from .config import INPUT_HISTORY_DIR, INPUT_HISTORY_MAX
+from .config import INPUT_HISTORY_DIR
+from .settings import SETTINGS
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
@@ -40,7 +41,7 @@ def load_history(target_key: str) -> list[str]:
     for item in data:
         if isinstance(item, str) and item.strip():
             entries.append(item)
-    return entries[-INPUT_HISTORY_MAX:]
+    return entries[-SETTINGS.input_history_max:]
 
 
 def save_history(target_key: str, entries: list[str]) -> None:
@@ -50,7 +51,7 @@ def save_history(target_key: str, entries: list[str]) -> None:
     filtered = [entry for entry in entries if entry.strip()]
     path = history_path_for_key(target_key)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(filtered[-INPUT_HISTORY_MAX:]))
+    path.write_text(json.dumps(filtered[-SETTINGS.input_history_max:]))
 
 
 def append_history(target_key: str, entry: str) -> list[str]:

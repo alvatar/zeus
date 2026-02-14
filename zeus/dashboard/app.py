@@ -22,7 +22,8 @@ class SortMode(Enum):
     PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import POLL_INTERVAL, PRIORITIES_FILE, SUMMARY_MODEL
+from ..config import PRIORITIES_FILE
+from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
 )
@@ -107,7 +108,7 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
     _agent_priorities: dict[str, int] = {}
-    summary_model: str = SUMMARY_MODEL
+    summary_model: str = SETTINGS.summary_model
     _summaries_enabled: bool = True
     _split_mode: bool = True
     _interact_visible: bool = True
@@ -153,7 +154,7 @@ class ZeusApp(App):
                     id="agent-table",
                     cursor_foreground_priority="renderable",
                     cursor_background_priority="renderable",
-                    fixed_columns=2,
+                    fixed_columns=SETTINGS.columns.fixed,
                 ),
                 Static("", id="left-summary"),
                 id="table-container",
@@ -173,24 +174,10 @@ class ZeusApp(App):
         yield Static("", id="status-line")
         yield SplashOverlay(id="splash")
 
-    _FULL_COLUMNS = (
-        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
-        "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
-    )
-    _SPLIT_COLUMNS = (
-        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
-        "RAM", "GPU", "Net",
-    )
-
-    # Columns that get a fixed width (label → width)
-    _COL_WIDTHS: dict[str, int] = {"State": 10, "P": 1, "Elapsed": 5}
-    _COL_WIDTHS_SPLIT: dict[str, int] = {
-        "Name": 16,
-        "State": 10,
-        "P": 1,
-        "Elapsed": 4,
-        "Model/Cmd": 28,
-    }
+    _FULL_COLUMNS = SETTINGS.columns.wide.order
+    _SPLIT_COLUMNS = SETTINGS.columns.split.order
+    _COL_WIDTHS: dict[str, int] = SETTINGS.columns.wide.widths
+    _COL_WIDTHS_SPLIT: dict[str, int] = SETTINGS.columns.split.widths
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
@@ -213,7 +200,7 @@ class ZeusApp(App):
         table.zebra_stripes = True
         self._setup_table_columns()
         self.poll_and_update()
-        self.set_interval(POLL_INTERVAL, self.poll_and_update)
+        self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_interact_stream)
 
@@ -660,7 +647,7 @@ class ZeusApp(App):
             f"Sort: [bold]{sort_label}[/]  │  "
             f"Layout: [bold]{'SPLIT' if self._split_mode else 'WIDE'}[/]  │  "
             f"AI: [bold]{model_short if self._summaries_enabled else 'OFF'}[/]  │  "
-            f"Poll: {POLL_INTERVAL}s"
+            f"Poll: {SETTINGS.poll_interval}s"
         )
 
         if state_changed_any:
@@ -727,7 +714,7 @@ class ZeusApp(App):
             pc = _agent_color(parent)
             pri = self._get_priority(parent.name)
             style = f"bold {pc}" if pri == 1 else pc
-            name = parent.name[:10]
+            name = parent.name[:SETTINGS.minimap.max_name_length]
 
             # Sub-agents inline
             subs: list[str] = []
@@ -735,7 +722,7 @@ class ZeusApp(App):
                 cc = _agent_color(child)
                 cpri = self._get_priority(child.name)
                 cs = f"bold {cc}" if cpri == 1 else cc
-                cn = child.name[:8]
+                cn = child.name[:SETTINGS.minimap.max_sub_name_length]
                 subs.append(
                     f"[#333333]┊[/] [{cs}]{cn}[/]"
                 )
@@ -750,7 +737,7 @@ class ZeusApp(App):
             # Approximate visible width for the bar
             bar_len = len(name) + 1
             for child in kids:
-                bar_len += len(child.name[:8]) + 3  # ┊ + spaces
+                bar_len += len(child.name[:SETTINGS.minimap.max_sub_name_length]) + 3
             bar_len = max(bar_len, 8)
 
             cards_top.append(f"[{pc}]{'▄' * bar_len}[/]")

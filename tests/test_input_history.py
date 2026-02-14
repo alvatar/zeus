@@ -5,7 +5,7 @@ import zeus.input_history as history
 
 def test_append_history_caps_to_max_entries(monkeypatch, tmp_path):
     monkeypatch.setattr(history, "INPUT_HISTORY_DIR", tmp_path)
-    monkeypatch.setattr(history, "INPUT_HISTORY_MAX", 3)
+    monkeypatch.setattr(history.SETTINGS, "input_history_max", 3)
 
     key = "agent:Zeus"
     for i in range(6):
@@ -16,7 +16,7 @@ def test_append_history_caps_to_max_entries(monkeypatch, tmp_path):
 
 def test_append_history_skips_immediate_duplicate(monkeypatch, tmp_path):
     monkeypatch.setattr(history, "INPUT_HISTORY_DIR", tmp_path)
-    monkeypatch.setattr(history, "INPUT_HISTORY_MAX", 10)
+    monkeypatch.setattr(history.SETTINGS, "input_history_max", 10)
 
     key = "agent:Zeus"
     history.append_history(key, "hello")
@@ -27,7 +27,7 @@ def test_append_history_skips_immediate_duplicate(monkeypatch, tmp_path):
 
 def test_prune_histories_removes_absent_targets(monkeypatch, tmp_path):
     monkeypatch.setattr(history, "INPUT_HISTORY_DIR", tmp_path)
-    monkeypatch.setattr(history, "INPUT_HISTORY_MAX", 10)
+    monkeypatch.setattr(history.SETTINGS, "input_history_max", 10)
 
     keep = "agent:keep"
     stale = "agent:stale"
