@@ -125,7 +125,6 @@ class ZeusApp(App):
     idle_notified: set[str] = set()
     _history_nav_target: str | None = None
     _history_nav_index: int | None = None
-    _history_programmatic_change: bool = False
 
     def compose(self) -> ComposeResult:
         yield Horizontal(
@@ -928,12 +927,8 @@ class ZeusApp(App):
         key = self._interact_draft_key()
         ta = self.query_one("#interact-input", ZeusTextArea)
         draft = self._interact_drafts.get(key or "", "")
-        self._history_programmatic_change = True
-        try:
-            ta.load_text(draft)
-            ta.move_cursor(ta.document.end)
-        finally:
-            self._history_programmatic_change = False
+        ta.load_text(draft)
+        ta.move_cursor(ta.document.end)
         self._resize_interact_input(ta)
 
     def _refresh_interact_panel(self) -> None:
@@ -1070,15 +1065,11 @@ class ZeusApp(App):
 
     def _set_interact_input_text(self, text: str) -> None:
         ta = self.query_one("#interact-input", ZeusTextArea)
-        self._history_programmatic_change = True
-        try:
-            if text:
-                ta.load_text(text)
-            else:
-                ta.clear()
-            self._resize_interact_input(ta)
-        finally:
-            self._history_programmatic_change = False
+        if text:
+            ta.load_text(text)
+        else:
+            ta.clear()
+        self._resize_interact_input(ta)
 
     def _handle_interact_history_nav(self, key: str) -> bool:
         """Handle Up/Down history traversal for interact input."""
@@ -1213,15 +1204,7 @@ class ZeusApp(App):
         ta = event.text_area
         if ta.id != "interact-input":
             return
-
         self._resize_interact_input(ta)
-
-        if self._history_programmatic_change:
-            return
-
-        # Any manual edit exits history navigation mode.
-        if self._history_nav_index is not None:
-            self._reset_history_nav()
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
