@@ -683,6 +683,7 @@ class ZeusApp(App):
             "WAITING": ("#ffdd00", "#776600", "#333300"),
             "IDLE":    ("#ff4444", "#771111", "#330a0a"),
         }
+        _state_icons = {"WORKING": "▶", "WAITING": "⏸", "IDLE": "⏹"}
 
         parent_names: set[str] = {a.name for a in self.agents}
         top_level: list[AgentWindow] = sorted(
@@ -697,7 +698,7 @@ class ZeusApp(App):
         for kids in children_of.values():
             kids.sort(key=lambda a: self._get_priority(a.name))
 
-        def _map_entry(a: AgentWindow, is_sub: bool = False) -> str:
+        def _agent_color(a: AgentWindow) -> str:
             akey = f"{a.socket}:{a.kitty_id}"
             waiting = a.state == State.IDLE and akey in self._action_needed
             state_label = "WAITING" if waiting else a.state.value.upper()
@@ -705,18 +706,66 @@ class ZeusApp(App):
             colors = _state_pri_colors.get(
                 state_label, ("#555555", "#333333", "#222222"),
             )
-            color = colors[pri - 1]
-            block_style = f"bold {color}" if pri == 1 else color
-            label = f"{a.name[:8]}(s)" if is_sub else a.name[:10]
-            return f"[{block_style}]{label} ██[/]"
+            return colors[pri - 1]
 
-        parts: list[str] = []
+        def _agent_state(a: AgentWindow) -> str:
+            akey = f"{a.socket}:{a.kitty_id}"
+            waiting = a.state == State.IDLE and akey in self._action_needed
+            return "WAITING" if waiting else a.state.value.upper()
+
+        def _agent_icon(a: AgentWindow) -> str:
+            return _state_icons.get(_agent_state(a), "?")
+
+        # Build groups: list of (parent, [children])
+        groups: list[tuple[AgentWindow, list[AgentWindow]]] = []
         for a in top_level:
-            parts.append(_map_entry(a))
-            for child in children_of.get(a.name, []):
-                parts.append(_map_entry(child, is_sub=True))
+            groups.append((a, children_of.get(a.name, [])))
 
-        mini.update("  ".join(parts))
+        # Render as box cards: top bar + content row per group
+        cards_top: list[str] = []
+        cards_bot: list[str] = []
+        for parent, kids in groups:
+            pc = _agent_color(parent)
+            pi = _agent_icon(parent)
+            pri = self._get_priority(parent.name)
+            style = f"bold {pc}" if pri == 1 else pc
+            name = parent.name[:10]
+
+            # Sub-agents inline
+            subs: list[str] = []
+            for child in kids:
+                cc = _agent_color(child)
+                ci = _agent_icon(child)
+                cpri = self._get_priority(child.name)
+                cs = f"bold {cc}" if cpri == 1 else cc
+                cn = child.name[:8]
+                subs.append(
+                    f"[#333333]┊[/] [{cs}]{ci} {cn}[/]"
+                )
+
+            # Card width: calculate visible content width
+            sub_text = " ".join(subs)
+            inner = f"[{style}]{pi} {name}[/]"
+            if subs:
+                inner += f" {sub_text}"
+
+            # Top bar: colored ▄ blocks
+            # Approximate visible width for the bar
+            bar_len = len(name) + 3  # icon + spaces
+            for child in kids:
+                bar_len += len(child.name[:8]) + 5  # ┊ icon name
+            bar_len = max(bar_len, 8)
+
+            cards_top.append(f"[{pc}]{'▄' * bar_len}[/]")
+            cards_bot.append(f" {inner}")
+
+        # Join cards with spacing
+        sep_top = "  "
+        sep_bot = "  "
+        line1 = sep_top.join(cards_top)
+        line2 = sep_bot.join(cards_bot)
+
+        mini.update(f"{line1}\n{line2}")
 
     # ── Selection helpers ─────────────────────────────────────────────
 
