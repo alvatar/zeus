@@ -180,6 +180,7 @@ class ZeusApp(App):
             ),
             Vertical(
                 RichLog(id="interact-stream", wrap=True, markup=False, auto_scroll=True),
+                Static("—", id="interact-target"),
                 ZeusTextArea(
                     "",
                     id="interact-input",
@@ -1139,6 +1140,12 @@ class ZeusApp(App):
         ta.move_cursor(ta.document.end)
         self._resize_interact_input(ta)
 
+    def _set_interact_target_name(self, name: str) -> None:
+        try:
+            self.query_one("#interact-target", Static).update(name or "—")
+        except LookupError:
+            pass
+
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
         old_agent_key = self._interact_agent_key
@@ -1146,6 +1153,7 @@ class ZeusApp(App):
 
         tmux = self._get_selected_tmux()
         if tmux:
+            self._set_interact_target_name(tmux.name)
             target_changed = (
                 old_agent_key is not None
                 or old_tmux_name != tmux.name
@@ -1161,7 +1169,9 @@ class ZeusApp(App):
             return
         agent = self._get_selected_agent()
         if not agent:
+            self._set_interact_target_name("—")
             return
+        self._set_interact_target_name(agent.name)
         key = f"{agent.socket}:{agent.kitty_id}"
         target_changed = (
             old_agent_key != key
@@ -1639,6 +1649,7 @@ class ZeusApp(App):
             self._interact_visible = False
             self._interact_agent_key = None
             self._interact_tmux_name = None
+            self._set_interact_target_name("—")
             self._reset_history_nav()
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()

@@ -155,6 +155,15 @@ DataTable > .datatable--odd-row {
     border-top: solid #1a3030;
 }
 
+#interact-target {
+    height: 1;
+    padding: 0 1;
+    content-align: right middle;
+    background: #2a2218;
+    color: #f2e8dc;
+    text-style: bold;
+}
+
 #interact-input {
     height: 3;
     background: #0a1018;
