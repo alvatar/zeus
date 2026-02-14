@@ -685,14 +685,17 @@ class ZeusApp(App):
         }
 
         parent_names: set[str] = {a.name for a in self.agents}
-        top_level: list[AgentWindow] = [
-            a for a in self.agents
-            if not a.parent_name or a.parent_name not in parent_names
-        ]
+        top_level: list[AgentWindow] = sorted(
+            (a for a in self.agents
+             if not a.parent_name or a.parent_name not in parent_names),
+            key=lambda a: self._get_priority(a.name),
+        )
         children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
             if a.parent_name and a.parent_name in parent_names:
                 children_of.setdefault(a.parent_name, []).append(a)
+        for kids in children_of.values():
+            kids.sort(key=lambda a: self._get_priority(a.name))
 
         def _map_entry(a: AgentWindow, is_sub: bool = False) -> str:
             akey = f"{a.socket}:{a.kitty_id}"
