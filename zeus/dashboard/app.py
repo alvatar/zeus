@@ -104,6 +104,7 @@ class ZeusApp(App):
         Binding("f10", "quit", "Quit"),
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
+        Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
@@ -1134,6 +1135,51 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if agent:
             focus_window(agent)
+
+    def action_open_shell_here(self) -> None:
+        """Ctrl+O: open a plain kitty shell in selected target's directory."""
+        if len(self.screen_stack) > 1:
+            return
+
+        tmux = self._get_selected_tmux()
+        if tmux:
+            parent = self._get_parent_agent_for_tmux(tmux)
+            cwd = (tmux.cwd or "").strip() or (
+                (parent.cwd if parent else "") or ""
+            ).strip()
+            workspace = (parent.workspace if parent else "") or ""
+            label = f"tmux:{tmux.name}"
+        else:
+            agent = self._get_selected_agent()
+            if not agent:
+                self.notify("No selected target", timeout=2)
+                return
+            cwd = (agent.cwd or "").strip()
+            workspace = agent.workspace or ""
+            label = agent.name
+
+        if not cwd:
+            self.notify("No directory for selected target", timeout=2)
+            return
+
+        try:
+            proc = subprocess.Popen(
+                ["kitty", "--directory", cwd],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (FileNotFoundError, OSError) as e:
+            self.notify(f"Open shell failed: {e}", timeout=3)
+            return
+
+        if workspace and workspace != "?":
+            move_pid_to_workspace_and_focus_later(
+                proc.pid,
+                workspace,
+                delay=0.5,
+            )
+        self.notify(f"Shell: {label}", timeout=2)
 
     def _interact_draft_key(self) -> str | None:
         """Return a key for the current interact target's draft."""
