@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from textual import events
 from textual.app import ComposeResult
@@ -35,7 +35,7 @@ class _ZeusScreenMixin:
 
     @property
     def zeus(self) -> ZeusApp:
-        return cast(ZeusApp, self.app)  # type: ignore[attr-defined]
+        return self.app  # type: ignore[return-value, attr-defined]
 
 
 class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
