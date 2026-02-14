@@ -837,20 +837,36 @@ class ZeusApp(App):
 
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
-        self._save_interact_draft()
-        self._reset_history_nav()
+        old_agent_key = self._interact_agent_key
+        old_tmux_name = self._interact_tmux_name
+
         tmux = self._get_selected_tmux()
         if tmux:
+            target_changed = (
+                old_agent_key is not None
+                or old_tmux_name != tmux.name
+            )
+            if target_changed:
+                self._save_interact_draft()
+                self._reset_history_nav()
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
             self._update_summary_widget(tmux.name, None)
             self._update_interact_stream()
-            self._restore_interact_draft()
+            if target_changed:
+                self._restore_interact_draft()
             return
         agent = self._get_selected_agent()
         if not agent:
             return
         key = f"{agent.socket}:{agent.kitty_id}"
+        target_changed = (
+            old_agent_key != key
+            or old_tmux_name is not None
+        )
+        if target_changed:
+            self._save_interact_draft()
+            self._reset_history_nav()
         self._interact_agent_key = key
         self._interact_tmux_name = None
         if not self._summaries_enabled:
@@ -872,7 +888,8 @@ class ZeusApp(App):
             # While WORKING we don't continuously regenerate summaries.
             self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
-        self._restore_interact_draft()
+        if target_changed:
+            self._restore_interact_draft()
 
     def _get_tmux_client_pid(self, sess_name: str) -> int | None:
         """Return PID of first attached tmux client for a session."""
