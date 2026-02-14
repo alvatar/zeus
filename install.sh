@@ -83,8 +83,8 @@ if $WRAP_PI; then
             WRAP_READY=true
         else
             if [ -e "$PI_ORIG" ] || [ -L "$PI_ORIG" ]; then
-                echo "⚠ Backup already exists at $PI_ORIG; skipping pi wrapper"
-                echo "  Remove $PI_ORIG manually if you want to re-wrap pi."
+                echo "✓ Backup already exists at $PI_ORIG (reusing)"
+                WRAP_READY=true
             else
                 mv "$PI_BIN" "$PI_ORIG"
                 echo "✓ Backed up original pi to $PI_ORIG"
