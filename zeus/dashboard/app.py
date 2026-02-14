@@ -136,6 +136,8 @@ class ZeusApp(App):
     _interact_drafts: dict[str, str] = {}
     _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
+    _dopamine_armed: bool = True
+    _steady_armed: bool = True
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _minimap_agents: list[str] = []
     prev_states: dict[str, State] = {}
@@ -864,6 +866,23 @@ class ZeusApp(App):
             work_pct = raw_working / total * 100
             wait_pct = raw_waiting / total * 100
             idle_pct = (total - raw_working - raw_waiting) / total * 100
+
+            # Celebration triggers (require ≥10 min of data)
+            min_samples = int(600 / SETTINGS.poll_interval)  # 10 min
+            enough_data = raw_total >= min_samples
+            if enough_data:
+                if eff_pct >= 80 and self._steady_armed:
+                    self._steady_armed = False
+                    self._show_steady_lad(eff_pct)
+                elif eff_pct < 80:
+                    self._steady_armed = True
+
+                if eff_pct >= 60 and self._dopamine_armed:
+                    self._dopamine_armed = False
+                    self._show_dopamine_hit(eff_pct)
+                elif eff_pct < 60:
+                    self._dopamine_armed = True
+
             header = (
                 f"[#888888]Efficiency: {eff_pct:.0f}%[/]  │  "
                 f"[#888888]▶ {work_pct:.0f}%  "
@@ -895,6 +914,33 @@ class ZeusApp(App):
             )
 
         widget.update("\n".join(lines))
+
+    def _dismiss_celebration(self) -> bool:
+        """Dismiss any active celebration overlay. Return True if one was dismissed."""
+        from .widgets import DopamineOverlay, SteadyLadOverlay
+        for sel, cls in (("#dopamine", DopamineOverlay), ("#steady-lad", SteadyLadOverlay)):
+            nodes = self.query(sel)
+            if nodes:
+                for node in nodes:
+                    if isinstance(node, (DopamineOverlay, SteadyLadOverlay)):
+                        node._dismiss_now()
+                return True
+        return False
+
+    def _show_steady_lad(self, efficiency: float) -> None:
+        """Mount the steady lad celebration overlay."""
+        from .widgets import SteadyLadOverlay
+        if self.query("#steady-lad") or self.query("#dopamine"):
+            return
+        self.mount(SteadyLadOverlay(efficiency, id="steady-lad"))
+
+    def _show_dopamine_hit(self, efficiency: float) -> None:
+        """Mount the dopamine celebration overlay."""
+        from .widgets import DopamineOverlay
+        # Don't stack multiple
+        if self.query("#dopamine") or self.query("#steady-lad"):
+            return
+        self.mount(DopamineOverlay(efficiency, id="dopamine"))
 
     def action_select_minimap(self, index: int) -> None:
         """Select an agent by mini-map click index."""
@@ -1287,6 +1333,11 @@ class ZeusApp(App):
     def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
         if self._dismiss_splash():
+            event.prevent_default()
+            event.stop()
+            return
+
+        if self._dismiss_celebration():
             event.prevent_default()
             event.stop()
             return
@@ -1685,9 +1736,10 @@ class ZeusApp(App):
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
+        clean = text.replace("\x00", "")
         kitty_cmd(
             agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", text + "\r",
+            f"id:{agent.kitty_id}", clean + "\r",
         )
 
     def action_send_interact(self) -> None:
