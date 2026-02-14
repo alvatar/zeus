@@ -26,6 +26,7 @@ from ..config import POLL_INTERVAL, SUMMARY_MODEL
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
 )
+from ..input_history import append_history, load_history, prune_histories
 from ..process import fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
@@ -118,6 +119,9 @@ class ZeusApp(App):
     state_changed_at: dict[str, float] = {}
     idle_since: dict[str, float] = {}
     idle_notified: set[str] = set()
+    _history_nav_target: str | None = None
+    _history_nav_index: int | None = None
+    _history_programmatic_change: bool = False
 
     def compose(self) -> ComposeResult:
         yield Horizontal(
@@ -331,6 +335,7 @@ class ZeusApp(App):
         self.state_changed_at = r.state_changed_at
         self.idle_since = r.idle_since
         self.idle_notified = r.idle_notified
+        self._prune_interact_histories()
 
         state_changed_any = any(
             (
@@ -783,6 +788,7 @@ class ZeusApp(App):
 
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
+        self._reset_history_nav()
         tmux = self._get_selected_tmux()
         if tmux:
             self._interact_agent_key = None
@@ -874,6 +880,87 @@ class ZeusApp(App):
                 )
             self.notify(f"Attached: {sess.name}", timeout=2)
 
+    # ── Interact input history ───────────────────────────────────────
+
+    def _history_target_key(self) -> str | None:
+        """Return history key for current interact target (agent-name based)."""
+        if self._interact_agent_key:
+            agent = self._get_agent_by_key(self._interact_agent_key)
+            if agent:
+                return f"agent:{agent.name}"
+        if self._interact_tmux_name:
+            for agent in self.agents:
+                if any(s.name == self._interact_tmux_name for s in agent.tmux_sessions):
+                    return f"agent:{agent.name}"
+        return None
+
+    def _reset_history_nav(self) -> None:
+        self._history_nav_target = None
+        self._history_nav_index = None
+
+    def _set_interact_input_text(self, text: str) -> None:
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        self._history_programmatic_change = True
+        try:
+            ta.load_text(text)
+        finally:
+            self._history_programmatic_change = False
+
+    def _handle_interact_history_nav(self, key: str) -> bool:
+        """Handle Up/Down history traversal for interact input."""
+        target = self._history_target_key()
+        if not target:
+            return False
+
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        entries = load_history(target)
+        if not entries:
+            return False
+
+        if self._history_nav_target != target:
+            self._history_nav_target = target
+            self._history_nav_index = None
+
+        if key == "up":
+            if self._history_nav_index is None:
+                if ta.text.strip():
+                    return False
+                self._history_nav_index = len(entries) - 1
+            elif self._history_nav_index > 0:
+                self._history_nav_index -= 1
+
+            up_idx = self._history_nav_index
+            if up_idx is None:
+                return False
+            self._set_interact_input_text(entries[up_idx])
+            return True
+
+        if key == "down":
+            down_idx = self._history_nav_index
+            if down_idx is None:
+                return False
+            if down_idx < len(entries) - 1:
+                next_idx = down_idx + 1
+                self._history_nav_index = next_idx
+                self._set_interact_input_text(entries[next_idx])
+            else:
+                self._history_nav_index = None
+                self._set_interact_input_text("")
+            return True
+
+        return False
+
+    def _append_interact_history(self, text: str) -> None:
+        target = self._history_target_key()
+        if not target:
+            return
+        append_history(target, text)
+
+    def _prune_interact_histories(self) -> None:
+        """Delete history files for agent names that are no longer present."""
+        live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
+        prune_histories(live_targets)
+
     # ── Event handlers ────────────────────────────────────────────────
 
     def on_key(self, event: events.Key) -> None:
@@ -884,16 +971,30 @@ class ZeusApp(App):
             # Focus the interact input
             if self._interact_visible:
                 self.query_one("#interact-input", ZeusTextArea).focus()
+            return
 
+        if event.key in {"up", "down"} and isinstance(self.focused, ZeusTextArea):
+            ta = self.query_one("#interact-input", ZeusTextArea)
+            if self.focused is ta and self._handle_interact_history_nav(event.key):
+                event.prevent_default()
+                event.stop()
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Resize interact input to fit content (1 line min, 8 max)."""
         ta = event.text_area
         if ta.id != "interact-input":
             return
+
         lines = ta.document.line_count
         h = max(1, min(8, lines)) + 2  # +2 for border + padding
         ta.styles.height = h
+
+        if self._history_programmatic_change:
+            return
+
+        # Any manual edit exits history navigation mode.
+        if self._history_nav_index is not None:
+            self._reset_history_nav()
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
@@ -1115,6 +1216,7 @@ class ZeusApp(App):
             self._interact_visible = False
             self._interact_agent_key = None
             self._interact_tmux_name = None
+            self._reset_history_nav()
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
         else:
@@ -1303,6 +1405,7 @@ class ZeusApp(App):
         text = ta.text.strip()
         if not text:
             return
+        self._append_interact_history(text)
         if self._interact_tmux_name:
             try:
                 subprocess.run(
@@ -1314,6 +1417,7 @@ class ZeusApp(App):
                 pass
             ta.clear()
             ta.styles.height = 3
+            self._reset_history_nav()
             return
 
         agent = self._get_agent_by_key(self._interact_agent_key)
@@ -1323,6 +1427,7 @@ class ZeusApp(App):
         self._send_text_to_agent(agent, text)
         ta.clear()
         ta.styles.height = 3
+        self._reset_history_nav()
 
     def action_queue_interact(self) -> None:
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
@@ -1332,6 +1437,7 @@ class ZeusApp(App):
         text = ta.text.strip()
         if not text:
             return
+        self._append_interact_history(text)
         if self._interact_tmux_name:
             try:
                 subprocess.run(
@@ -1343,6 +1449,7 @@ class ZeusApp(App):
                 pass
             ta.clear()
             ta.styles.height = 3
+            self._reset_history_nav()
             return
 
         agent = self._get_agent_by_key(self._interact_agent_key)
@@ -1356,6 +1463,7 @@ class ZeusApp(App):
         )
         ta.clear()
         ta.styles.height = 3
+        self._reset_history_nav()
 
     def action_refresh(self) -> None:
         self.poll_and_update()

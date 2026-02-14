@@ -98,6 +98,8 @@ zeus kill fix-auth                   # Close an agent's window
 | `F8` | Toggle interact panel |
 | `F10` | Quit dashboard |
 
+In the interact input, when the input is empty, `↑` / `↓` browse the last 10 sent/queued messages for the selected agent.
+
 ### Sway launcher (`zeus-launch`)
 
 Bound to `$mod+Return`. Opens a bemenu prompt:

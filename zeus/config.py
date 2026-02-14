@@ -7,6 +7,8 @@ from pathlib import Path
 POLL_INTERVAL = float(os.environ.get("ZEUS_POLL", "2"))
 NAMES_FILE = Path("/tmp/zeus-names.json")
 AGENT_IDS_FILE = Path("/tmp/zeus-agent-ids.json")
+INPUT_HISTORY_DIR = Path("/tmp/zeus-input-history")
+INPUT_HISTORY_MAX = int(os.environ.get("ZEUS_INPUT_HISTORY_MAX", "10"))
 USAGE_CACHE = Path("/tmp/claude-usage-cache.json")
 OPENAI_USAGE_CACHE = Path("/tmp/openai-usage-cache.json")
 
