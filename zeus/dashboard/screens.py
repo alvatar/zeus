@@ -324,6 +324,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("1", "Toggle agent table"),
     ("2", "Toggle mini-map"),
     ("3", "Toggle sparkline charts"),
+    ("4", "Toggle interact target band"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),
     ("F5", "Force refresh"),

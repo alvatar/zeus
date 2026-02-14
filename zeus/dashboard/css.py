@@ -158,10 +158,14 @@ DataTable > .datatable--odd-row {
 #interact-target {
     height: 1;
     padding: 0 1;
-    content-align: right middle;
+    content-align: left middle;
     background: #2a2218;
     color: #f2e8dc;
     text-style: bold;
+}
+
+#interact-target.hidden {
+    display: none;
 }
 
 #interact-input {
@@ -300,7 +304,7 @@ HelpScreen {
 }
 
 #help-dialog {
-    width: 70;
+    width: 90;
     height: auto;
     max-height: 30;
     border: solid #00d7d7;

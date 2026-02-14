@@ -22,7 +22,7 @@ class SortMode(Enum):
     PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import PRIORITIES_FILE
+from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
@@ -118,6 +118,7 @@ class ZeusApp(App):
         Binding("1", "toggle_table", "Table", show=False),
         Binding("2", "toggle_minimap", "Map", show=False),
         Binding("3", "toggle_sparklines", "Sparks", show=False),
+        Binding("4", "toggle_target_band", "Target", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("f6", "toggle_split", "Split"),
 
@@ -141,6 +142,10 @@ class ZeusApp(App):
     _celebration_warmup_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
+    _show_table: bool = True
+    _show_minimap: bool = True
+    _show_sparklines: bool = True
+    _show_target_band: bool = True
     _minimap_agents: list[str] = []
     prev_states: dict[str, State] = {}
     state_changed_at: dict[str, float] = {}
@@ -180,11 +185,11 @@ class ZeusApp(App):
             ),
             Vertical(
                 RichLog(id="interact-stream", wrap=True, markup=False, auto_scroll=True),
-                Static("—", id="interact-target"),
                 ZeusTextArea(
                     "",
                     id="interact-input",
                 ),
+                Static("—", id="interact-target"),
                 id="interact-panel",
                 classes="visible split",
             ),
@@ -214,6 +219,7 @@ class ZeusApp(App):
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
         self._load_priorities()
+        self._load_panel_visibility()
         self._celebration_warmup_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
@@ -221,6 +227,7 @@ class ZeusApp(App):
         table.zebra_stripes = True
         self.query_one("#interact-stream", RichLog).can_focus = False
         self._setup_table_columns()
+        self._apply_panel_visibility()
         self.poll_and_update()
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
@@ -759,7 +766,7 @@ class ZeusApp(App):
     def _update_mini_map(self) -> None:
         """Render the agent fleet mini-map strip."""
         mini = self.query_one("#mini-map", Static)
-        if not self.agents:
+        if not self._show_minimap or not self.agents:
             mini.add_class("hidden")
             return
         mini.remove_class("hidden")
@@ -859,7 +866,7 @@ class ZeusApp(App):
         """Render state sparkline charts for all agents."""
         from .widgets import state_sparkline_markup, _gradient_color
         widget = self.query_one("#sparkline-chart", Static)
-        if not self.agents or not self._sparkline_samples:
+        if not self._show_sparklines or not self.agents or not self._sparkline_samples:
             widget.add_class("hidden")
             return
         widget.remove_class("hidden")
@@ -1345,6 +1352,58 @@ class ZeusApp(App):
         import json
         PRIORITIES_FILE.write_text(json.dumps(self._agent_priorities))
 
+    # ── Panel visibility ───────────────────────────────────────────
+
+    def _load_panel_visibility(self) -> None:
+        """Load panel toggle states from disk."""
+        import json
+        try:
+            data = json.loads(PANEL_VISIBILITY_FILE.read_text())
+            if isinstance(data, dict):
+                self._show_table = bool(data.get("table", True))
+                self._show_minimap = bool(data.get("minimap", True))
+                self._show_sparklines = bool(data.get("sparklines", True))
+                self._show_target_band = bool(data.get("target_band", True))
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def _save_panel_visibility(self) -> None:
+        """Persist panel toggle states to disk."""
+        import json
+        PANEL_VISIBILITY_FILE.write_text(json.dumps({
+            "table": self._show_table,
+            "minimap": self._show_minimap,
+            "sparklines": self._show_sparklines,
+            "target_band": self._show_target_band,
+        }))
+
+    def _apply_panel_visibility(self) -> None:
+        """Apply current panel visibility flags to widgets."""
+        table = self.query_one("#agent-table", ZeusDataTable)
+        mini = self.query_one("#mini-map", Static)
+        spark = self.query_one("#sparkline-chart", Static)
+        target = self.query_one("#interact-target", Static)
+
+        if self._show_table:
+            table.remove_class("hidden")
+        else:
+            table.add_class("hidden")
+
+        if self._show_minimap:
+            mini.remove_class("hidden")
+        else:
+            mini.add_class("hidden")
+
+        if self._show_sparklines:
+            spark.remove_class("hidden")
+        else:
+            spark.add_class("hidden")
+
+        if self._show_target_band:
+            target.remove_class("hidden")
+        else:
+            target.add_class("hidden")
+
     def _get_priority(self, agent_name: str) -> int:
         """Return priority for an agent (1=high, 2=med, 3=low default)."""
         return self._agent_priorities.get(agent_name, 3)
@@ -1584,29 +1643,30 @@ class ZeusApp(App):
     def action_toggle_table(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
-        table = self.query_one("#agent-table", ZeusDataTable)
-        if table.has_class("hidden"):
-            table.remove_class("hidden")
-        else:
-            table.add_class("hidden")
+        self._show_table = not self._show_table
+        self._apply_panel_visibility()
+        self._save_panel_visibility()
 
     def action_toggle_minimap(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
-        mini = self.query_one("#mini-map", Static)
-        if mini.has_class("hidden"):
-            mini.remove_class("hidden")
-        else:
-            mini.add_class("hidden")
+        self._show_minimap = not self._show_minimap
+        self._apply_panel_visibility()
+        self._save_panel_visibility()
 
     def action_toggle_sparklines(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
-        spark = self.query_one("#sparkline-chart", Static)
-        if spark.has_class("hidden"):
-            spark.remove_class("hidden")
-        else:
-            spark.add_class("hidden")
+        self._show_sparklines = not self._show_sparklines
+        self._apply_panel_visibility()
+        self._save_panel_visibility()
+
+    def action_toggle_target_band(self) -> None:
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        self._show_target_band = not self._show_target_band
+        self._apply_panel_visibility()
+        self._save_panel_visibility()
 
     def action_toggle_split(self) -> None:
         self._split_mode = not self._split_mode
