@@ -859,6 +859,20 @@ class ZeusApp(App):
         else:
             self._interact_drafts.pop(key, None)
 
+    @staticmethod
+    def _visual_line_count(ta: TextArea) -> int:
+        """Count visual lines including soft-wrapped ones."""
+        width = max(1, ta.size.width - 2)  # content width minus padding
+        total = 0
+        for line in ta.text.split("\n"):
+            total += max(1, -(-len(line) // width))  # ceil division
+        return total
+
+    def _resize_interact_input(self, ta: TextArea) -> None:
+        """Resize interact input to fit visual content (1–8 lines)."""
+        lines = self._visual_line_count(ta)
+        ta.styles.height = max(1, min(8, lines)) + 2
+
     def _restore_interact_draft(self) -> None:
         """Restore stashed input text for the current target."""
         key = self._interact_draft_key()
@@ -870,8 +884,7 @@ class ZeusApp(App):
             ta.move_cursor(ta.document.end)
         finally:
             self._history_programmatic_change = False
-        lines = ta.document.line_count
-        ta.styles.height = max(1, min(8, lines)) + 2
+        self._resize_interact_input(ta)
 
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
@@ -1147,9 +1160,7 @@ class ZeusApp(App):
         if ta.id != "interact-input":
             return
 
-        lines = ta.document.line_count
-        h = max(1, min(8, lines)) + 2  # +2 for border + padding
-        ta.styles.height = h
+        self._resize_interact_input(ta)
 
         if self._history_programmatic_change:
             return
