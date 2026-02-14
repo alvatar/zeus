@@ -545,7 +545,7 @@ class ZeusApp(App):
                 tok_cell = Text(str(tok_cell), style=row_bg)
 
             pri_val = self._get_priority(a.name)
-            _pri_colors = {1: "#ff3333", 2: "#d7af00", 3: "#555555"}
+            _pri_colors = {1: "#00d7d7", 2: "#cccccc", 3: "#555555"}
             pri_cell: str | Text = Text(
                 str(pri_val), style=f"bold {_pri_colors[pri_val]}",
             )
