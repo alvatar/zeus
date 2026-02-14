@@ -11,7 +11,7 @@ import time
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical
 from textual.timer import Timer
 from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
 from textual.widget import Widget
@@ -132,22 +132,19 @@ class ZeusApp(App):
             Static("", id="title-clock"),
             id="title-bar",
         )
-        yield Vertical(
-            Horizontal(
-                UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
-                UsageBar("Week:", classes="usage-item", id="usage-week"),
-                UsageBar("Extra:", classes="usage-item", id="usage-extra"),
-                id="usage-bar",
-            ),
-            Horizontal(
-                UsageBar("OpenAI Session:", classes="usage-item", id="openai-session"),
-                UsageBar("Week:", classes="usage-item", id="openai-week"),
-                id="openai-usage-bar",
-            ),
-            id="top-bars",
-        )
-        yield Horizontal(
+        yield Container(
             Vertical(
+                Horizontal(
+                    UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
+                    UsageBar("Week:", classes="usage-item", id="usage-week"),
+                    UsageBar("Extra:", classes="usage-item", id="usage-extra"),
+                    id="usage-bar",
+                ),
+                Horizontal(
+                    UsageBar("OpenAI Session:", classes="usage-item", id="openai-session"),
+                    UsageBar("Week:", classes="usage-item", id="openai-week"),
+                    id="openai-usage-bar",
+                ),
                 Static("", id="mini-map"),
                 ZeusDataTable(
                     id="agent-table",
@@ -169,6 +166,7 @@ class ZeusApp(App):
                 classes="visible split",
             ),
             id="main-content",
+            classes="split",
         )
         yield Static("", id="status-line")
         yield SplashOverlay(id="splash")
@@ -1428,10 +1426,13 @@ class ZeusApp(App):
     def action_toggle_split(self) -> None:
         self._split_mode = not self._split_mode
         panel = self.query_one("#interact-panel", Vertical)
+        main = self.query_one("#main-content", Container)
         if self._split_mode:
             panel.add_class("split")
+            main.add_class("split")
         else:
             panel.remove_class("split")
+            main.remove_class("split")
             self.query_one("#left-summary", Static).remove_class("visible")
         self._setup_table_columns()
         self.poll_and_update()

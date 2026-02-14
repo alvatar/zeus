@@ -26,10 +26,7 @@ Screen {
     color: #3a5a5a;
 }
 
-#top-bars {
-    dock: top;
-    height: 2;
-}
+
 
 #usage-bar {
     height: 1;
@@ -58,10 +55,16 @@ Screen {
 
 #main-content {
     height: 1fr;
+    layout: vertical;
+}
+
+#main-content.split {
+    layout: horizontal;
 }
 
 #table-container {
     width: 1fr;
+    height: 1fr;
     background: #000000;
 }
 
@@ -125,12 +128,16 @@ DataTable > .datatable--odd-row {
 
 #interact-panel.visible {
     display: block;
-    width: 50%;
-    border-left: solid #0a3a3a;
+    width: 100%;
+    height: 40%;
+    border-top: solid #0a3a3a;
 }
 
 #interact-panel.visible.split {
-    display: block;
+    width: 50%;
+    height: 100%;
+    border-top: none;
+    border-left: solid #0a3a3a;
 }
 
 #interact-summary {
