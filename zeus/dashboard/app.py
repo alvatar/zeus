@@ -146,6 +146,7 @@ class ZeusApp(App):
             ),
             id="top-bars",
         )
+        yield Static("", id="mini-map")
         yield Horizontal(
             Vertical(
                 ZeusDataTable(
@@ -641,6 +642,8 @@ class ZeusApp(App):
                     table.move_cursor(row=idx)
                     break
 
+        self._update_mini_map()
+
         n_working: int = sum(
             1 for a in self.agents if a.state == State.WORKING
         )
@@ -663,6 +666,44 @@ class ZeusApp(App):
         if state_changed_any:
             self._pulse_agent_table()
 
+
+    # ── Mini-map ──────────────────────────────────────────────────────
+
+    def _update_mini_map(self) -> None:
+        """Render the agent fleet mini-map strip."""
+        mini = self.query_one("#mini-map", Static)
+        if not self.agents:
+            mini.add_class("hidden")
+            return
+        mini.remove_class("hidden")
+
+        _state_colors = {
+            "WORKING": "#00d700",
+            "WAITING": "#d7af00",
+            "IDLE": "#ff3333",
+        }
+        _pri_dim = {1: "", 2: " dim", 3: " dim"}
+
+        parts: list[str] = []
+        for a in self.agents:
+            akey = f"{a.socket}:{a.kitty_id}"
+            waiting = a.state == State.IDLE and akey in self._action_needed
+            if waiting:
+                state_label = "WAITING"
+            else:
+                state_label = a.state.value.upper()
+            color = _state_colors.get(state_label, "#555555")
+            pri = self._get_priority(a.name)
+            if pri == 3:
+                block_style = f"{color} dim"
+            elif pri == 2:
+                block_style = f"{color}"
+            else:
+                block_style = f"bold {color}"
+            name = a.name[:10]
+            parts.append(f"[{block_style}]{name} ██[/]")
+
+        mini.update("  ".join(parts))
 
     # ── Selection helpers ─────────────────────────────────────────────
 
