@@ -830,6 +830,7 @@ class ZeusApp(App):
         self._history_programmatic_change = True
         try:
             ta.load_text(draft)
+            ta.move_cursor(ta.document.end)
         finally:
             self._history_programmatic_change = False
         lines = ta.document.line_count
