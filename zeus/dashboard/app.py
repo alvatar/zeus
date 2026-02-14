@@ -684,20 +684,34 @@ class ZeusApp(App):
             "IDLE":    ("#ff4444", "#771111", "#330a0a"),
         }
 
-        parts: list[str] = []
+        parent_names: set[str] = {a.name for a in self.agents}
+        top_level: list[AgentWindow] = [
+            a for a in self.agents
+            if not a.parent_name or a.parent_name not in parent_names
+        ]
+        children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
+            if a.parent_name and a.parent_name in parent_names:
+                children_of.setdefault(a.parent_name, []).append(a)
+
+        def _map_entry(a: AgentWindow, is_sub: bool = False) -> str:
             akey = f"{a.socket}:{a.kitty_id}"
             waiting = a.state == State.IDLE and akey in self._action_needed
-            if waiting:
-                state_label = "WAITING"
-            else:
-                state_label = a.state.value.upper()
+            state_label = "WAITING" if waiting else a.state.value.upper()
             pri = self._get_priority(a.name)
-            colors = _state_pri_colors.get(state_label, ("#555555", "#333333", "#222222"))
+            colors = _state_pri_colors.get(
+                state_label, ("#555555", "#333333", "#222222"),
+            )
             color = colors[pri - 1]
             block_style = f"bold {color}" if pri == 1 else color
-            name = a.name[:10]
-            parts.append(f"[{block_style}]{name} ██[/]")
+            label = f"(s){a.name[:8]}" if is_sub else a.name[:10]
+            return f"[{block_style}]{label} ██[/]"
+
+        parts: list[str] = []
+        for a in top_level:
+            parts.append(_map_entry(a))
+            for child in children_of.get(a.name, []):
+                parts.append(_map_entry(child, is_sub=True))
 
         mini.update("  ".join(parts))
 
