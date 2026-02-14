@@ -187,7 +187,7 @@ class ZeusApp(App):
         "State": 10,
         "P": 1,
         "Elapsed": 4,
-        "Model/Cmd": 32,
+        "Model/Cmd": 29,
     }
 
     def _setup_table_columns(self) -> None:
