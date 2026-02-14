@@ -61,7 +61,7 @@ from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
-    HelpScreen, ChangeModelScreen,
+    HelpScreen,
 )
 
 
@@ -97,10 +97,10 @@ class ZeusApp(App):
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
 
-        Binding("f3", "change_model", "Model", show=False),
+
         Binding("f4", "toggle_sort", "Sort"),
         Binding("f6", "toggle_split", "Split"),
-        Binding("f7", "toggle_summaries", "Summaries"),
+
         Binding("f8", "toggle_interact_panel", "Panel"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
@@ -108,16 +108,13 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
     _agent_priorities: dict[str, int] = {}
-    summary_model: str = SETTINGS.summary_model
-    _summaries_enabled: bool = True
     _split_mode: bool = True
     _interact_visible: bool = True
     _highlight_timer: Timer | None = None
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
     _interact_drafts: dict[str, str] = {}
-    _idle_summaries: dict[str, str] = {}
-    _idle_summary_pending: set[str] = set()
+    _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
     prev_states: dict[str, State] = {}
     state_changed_at: dict[str, float] = {}
@@ -152,11 +149,9 @@ class ZeusApp(App):
                     cursor_background_priority="renderable",
                     fixed_columns=SETTINGS.columns.fixed,
                 ),
-                Static("", id="left-summary"),
                 id="table-container",
             ),
             Vertical(
-                Static("", id="interact-summary"),
                 RichLog(id="interact-stream", wrap=True, markup=False, auto_scroll=True),
                 ZeusTextArea(
                     "",
@@ -231,10 +226,6 @@ class ZeusApp(App):
 
     def _pulse_agent_table(self) -> None:
         self._pulse_widget("#agent-table", low_opacity=0.60)
-
-    def _pulse_summary_widget(self) -> None:
-        target = "#left-summary" if self._split_mode else "#interact-summary"
-        self._pulse_widget(target, low_opacity=0.45)
 
     def update_clock(self) -> None:
         clock = self.query_one("#title-clock", Static)
@@ -344,23 +335,16 @@ class ZeusApp(App):
             live_keys.add(key)
             old_state = old_states.get(key)
             just_became_idle = (
-                self._summaries_enabled
-                and old_state == State.WORKING
+                old_state == State.WORKING
                 and a.state == State.IDLE
             )
-            if just_became_idle and key not in self._idle_summary_pending:
-                self._idle_summary_pending.add(key)
-                self._generate_idle_summary(a, key)
+            if just_became_idle and key not in self._action_check_pending:
+                self._action_check_pending.add(key)
+                self._check_action_needed(a, key)
             elif a.state == State.WORKING:
-                # Invalidate stale summary if agent went back to working
-                self._idle_summaries.pop(key, None)
-                self._idle_summary_pending.discard(key)
+                self._action_check_pending.discard(key)
                 self._action_needed.discard(key)
-        # Clean up summaries for agents that no longer exist
-        for k in list(self._idle_summaries):
-            if k not in live_keys:
-                del self._idle_summaries[k]
-        self._idle_summary_pending &= live_keys
+        self._action_check_pending &= live_keys
         self._action_needed &= live_keys
 
         # Refresh interact panel if the viewed agent changed state
@@ -680,14 +664,12 @@ class ZeusApp(App):
         )
         status = self.query_one("#status-line", Static)
         sort_label: str = self.sort_mode.value
-        model_short: str = self.summary_model.split("/")[-1]
         status.update(
             f"  {len(self.agents)} agents  │  "
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
             f"Layout: [bold]{'SPLIT' if self._split_mode else 'WIDE'}[/]  │  "
-            f"AI: [bold]{model_short if self._summaries_enabled else 'OFF'}[/]  │  "
             f"Poll: {SETTINGS.poll_interval}s"
         )
 
@@ -911,42 +893,6 @@ class ZeusApp(App):
         if agent:
             focus_window(agent)
 
-    def _update_summary_widget(
-        self,
-        name: str,
-        content: str | None,
-        generating: str | None = None,
-    ) -> None:
-        """Route summary content to the correct widget based on layout."""
-        left_w = self.query_one("#left-summary", Static)
-        interact_w = self.query_one("#interact-summary", Static)
-        if self._split_mode:
-            target = left_w
-            interact_w.add_class("hidden")
-            left_w.remove_class("hidden")
-        else:
-            target = interact_w
-            interact_w.remove_class("hidden")
-            left_w.add_class("hidden")
-            left_w.remove_class("visible")
-
-        if content:
-            target.remove_class("hidden")
-            target.add_class("visible")
-            target.update(
-                f"[#00d7d7]─── [bold]{name}[/bold] ───[/]\n\n{content}"
-            )
-        elif generating:
-            target.remove_class("hidden")
-            target.add_class("visible")
-            target.update(
-                f"[#00d7d7]─── [bold]{name}[/bold] ───[/]\n\n"
-                f"[dim]Generating {generating}…[/]"
-            )
-        else:
-            target.add_class("hidden")
-            target.remove_class("visible")
-
     def _interact_draft_key(self) -> str | None:
         """Return a key for the current interact target's draft."""
         if self._interact_agent_key:
@@ -1006,7 +952,6 @@ class ZeusApp(App):
                 self._reset_history_nav()
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
-            self._update_summary_widget(tmux.name, None)
             self._update_interact_stream()
             if target_changed:
                 self._restore_interact_draft()
@@ -1024,24 +969,6 @@ class ZeusApp(App):
             self._reset_history_nav()
         self._interact_agent_key = key
         self._interact_tmux_name = None
-        if not self._summaries_enabled:
-            self._update_summary_widget(agent.name, None)
-        elif agent.state == State.IDLE and key in self._idle_summaries:
-            self._update_summary_widget(
-                agent.name,
-                self._idle_summaries[key],
-            )
-        elif agent.state == State.IDLE and key in self._idle_summary_pending:
-            self._update_summary_widget(agent.name, None, generating="triage")
-        elif agent.state == State.IDLE:
-            self._update_summary_widget(
-                agent.name,
-                "[dim]No triage summary yet. Summary is generated only when an"
-                " agent transitions WORKING → IDLE.[/]",
-            )
-        else:
-            # While WORKING we don't continuously regenerate summaries.
-            self._update_summary_widget(agent.name, None)
         self._update_interact_stream()
         if target_changed:
             self._restore_interact_draft()
@@ -1431,11 +1358,6 @@ class ZeusApp(App):
 
     # ── Log panel ─────────────────────────────────────────────────────
 
-    def action_change_model(self) -> None:
-        if len(self.screen_stack) > 1:
-            return
-        self.push_screen(ChangeModelScreen(self.summary_model))
-
     def action_show_help(self) -> None:
         if len(self.screen_stack) > 1:
             return
@@ -1451,20 +1373,10 @@ class ZeusApp(App):
         else:
             panel.remove_class("split")
             main.remove_class("split")
-            self.query_one("#left-summary", Static).remove_class("visible")
         self._setup_table_columns()
         self.poll_and_update()
-        # Re-route summary to correct widget
         if self._interact_visible:
             self._refresh_interact_panel()
-
-    def action_toggle_summaries(self) -> None:
-        self._summaries_enabled = not self._summaries_enabled
-        state = "ON" if self._summaries_enabled else "OFF"
-        self.notify(f"AI Summaries: {state}", timeout=2)
-        if self._summaries_enabled:
-            # Trigger summaries for existing idle agents
-            self.poll_and_update()
 
     def action_toggle_sort(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
@@ -1500,94 +1412,52 @@ class ZeusApp(App):
             panel.add_class("visible")
             self._refresh_interact_panel()
 
-    # ── Summary generation ────────────────────────────────────────────
+    # ── Action-needed detection ─────────────────────────────────────
 
-    _IDLE_PROMPT = (
-        "You are a triage assistant. A human operator is monitoring "
-        "multiple coding agents. The agent below is IDLE and waiting. "
-        "Given the terminal output, tell the operator:\n"
-        "1. Does this agent need human input? If yes, what exactly "
-        "is it asking for?\n"
-        "2. Any errors or problems that need attention?\n"
-        "3. What was the last thing it did?\n"
-        "STRICT LIMIT: max 4 lines of output. No preamble. "
-        "Start with ⚠ ACTION NEEDED or ✓ NO ACTION NEEDED.\n\n"
+    _ACTION_PROMPT = (
+        "You are a triage classifier. An AI coding agent is IDLE. "
+        "Does it need human input to continue? Look at the terminal "
+        "output below and reply with a SINGLE word: YES or NO.\n\n"
         "Terminal output:\n"
     )
 
     def _get_screen_context(self, agent: AgentWindow) -> str:
         text = get_screen_text(agent)
         lines = text.splitlines()
-        recent = [l for l in lines if l.strip()][-50:]
+        recent = [l for l in lines if l.strip()][-30:]
         return "\n".join(recent)
 
-    def _run_pi_summary(self, prompt: str) -> str:
+    @work(thread=True, group="action_check")
+    def _check_action_needed(self, agent: AgentWindow, key: str) -> None:
+        """Check if an idle agent needs human input."""
+        context = self._get_screen_context(agent)
+        if not context.strip():
+            self.call_from_thread(self._finalize_action_check, key, False)
+            return
+        prompt = self._ACTION_PROMPT + context
         try:
             r = subprocess.run(
                 ["pi", "--print", "--no-session", "--no-tools",
-                 "--model", self.summary_model, prompt],
+                 "--model", SETTINGS.summary_model, prompt],
                 capture_output=True, text=True, timeout=30,
             )
-            if r.returncode == 0:
-                lines = r.stdout.strip().splitlines()[:6]
-                return "\n".join(lines)
-            return f"(summary failed: {r.stderr.strip()[:200]})"
-        except subprocess.TimeoutExpired:
-            return "(summary timed out)"
-        except FileNotFoundError:
-            return "(pi not found — install pi to enable summaries)"
+            answer = r.stdout.strip().upper() if r.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            answer = ""
+        needs_action = "YES" in answer and "NO" not in answer
+        self.call_from_thread(self._finalize_action_check, key, needs_action)
 
-    def _store_idle_summary(self, key: str, summary: str) -> None:
-        """Store an idle summary and update action_needed set."""
+    def _finalize_action_check(self, key: str, needs_action: bool) -> None:
+        """Store action-needed result."""
+        self._action_check_pending.discard(key)
         agent = self._get_agent_by_key(key)
         if not agent or agent.state != State.IDLE:
-            self._idle_summaries.pop(key, None)
             self._action_needed.discard(key)
             return
-
-        self._idle_summaries[key] = summary
-        upper = summary.upper()
-        if "NO ACTION NEEDED" in upper:
-            self._action_needed.discard(key)
-        elif "ACTION NEEDED" in upper:
+        if needs_action:
             self._action_needed.add(key)
         else:
             self._action_needed.discard(key)
-
-    def _mark_idle_summary_done(self, key: str) -> None:
-        """Mark idle summary generation completed."""
-        self._idle_summary_pending.discard(key)
-
-    def _finalize_idle_summary(self, key: str, name: str, summary: str) -> None:
-        """Store completed idle summary and refresh interact panel if needed."""
-        self._store_idle_summary(key, summary)
-        self._mark_idle_summary_done(key)
-
-        if not self._interact_visible or self._interact_agent_key != key:
-            return
-        cached = self._idle_summaries.get(key)
-        if cached:
-            self._update_summary_widget(name, cached)
-            self._pulse_summary_widget()
-        else:
-            self._refresh_interact_panel()
-
-    @work(thread=True, group="idle_summary")
-    def _generate_idle_summary(self, agent: AgentWindow, key: str) -> None:
-        """Pre-compute summary for an IDLE agent in the background."""
-        context = self._get_screen_context(agent)
-        if not context.strip():
-            summary = "(no output to summarize)"
-        else:
-            prompt = self._IDLE_PROMPT + context
-            summary = self._run_pi_summary(prompt)
-
-        self.call_from_thread(
-            self._finalize_idle_summary,
-            key,
-            agent.name,
-            summary,
-        )
 
     def _update_interact_stream(self) -> None:
         """Kick off background fetch for interact stream."""

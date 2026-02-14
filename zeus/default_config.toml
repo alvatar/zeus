@@ -6,7 +6,7 @@
 poll_interval = 2.0
 
 [dashboard.summary]
-model = "anthropic/claude-3-5-haiku-latest"
+model = "anthropic/claude-haiku-4-5"
 
 [dashboard.history]
 max_entries = 10

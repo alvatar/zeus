@@ -107,19 +107,6 @@ DataTable > .datatable--odd-row {
     background: #050f15;
 }
 
-#left-summary {
-    height: auto;
-    max-height: 8;
-    color: #bbbbbb;
-    padding: 0 2;
-    margin: 0 0 1 0;
-    display: none;
-}
-
-#left-summary.visible {
-    display: block;
-}
-
 #interact-panel {
     display: none;
     padding: 0 1;
@@ -138,16 +125,6 @@ DataTable > .datatable--odd-row {
     height: 100%;
     border-top: none;
     border-left: solid #0a3a3a;
-}
-
-#interact-summary {
-    height: 6;
-    color: #bbbbbb;
-    padding: 0 1;
-}
-
-#interact-summary.hidden {
-    display: none;
 }
 
 #interact-stream {
@@ -286,37 +263,7 @@ RenameScreen, RenameTmuxScreen {
 }
 """
 
-CHANGE_MODEL_CSS = """
-ChangeModelScreen {
-    align: center middle;
-}
 
-#model-dialog {
-    width: 60;
-    height: auto;
-    border: solid #00d7d7;
-    background: #0a0a0a;
-    padding: 1 2;
-}
-
-#model-dialog Label {
-    margin: 0;
-    color: #00d7d7;
-}
-
-#model-dialog Input {
-    margin: 1 0;
-}
-
-#model-buttons {
-    height: 3;
-    align: right middle;
-}
-
-#model-buttons Button {
-    margin: 0 0 0 1;
-}
-"""
 
 HELP_CSS = """
 HelpScreen {
