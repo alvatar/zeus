@@ -468,29 +468,21 @@ class ZeusApp(App):
                 return f"{s // 3600}h{(s % 3600) // 60}m"
             return f"{s // 86400}d{(s % 86400) // 3600}h"
 
-        _FRAC_BLOCKS = " ▏▎▍▌▋▊▉█"
-
         def _ctx_gauge(pct: float) -> Text:
-            """Render a compact context gauge with fractional blocks."""
+            """Single-character circular context gauge with gradient color."""
             from .widgets import _gradient_color
-            width = 5
             p = max(0.0, min(100.0, pct))
-            fill = (p / 100.0) * width
-            full = int(fill)
-            frac_idx = int((fill - full) * 8)
-
-            t = Text()
-            for i in range(full):
-                cell_pct = ((i + 1) / width) * 100
-                t.append("█", style=_gradient_color(cell_pct))
-            if full < width:
-                cell_pct = ((full + 1) / width) * 100
-                t.append(_FRAC_BLOCKS[frac_idx], style=_gradient_color(cell_pct))
-                t.append("░" * (width - full - 1), style="#222222")
-            pct_str = f"{pct:.0f}%".rjust(4)
-            tip_color = _gradient_color(pct)
-            t.append(pct_str, style=tip_color)
-            return t
+            if p < 12.5:
+                ch = "○"
+            elif p < 37.5:
+                ch = "◔"
+            elif p < 62.5:
+                ch = "◑"
+            elif p < 87.5:
+                ch = "◕"
+            else:
+                ch = "●"
+            return Text(ch, style=f"bold {_gradient_color(p)}")
 
         state_col_width = (
             self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
