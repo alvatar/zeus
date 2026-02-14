@@ -151,7 +151,7 @@ class ZeusApp(App):
                     id="agent-table",
                     cursor_foreground_priority="renderable",
                     cursor_background_priority="renderable",
-                    fixed_columns=1,
+                    fixed_columns=2,
                 ),
                 Static("", id="left-summary"),
                 id="table-container",
@@ -172,11 +172,11 @@ class ZeusApp(App):
         yield SplashOverlay(id="splash")
 
     _FULL_COLUMNS = (
-        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "P", "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
     )
     _SPLIT_COLUMNS = (
-        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "P", "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net",
     )
 
@@ -551,7 +551,7 @@ class ZeusApp(App):
 
             row_key: str = akey
             row = [
-                state_text, pri_cell, name_text, elapsed_text,
+                pri_cell, state_text, name_text, elapsed_text,
                 Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
                 ctx_cell,
                 cpu_cell, ram_cell, gpu_cell, net_cell,
@@ -619,7 +619,7 @@ class ZeusApp(App):
                 tmux_key: str = f"tmux:{sess.name}"
                 state_placeholder = Text(" " * state_col_width, style="on #000000")
                 row = [
-                    state_placeholder, "", tmux_name, tmux_age, tmux_cmd,
+                    "", state_placeholder, tmux_name, tmux_age, tmux_cmd,
                     "", cpu_t, ram_t, gpu_t, net_t,
                 ]
                 if not self._split_mode:
