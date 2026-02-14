@@ -24,8 +24,8 @@ order = ["State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU", "RAM", "GPU
 State = 10
 P = 1
 Elapsed = 4
-Name = 20
-"Model/Cmd" = 24
+Name = 24
+"Model/Cmd" = 20
 
 [columns.wide]
 order = ["State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU", "RAM", "GPU", "Net", "WS", "CWD", "Tokens"]

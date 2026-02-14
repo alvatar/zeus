@@ -1072,7 +1072,11 @@ class ZeusApp(App):
         ta = self.query_one("#interact-input", ZeusTextArea)
         self._history_programmatic_change = True
         try:
-            ta.load_text(text)
+            if text:
+                ta.load_text(text)
+            else:
+                ta.clear()
+            self._resize_interact_input(ta)
         finally:
             self._history_programmatic_change = False
 
