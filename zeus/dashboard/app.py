@@ -19,10 +19,10 @@ from rich.text import Text
 
 
 class SortMode(Enum):
-    STATE_ELAPSED = "state+elapsed"
+    PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import POLL_INTERVAL, SUMMARY_MODEL
+from ..config import POLL_INTERVAL, PRIORITIES_FILE, SUMMARY_MODEL
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
 )
@@ -89,6 +89,7 @@ class ZeusApp(App):
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
+        Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
 
@@ -104,7 +105,8 @@ class ZeusApp(App):
     ]
 
     agents: list[AgentWindow] = []
-    sort_mode: SortMode = SortMode.STATE_ELAPSED
+    sort_mode: SortMode = SortMode.PRIORITY
+    _agent_priorities: dict[str, int] = {}
     summary_model: str = SUMMARY_MODEL
     _summaries_enabled: bool = True
     _split_mode: bool = True
@@ -170,19 +172,20 @@ class ZeusApp(App):
         yield SplashOverlay(id="splash")
 
     _FULL_COLUMNS = (
-        "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net", "WS", "CWD", "Tokens",
     )
     _SPLIT_COLUMNS = (
-        "State", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
+        "State", "P", "Name", "Elapsed", "Model/Cmd", "Ctx", "CPU",
         "RAM", "GPU", "Net",
     )
 
     # Columns that get a fixed width (label → width)
-    _COL_WIDTHS: dict[str, int] = {"State": 10, "Elapsed": 5}
+    _COL_WIDTHS: dict[str, int] = {"State": 10, "P": 1, "Elapsed": 5}
     _COL_WIDTHS_SPLIT: dict[str, int] = {
         "Name": 16,
         "State": 10,
+        "P": 1,
         "Elapsed": 4,
         "Model/Cmd": 32,
     }
@@ -201,6 +204,7 @@ class ZeusApp(App):
 
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
+        self._load_priorities()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
         table.cursor_type = "row"
@@ -438,17 +442,21 @@ class ZeusApp(App):
             if a.parent_name and a.parent_name in parent_names:
                 children_of.setdefault(a.parent_name, []).append(a)
 
-        def _state_sort_key(a: AgentWindow) -> tuple[int, float, str]:
-            # WAITING (0) → WORKING (1) → IDLE (2)
+        def _priority_sort_key(
+            a: AgentWindow,
+        ) -> tuple[int, int, float, str]:
+            # Priority first (1=high … 3=low)
+            p = self._get_priority(a.name)
+            # State: WAITING (0) → WORKING (1) → IDLE (2)
             akey: str = f"{a.socket}:{a.kitty_id}"
             if a.state == State.IDLE and akey in self._action_needed:
-                pri = 0  # WAITING
+                st = 0  # WAITING
             elif a.state == State.WORKING:
-                pri = 1
+                st = 1
             else:
-                pri = 2  # IDLE
+                st = 2  # IDLE
             changed_at: float = self.state_changed_at.get(akey, time.time())
-            return (pri, changed_at, a.name.lower())
+            return (p, st, changed_at, a.name.lower())
 
         def _alpha_sort_key(a: AgentWindow) -> str:
             return a.name.lower()
@@ -456,7 +464,7 @@ class ZeusApp(App):
         sort_key = (
             _alpha_sort_key
             if self.sort_mode == SortMode.ALPHA
-            else _state_sort_key
+            else _priority_sort_key
         )
         top_level.sort(key=sort_key)
         for kids in children_of.values():
@@ -535,9 +543,15 @@ class ZeusApp(App):
                 net_cell = Text(str(net_cell), style=row_bg)
                 tok_cell = Text(str(tok_cell), style=row_bg)
 
+            pri_val = self._get_priority(a.name)
+            _pri_colors = {1: "#ff3333", 2: "#d7af00", 3: "#555555"}
+            pri_cell: str | Text = Text(
+                str(pri_val), style=f"bold {_pri_colors[pri_val]}",
+            )
+
             row_key: str = akey
             row = [
-                state_text, name_text, elapsed_text,
+                state_text, pri_cell, name_text, elapsed_text,
                 Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
                 ctx_cell,
                 cpu_cell, ram_cell, gpu_cell, net_cell,
@@ -605,7 +619,7 @@ class ZeusApp(App):
                 tmux_key: str = f"tmux:{sess.name}"
                 state_placeholder = Text(" " * state_col_width, style="on #000000")
                 row = [
-                    state_placeholder, tmux_name, tmux_age, tmux_cmd,
+                    state_placeholder, "", tmux_name, tmux_age, tmux_cmd,
                     "", cpu_t, ram_t, gpu_t, net_t,
                 ]
                 if not self._split_mode:
@@ -962,6 +976,49 @@ class ZeusApp(App):
         live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
         prune_histories(live_targets)
 
+    # ── Agent priorities ────────────────────────────────────────────
+
+    def _load_priorities(self) -> None:
+        """Load priorities from disk."""
+        try:
+            import json
+            data = json.loads(PRIORITIES_FILE.read_text())
+            if isinstance(data, dict):
+                self._agent_priorities = {
+                    k: v for k, v in data.items()
+                    if isinstance(k, str) and isinstance(v, int) and 1 <= v <= 3
+                }
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def _save_priorities(self) -> None:
+        """Persist priorities to disk."""
+        import json
+        PRIORITIES_FILE.write_text(json.dumps(self._agent_priorities))
+
+    def _get_priority(self, agent_name: str) -> int:
+        """Return priority for an agent (1=high, 2=med, 3=low default)."""
+        return self._agent_priorities.get(agent_name, 3)
+
+    def action_cycle_priority(self) -> None:
+        """Cycle priority 3→1→2→3 for the selected agent."""
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        if len(self.screen_stack) > 1:
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            return
+        cur = self._get_priority(agent.name)
+        # 3→1→2→3
+        nxt = {3: 1, 1: 2, 2: 3}[cur]
+        if nxt == 3:
+            self._agent_priorities.pop(agent.name, None)
+        else:
+            self._agent_priorities[agent.name] = nxt
+        self._save_priorities()
+        self.poll_and_update()
+
     # ── Event handlers ────────────────────────────────────────────────
 
     def _dismiss_splash(self) -> bool:
@@ -1212,10 +1269,10 @@ class ZeusApp(App):
             return
         if len(self.screen_stack) > 1:
             return
-        if self.sort_mode == SortMode.STATE_ELAPSED:
+        if self.sort_mode == SortMode.PRIORITY:
             self.sort_mode = SortMode.ALPHA
         else:
-            self.sort_mode = SortMode.STATE_ELAPSED
+            self.sort_mode = SortMode.PRIORITY
         self.poll_and_update()
 
     def action_close_panel(self) -> None:
