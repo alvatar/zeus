@@ -682,7 +682,11 @@ class ZeusApp(App):
             "WAITING": "#d7af00",
             "IDLE": "#ff3333",
         }
-        _pri_dim = {1: "", 2: " dim", 3: " dim"}
+        _state_dim = {
+            "WORKING": "#004400",
+            "WAITING": "#444400",
+            "IDLE": "#441111",
+        }
 
         parts: list[str] = []
         for a in self.agents:
@@ -695,7 +699,8 @@ class ZeusApp(App):
             color = _state_colors.get(state_label, "#555555")
             pri = self._get_priority(a.name)
             if pri == 3:
-                block_style = f"{color} dim"
+                color = _state_dim.get(state_label, "#333333")
+                block_style = f"{color}"
             elif pri == 2:
                 block_style = f"{color}"
             else:
