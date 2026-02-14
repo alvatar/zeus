@@ -45,6 +45,13 @@ def test_compact_name_two_segments():
     assert len(result) <= 10
 
 
+def test_compact_name_two_long_segments_keeps_tail():
+    result = _compact_name("barlovento-supervisor", 10)
+    assert "…" in result
+    assert result.endswith("visor")
+    assert len(result) <= 10
+
+
 def test_compact_name_many_segments():
     result = _compact_name("a-b-c-d-e", 5)
     assert result.startswith("a")

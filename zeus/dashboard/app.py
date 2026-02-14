@@ -79,20 +79,32 @@ class PollResult:
 
 
 def _compact_name(name: str, maxlen: int) -> str:
-    """Dash-aware truncation: keep first + last segment."""
+    """Dash-aware truncation: preserve start + (preferably) end segment."""
+    if maxlen <= 1:
+        return "…" if name else ""
     if len(name) <= maxlen:
         return name
+
     parts = name.split("-")
     if len(parts) < 2:
         return name[: maxlen - 1] + "…"
+
     first, last = parts[0], parts[-1]
-    joined = f"{first}…{last}"
-    if len(joined) <= maxlen:
-        return joined
-    avail = maxlen - len(last) - 1  # 1 for …
-    if avail >= 1:
-        return f"{first[:avail]}…{last}"
-    return name[: maxlen - 1] + "…"
+    budget = maxlen - 1  # reserve one char for ellipsis
+
+    # If the full last segment fits with at least one char of prefix, keep it.
+    if len(last) <= budget - 1:
+        prefix_len = max(1, budget - len(last))
+        return f"{first[:prefix_len]}…{last}"
+
+    # Otherwise keep a tail slice from the last segment (bias toward tail info).
+    suffix_len = min(len(last), max(3, (budget * 3) // 5))
+    prefix_len = budget - suffix_len
+    if budget >= 4 and prefix_len < 2:
+        prefix_len = 2
+        suffix_len = budget - prefix_len
+
+    return f"{first[:prefix_len]}…{last[-suffix_len:]}"
 
 
 class ZeusApp(App):
@@ -1147,7 +1159,6 @@ class ZeusApp(App):
             cwd = (tmux.cwd or "").strip() or (
                 (parent.cwd if parent else "") or ""
             ).strip()
-            workspace = (parent.workspace if parent else "") or ""
             label = f"tmux:{tmux.name}"
         else:
             agent = self._get_selected_agent()
@@ -1155,7 +1166,6 @@ class ZeusApp(App):
                 self.notify("No selected target", timeout=2)
                 return
             cwd = (agent.cwd or "").strip()
-            workspace = agent.workspace or ""
             label = agent.name
 
         if not cwd:
@@ -1163,7 +1173,7 @@ class ZeusApp(App):
             return
 
         try:
-            proc = subprocess.Popen(
+            subprocess.Popen(
                 ["kitty", "--directory", cwd],
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
@@ -1173,12 +1183,6 @@ class ZeusApp(App):
             self.notify(f"Open shell failed: {e}", timeout=3)
             return
 
-        if workspace and workspace != "?":
-            move_pid_to_workspace_and_focus_later(
-                proc.pid,
-                workspace,
-                delay=0.5,
-            )
         self.notify(f"Shell: {label}", timeout=2)
 
     def _interact_draft_key(self) -> str | None:
