@@ -396,6 +396,12 @@ class ZeusApp(App):
         for a in self.agents:
             key = f"{a.socket}:{a.kitty_id}"
             live_keys.add(key)
+
+            if self._is_paused(a):
+                self._action_check_pending.discard(key)
+                self._action_needed.discard(key)
+                continue
+
             old_state = old_states.get(key)
             just_became_idle = (
                 old_state == State.WORKING
@@ -418,6 +424,8 @@ class ZeusApp(App):
         max_s = SETTINGS.sparkline.max_samples
         live_names: set[str] = set()
         for a in self.agents:
+            if self._is_paused(a):
+                continue  # paused agents are excluded from statistics
             akey = f"{a.socket}:{a.kitty_id}"
             live_names.add(a.name)
             waiting = a.state == State.IDLE and akey in self._action_needed
@@ -499,11 +507,13 @@ class ZeusApp(App):
         def _priority_sort_key(
             a: AgentWindow,
         ) -> tuple[int, int, float, str]:
-            # Priority first (1=high … 3=low)
+            # Priority first (1=high … 4=paused)
             p = self._get_priority(a.name)
-            # State: WAITING (0) → WORKING (1) → IDLE (2)
+            # State: WAITING (0) → WORKING (1) → IDLE (2) → PAUSED (3)
             akey: str = f"{a.socket}:{a.kitty_id}"
-            if a.state == State.IDLE and akey in self._action_needed:
+            if self._is_paused(a):
+                st = 3
+            elif a.state == State.IDLE and akey in self._action_needed:
                 st = 0  # WAITING
             elif a.state == State.WORKING:
                 st = 1
@@ -557,11 +567,19 @@ class ZeusApp(App):
 
         def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
             akey: str = f"{a.socket}:{a.kitty_id}"
+            paused: bool = self._is_paused(a)
             waiting: bool = (
-                a.state == State.IDLE and akey in self._action_needed
+                (not paused)
+                and a.state == State.IDLE
+                and akey in self._action_needed
             )
 
-            if waiting:
+            if paused:
+                icon = "⏸"
+                state_label = "PAUSED"
+                state_color = "#666666"
+                row_bg = ""
+            elif waiting:
                 icon = "⏸"
                 state_label = "WAITING"
                 state_color = "#d7af00"
@@ -620,7 +638,7 @@ class ZeusApp(App):
                 tok_cell = Text(str(tok_cell), style=row_bg)
 
             pri_val = self._get_priority(a.name)
-            _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555"}
+            _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
             pri_cell: str | Text = Text(
                 str(pri_val), style=f"bold {_pri_colors[pri_val]}",
             )
@@ -741,10 +759,12 @@ class ZeusApp(App):
         self._update_sparkline()
 
         n_working: int = sum(
-            1 for a in self.agents if a.state == State.WORKING
+            1 for a in self.agents
+            if (not self._is_paused(a)) and a.state == State.WORKING
         )
         n_idle: int = sum(
-            1 for a in self.agents if a.state == State.IDLE
+            1 for a in self.agents
+            if (not self._is_paused(a)) and a.state == State.IDLE
         )
         status = self.query_one("#status-line", Static)
         sort_label: str = self.sort_mode.value
@@ -771,11 +791,12 @@ class ZeusApp(App):
             return
         mini.remove_class("hidden")
 
-        _state_pri_colors: dict[str, tuple[str, str, str]] = {
-            #              P1          P2          P3
-            "WORKING": ("#00ff00", "#006600", "#003300"),
-            "WAITING": ("#ffdd00", "#776600", "#333300"),
-            "IDLE":    ("#ff4444", "#771111", "#330a0a"),
+        _state_pri_colors: dict[str, tuple[str, str, str, str]] = {
+            #               P1          P2          P3          P4
+            "WORKING": ("#00ff00", "#006600", "#003300", "#1a2a1a"),
+            "WAITING": ("#ffdd00", "#776600", "#333300", "#2a2a1a"),
+            "IDLE":    ("#ff4444", "#771111", "#330a0a", "#2a1a1a"),
+            "PAUSED":  ("#777777", "#555555", "#333333", "#1a1a1a"),
         }
 
 
@@ -794,15 +815,21 @@ class ZeusApp(App):
 
         def _agent_color(a: AgentWindow) -> str:
             akey = f"{a.socket}:{a.kitty_id}"
-            waiting = a.state == State.IDLE and akey in self._action_needed
-            state_label = "WAITING" if waiting else a.state.value.upper()
+            if self._is_paused(a):
+                state_label = "PAUSED"
+            else:
+                waiting = a.state == State.IDLE and akey in self._action_needed
+                state_label = "WAITING" if waiting else a.state.value.upper()
             pri = self._get_priority(a.name)
             colors = _state_pri_colors.get(
-                state_label, ("#555555", "#333333", "#222222"),
+                state_label, ("#777777", "#555555", "#333333", "#1a1a1a"),
             )
-            return colors[pri - 1]
+            idx = max(0, min(pri - 1, len(colors) - 1))
+            return colors[idx]
 
         def _agent_state(a: AgentWindow) -> str:
+            if self._is_paused(a):
+                return "PAUSED"
             akey = f"{a.socket}:{a.kitty_id}"
             waiting = a.state == State.IDLE and akey in self._action_needed
             return "WAITING" if waiting else a.state.value.upper()
@@ -882,7 +909,7 @@ class ZeusApp(App):
         )
 
         # Aggregate efficiency header (weighted by priority)
-        _pri_weight = {1: 5, 2: 3, 3: 1}
+        _pri_weight = {1: 5, 2: 3, 3: 1, 4: 0}
         w_working = 0.0
         w_waiting = 0.0
         w_total = 0.0
@@ -890,6 +917,8 @@ class ZeusApp(App):
         raw_waiting = 0
         raw_total = 0
         for agent in self.agents:
+            if self._is_paused(agent):
+                continue
             samples = self._sparkline_samples.get(agent.name, [])
             if not samples:
                 continue
@@ -943,6 +972,8 @@ class ZeusApp(App):
         # Prefix width: "100% " = 5 chars
         prefix_w = 5
         for agent in ordered:
+            if self._is_paused(agent):
+                continue
             samples = self._sparkline_samples.get(agent.name, [])
             if not samples:
                 continue
@@ -1153,6 +1184,13 @@ class ZeusApp(App):
         except LookupError:
             pass
 
+    def _set_interact_editable(self, editable: bool) -> None:
+        try:
+            ta = self.query_one("#interact-input", ZeusTextArea)
+            ta.read_only = not editable
+        except LookupError:
+            pass
+
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
         old_agent_key = self._interact_agent_key
@@ -1161,6 +1199,8 @@ class ZeusApp(App):
         tmux = self._get_selected_tmux()
         if tmux:
             self._set_interact_target_name(tmux.name)
+            parent = self._find_agent_for_tmux(tmux)
+            self._set_interact_editable(not (parent is not None and self._is_paused(parent)))
             target_changed = (
                 old_agent_key is not None
                 or old_tmux_name != tmux.name
@@ -1177,8 +1217,10 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if not agent:
             self._set_interact_target_name("—")
+            self._set_interact_editable(True)
             return
         self._set_interact_target_name(agent.name)
+        self._set_interact_editable(not self._is_paused(agent))
         key = f"{agent.socket}:{agent.kitty_id}"
         target_changed = (
             old_agent_key != key
@@ -1342,7 +1384,7 @@ class ZeusApp(App):
             if isinstance(data, dict):
                 self._agent_priorities = {
                     k: v for k, v in data.items()
-                    if isinstance(k, str) and isinstance(v, int) and 1 <= v <= 3
+                    if isinstance(k, str) and isinstance(v, int) and 1 <= v <= 4
                 }
         except (FileNotFoundError, json.JSONDecodeError):
             pass
@@ -1405,11 +1447,14 @@ class ZeusApp(App):
             target.add_class("hidden")
 
     def _get_priority(self, agent_name: str) -> int:
-        """Return priority for an agent (1=high, 2=med, 3=low default)."""
+        """Return priority for an agent (1=high … 4=paused, default=3)."""
         return self._agent_priorities.get(agent_name, 3)
 
+    def _is_paused(self, agent: AgentWindow) -> bool:
+        return self._get_priority(agent.name) == 4
+
     def action_cycle_priority(self) -> None:
-        """Cycle priority 3→1→2→3 for the selected agent."""
+        """Cycle priority 3→2→1→4→3 for the selected agent."""
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
         if len(self.screen_stack) > 1:
@@ -1418,14 +1463,15 @@ class ZeusApp(App):
         if not agent:
             return
         cur = self._get_priority(agent.name)
-        # 3→1→2→3
-        nxt = {3: 2, 2: 1, 1: 3}[cur]
+        nxt = {4: 3, 3: 2, 2: 1, 1: 4}[cur]
         if nxt == 3:
             self._agent_priorities.pop(agent.name, None)
         else:
             self._agent_priorities[agent.name] = nxt
         self._save_priorities()
         self.poll_and_update()
+        if self._interact_visible:
+            self._refresh_interact_panel()
 
     # ── Event handlers ────────────────────────────────────────────────
 
@@ -1710,6 +1756,7 @@ class ZeusApp(App):
             self._interact_agent_key = None
             self._interact_tmux_name = None
             self._set_interact_target_name("—")
+            self._set_interact_editable(True)
             self._reset_history_nav()
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
@@ -1761,7 +1808,7 @@ class ZeusApp(App):
         """Store action-needed result."""
         self._action_check_pending.discard(key)
         agent = self._get_agent_by_key(key)
-        if not agent or agent.state != State.IDLE:
+        if not agent or agent.state != State.IDLE or self._is_paused(agent):
             self._action_needed.discard(key)
             return
         if needs_action:
@@ -1846,6 +1893,17 @@ class ZeusApp(App):
         stream.clear()
         stream.write(Text.from_ansi(raw))
 
+    def _current_interact_target_paused(self) -> bool:
+        """Return True if current interact target is paused (priority 4)."""
+        if self._interact_agent_key:
+            agent = self._get_agent_by_key(self._interact_agent_key)
+            return bool(agent and self._is_paused(agent))
+        if self._interact_tmux_name:
+            for agent in self.agents:
+                if any(s.name == self._interact_tmux_name for s in agent.tmux_sessions):
+                    return self._is_paused(agent)
+        return False
+
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
         clean = text.replace("\x00", "")
@@ -1857,6 +1915,9 @@ class ZeusApp(App):
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if not self._interact_visible:
+            return
+        if self._current_interact_target_paused():
+            self.notify("Agent is PAUSED (priority 4); input disabled", timeout=2)
             return
         ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()
@@ -1889,6 +1950,9 @@ class ZeusApp(App):
     def action_queue_interact(self) -> None:
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
         if not self._interact_visible:
+            return
+        if self._current_interact_target_paused():
+            self.notify("Agent is PAUSED (priority 4); input disabled", timeout=2)
             return
         ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()

@@ -318,7 +318,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
     ("k", "Kill agent / tmux session"),
-    ("p", "Cycle priority (3→1→2→3)"),
+    ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename agent / tmux"),
     ("", "─── Panels ───"),
     ("1", "Toggle agent table"),
