@@ -545,7 +545,7 @@ class ZeusApp(App):
                 tok_cell = Text(str(tok_cell), style=row_bg)
 
             pri_val = self._get_priority(a.name)
-            _pri_colors = {1: "#00d7d7", 2: "#cccccc", 3: "#555555"}
+            _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555"}
             pri_cell: str | Text = Text(
                 str(pri_val), style=f"bold {_pri_colors[pri_val]}",
             )
@@ -1066,7 +1066,7 @@ class ZeusApp(App):
             return
         cur = self._get_priority(agent.name)
         # 3→1→2→3
-        nxt = {3: 1, 1: 2, 2: 3}[cur]
+        nxt = {3: 2, 2: 1, 1: 3}[cur]
         if nxt == 3:
             self._agent_priorities.pop(agent.name, None)
         else:
