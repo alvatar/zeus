@@ -683,7 +683,7 @@ class ZeusApp(App):
             "WAITING": ("#ffdd00", "#776600", "#333300"),
             "IDLE":    ("#ff4444", "#771111", "#330a0a"),
         }
-        _state_icons = {"WORKING": "▶", "WAITING": "⏸", "IDLE": "⏹"}
+
 
         parent_names: set[str] = {a.name for a in self.agents}
         top_level: list[AgentWindow] = sorted(
@@ -713,8 +713,7 @@ class ZeusApp(App):
             waiting = a.state == State.IDLE and akey in self._action_needed
             return "WAITING" if waiting else a.state.value.upper()
 
-        def _agent_icon(a: AgentWindow) -> str:
-            return _state_icons.get(_agent_state(a), "?")
+
 
         # Build groups: list of (parent, [children])
         groups: list[tuple[AgentWindow, list[AgentWindow]]] = []
@@ -726,7 +725,6 @@ class ZeusApp(App):
         cards_bot: list[str] = []
         for parent, kids in groups:
             pc = _agent_color(parent)
-            pi = _agent_icon(parent)
             pri = self._get_priority(parent.name)
             style = f"bold {pc}" if pri == 1 else pc
             name = parent.name[:10]
@@ -735,25 +733,24 @@ class ZeusApp(App):
             subs: list[str] = []
             for child in kids:
                 cc = _agent_color(child)
-                ci = _agent_icon(child)
                 cpri = self._get_priority(child.name)
                 cs = f"bold {cc}" if cpri == 1 else cc
                 cn = child.name[:8]
                 subs.append(
-                    f"[#333333]┊[/] [{cs}]{ci} {cn}[/]"
+                    f"[#333333]┊[/] [{cs}]{cn}[/]"
                 )
 
             # Card width: calculate visible content width
             sub_text = " ".join(subs)
-            inner = f"[{style}]{pi} {name}[/]"
+            inner = f"[{style}]{name}[/]"
             if subs:
                 inner += f" {sub_text}"
 
             # Top bar: colored ▄ blocks
             # Approximate visible width for the bar
-            bar_len = len(name) + 3  # icon + spaces
+            bar_len = len(name) + 1
             for child in kids:
-                bar_len += len(child.name[:8]) + 5  # ┊ icon name
+                bar_len += len(child.name[:8]) + 3  # ┊ + spaces
             bar_len = max(bar_len, 8)
 
             cards_top.append(f"[{pc}]{'▄' * bar_len}[/]")
