@@ -85,7 +85,7 @@ class ZeusApp(App):
         Binding("q", "stop_agent", "Stop Agent"),
         Binding("ctrl+q", "force_stop_agent", "Stop Agent", show=False, priority=True),
         Binding("f10", "quit", "Quit"),
-        Binding("escape", "close_panel", "Close", show=False),
+        Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("n", "new_agent", "New Agent"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
@@ -195,6 +195,7 @@ class ZeusApp(App):
         table.show_row_labels = False
         table.cursor_type = "row"
         table.zebra_stripes = True
+        self.query_one("#interact-stream", RichLog).can_focus = False
         self._setup_table_columns()
         self.poll_and_update()
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
@@ -740,6 +741,23 @@ class ZeusApp(App):
             waiting = a.state == State.IDLE and akey in self._action_needed
             return "WAITING" if waiting else a.state.value.upper()
 
+        def _compact_name(name: str, maxlen: int) -> str:
+            """Dash-aware truncation: keep first + last segment."""
+            if len(name) <= maxlen:
+                return name
+            parts = name.split("-")
+            if len(parts) < 2:
+                return name[: maxlen - 1] + "…"
+            first, last = parts[0], parts[-1]
+            joined = f"{first}…{last}"
+            if len(joined) <= maxlen:
+                return joined
+            # Trim first segment to fit
+            avail = maxlen - len(last) - 1  # 1 for …
+            if avail >= 1:
+                return f"{first[:avail]}…{last}"
+            return name[: maxlen - 1] + "…"
+
 
 
         # Build groups: list of (parent, [children])
@@ -754,7 +772,7 @@ class ZeusApp(App):
             pc = _agent_color(parent)
             pri = self._get_priority(parent.name)
             style = f"bold {pc}" if pri == 1 else pc
-            name = parent.name[:SETTINGS.minimap.max_name_length]
+            name = _compact_name(parent.name, SETTINGS.minimap.max_name_length)
 
             # Sub-agents inline
             subs: list[str] = []
@@ -762,7 +780,7 @@ class ZeusApp(App):
                 cc = _agent_color(child)
                 cpri = self._get_priority(child.name)
                 cs = f"bold {cc}" if cpri == 1 else cc
-                cn = child.name[:SETTINGS.minimap.max_sub_name_length]
+                cn = _compact_name(child.name, SETTINGS.minimap.max_sub_name_length)
                 subs.append(
                     f"[#333333]┊[/] [{cs}]{cn}[/]"
                 )
@@ -777,7 +795,7 @@ class ZeusApp(App):
             # Approximate visible width for the bar
             bar_len = len(name) + 1
             for child in kids:
-                bar_len += len(child.name[:SETTINGS.minimap.max_sub_name_length]) + 3
+                bar_len += len(_compact_name(child.name, SETTINGS.minimap.max_sub_name_length)) + 3
             bar_len = max(bar_len, 8)
 
             cards_top.append(f"[{pc}]{'▄' * bar_len}[/]")
@@ -1459,11 +1477,13 @@ class ZeusApp(App):
             self.sort_mode = SortMode.PRIORITY
         self.poll_and_update()
 
-    def action_close_panel(self) -> None:
-        """Escape: if in interact input, go back to table."""
+    def action_toggle_focus(self) -> None:
+        """Tab: toggle focus between agent table and interact input."""
         if isinstance(self.focused, (ZeusTextArea, TextArea)):
             self.query_one("#agent-table", DataTable).focus()
-            return
+        else:
+            if self._interact_visible:
+                self.query_one("#interact-input", ZeusTextArea).focus()
 
     def action_toggle_interact_panel(self) -> None:
         """F8: toggle interact panel visibility."""
