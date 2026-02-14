@@ -78,6 +78,23 @@ class PollResult:
     idle_notified: set[str] = field(default_factory=set)
 
 
+def _compact_name(name: str, maxlen: int) -> str:
+    """Dash-aware truncation: keep first + last segment."""
+    if len(name) <= maxlen:
+        return name
+    parts = name.split("-")
+    if len(parts) < 2:
+        return name[: maxlen - 1] + "…"
+    first, last = parts[0], parts[-1]
+    joined = f"{first}…{last}"
+    if len(joined) <= maxlen:
+        return joined
+    avail = maxlen - len(last) - 1  # 1 for …
+    if avail >= 1:
+        return f"{first[:avail]}…{last}"
+    return name[: maxlen - 1] + "…"
+
+
 class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
@@ -98,6 +115,9 @@ class ZeusApp(App):
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
 
 
+        Binding("1", "toggle_table", "Table", show=False),
+        Binding("2", "toggle_minimap", "Map", show=False),
+        Binding("3", "toggle_sparklines", "Sparks", show=False),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("f6", "toggle_split", "Split"),
 
@@ -116,6 +136,8 @@ class ZeusApp(App):
     _interact_drafts: dict[str, str] = {}
     _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
+    _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
+    _minimap_agents: list[str] = []
     prev_states: dict[str, State] = {}
     state_changed_at: dict[str, float] = {}
     idle_since: dict[str, float] = {}
@@ -143,6 +165,7 @@ class ZeusApp(App):
                     id="openai-usage-bar",
                 ),
                 Static("", id="mini-map"),
+                Static("", id="sparkline-chart"),
                 ZeusDataTable(
                     id="agent-table",
                     cursor_foreground_priority="renderable",
@@ -346,6 +369,22 @@ class ZeusApp(App):
                 self._action_needed.discard(key)
         self._action_check_pending &= live_keys
         self._action_needed &= live_keys
+
+        # Collect sparkline state samples
+        max_s = SETTINGS.sparkline.max_samples
+        live_names: set[str] = set()
+        for a in self.agents:
+            akey = f"{a.socket}:{a.kitty_id}"
+            live_names.add(a.name)
+            waiting = a.state == State.IDLE and akey in self._action_needed
+            state_label = "WAITING" if waiting else a.state.value.upper()
+            samples = self._sparkline_samples.setdefault(a.name, [])
+            samples.append(state_label)
+            if len(samples) > max_s:
+                del samples[: len(samples) - max_s]
+        for k in list(self._sparkline_samples):
+            if k not in live_names:
+                del self._sparkline_samples[k]
 
         # Refresh interact panel if the viewed agent changed state
         if self._interact_visible and self._interact_agent_key:
@@ -655,6 +694,7 @@ class ZeusApp(App):
                     break
 
         self._update_mini_map()
+        self._update_sparkline()
 
         n_working: int = sum(
             1 for a in self.agents if a.state == State.WORKING
@@ -723,23 +763,6 @@ class ZeusApp(App):
             waiting = a.state == State.IDLE and akey in self._action_needed
             return "WAITING" if waiting else a.state.value.upper()
 
-        def _compact_name(name: str, maxlen: int) -> str:
-            """Dash-aware truncation: keep first + last segment."""
-            if len(name) <= maxlen:
-                return name
-            parts = name.split("-")
-            if len(parts) < 2:
-                return name[: maxlen - 1] + "…"
-            first, last = parts[0], parts[-1]
-            joined = f"{first}…{last}"
-            if len(joined) <= maxlen:
-                return joined
-            # Trim first segment to fit
-            avail = maxlen - len(last) - 1  # 1 for …
-            if avail >= 1:
-                return f"{first[:avail]}…{last}"
-            return name[: maxlen - 1] + "…"
-
 
 
         # Build groups: list of (parent, [children])
@@ -748,6 +771,7 @@ class ZeusApp(App):
             groups.append((a, children_of.get(a.name, [])))
 
         # Render as box cards: top bar + content row per group
+        self._minimap_agents = []
         cards_top: list[str] = []
         cards_bot: list[str] = []
         for parent, kids in groups:
@@ -755,6 +779,8 @@ class ZeusApp(App):
             pri = self._get_priority(parent.name)
             style = f"bold {pc}" if pri == 1 else pc
             name = _compact_name(parent.name, SETTINGS.minimap.max_name_length)
+            pidx = len(self._minimap_agents)
+            self._minimap_agents.append(parent.name)
 
             # Sub-agents inline
             subs: list[str] = []
@@ -763,18 +789,19 @@ class ZeusApp(App):
                 cpri = self._get_priority(child.name)
                 cs = f"bold {cc}" if cpri == 1 else cc
                 cn = _compact_name(child.name, SETTINGS.minimap.max_sub_name_length)
+                cidx = len(self._minimap_agents)
+                self._minimap_agents.append(child.name)
                 subs.append(
-                    f"[#333333]┊[/] [{cs}]{cn}[/]"
+                    f"[#333333]┊[/] [@click=app.select_minimap({cidx})][{cs}]{cn}[/][/]"
                 )
 
             # Card width: calculate visible content width
             sub_text = " ".join(subs)
-            inner = f"[{style}]{name}[/]"
+            inner = f"[@click=app.select_minimap({pidx})][{style}]{name}[/][/]"
             if subs:
                 inner += f" {sub_text}"
 
             # Top bar: colored ▄ blocks
-            # Approximate visible width for the bar
             bar_len = len(name) + 1
             for child in kids:
                 bar_len += len(_compact_name(child.name, SETTINGS.minimap.max_sub_name_length)) + 3
@@ -790,6 +817,99 @@ class ZeusApp(App):
         line2 = sep_bot.join(cards_bot)
 
         mini.update(f"{line1}\n{line2}")
+
+    def _update_sparkline(self) -> None:
+        """Render state sparkline charts for all agents."""
+        from .widgets import state_sparkline_markup, _gradient_color
+        widget = self.query_one("#sparkline-chart", Static)
+        if not self.agents or not self._sparkline_samples:
+            widget.add_class("hidden")
+            return
+        widget.remove_class("hidden")
+
+        parent_names: set[str] = {a.name for a in self.agents}
+        ordered = sorted(
+            self.agents,
+            key=lambda a: (
+                self._get_priority(a.name),
+                0 if (not a.parent_name or a.parent_name not in parent_names) else 1,
+                a.name,
+            ),
+        )
+
+        # Aggregate efficiency header (weighted by priority)
+        _pri_weight = {1: 5, 2: 3, 3: 1}
+        w_working = 0.0
+        w_waiting = 0.0
+        w_total = 0.0
+        raw_working = 0
+        raw_waiting = 0
+        raw_total = 0
+        for agent in self.agents:
+            samples = self._sparkline_samples.get(agent.name, [])
+            if not samples:
+                continue
+            w = _pri_weight.get(self._get_priority(agent.name), 1)
+            nw = sum(1 for s in samples if s == "WORKING")
+            nwait = sum(1 for s in samples if s == "WAITING")
+            w_working += nw * w
+            w_waiting += nwait * w
+            w_total += len(samples) * w
+            raw_working += nw
+            raw_waiting += nwait
+            raw_total += len(samples)
+        total = raw_total
+        if total > 0:
+            eff_pct = w_working / w_total * 100 if w_total else 0
+            work_pct = raw_working / total * 100
+            wait_pct = raw_waiting / total * 100
+            idle_pct = (total - raw_working - raw_waiting) / total * 100
+            header = (
+                f"[#888888]Efficiency: {eff_pct:.0f}%[/]  │  "
+                f"[#888888]▶ {work_pct:.0f}%  "
+                f"⏸ {wait_pct:.0f}%  "
+                f"⏹ {idle_pct:.0f}%[/]"
+            )
+        else:
+            header = "[#555555]Efficiency: —[/]"
+
+        # Divider + per-agent rows
+        content_w = max(20, widget.size.width)  # size is already content area
+        lines: list[str] = [header, "[#1a3a3a]" + "─" * content_w + "[/]"]
+        # Prefix width: "100% " = 5 chars
+        prefix_w = 5
+        for agent in ordered:
+            samples = self._sparkline_samples.get(agent.name, [])
+            if not samples:
+                continue
+            name = agent.name
+            agent_eff = sum(1 for s in samples if s == "WORKING") / len(samples) * 100
+            prefix = f"[#888888]{agent_eff:3.0f}%[/] "
+            max_spark_chars = max(5, content_w - len(name) - prefix_w - 1)
+            # Floor division: always even sample count so pairings don't shift
+            n_chars = min(max_spark_chars, len(samples) // 2)
+            chart_markup = state_sparkline_markup(samples, width=n_chars)
+            gap = max_spark_chars - n_chars
+            lines.append(
+                f"{prefix}[#555555]{name}[/] {' ' * gap}{chart_markup}"
+            )
+
+        widget.update("\n".join(lines))
+
+    def action_select_minimap(self, index: int) -> None:
+        """Select an agent by mini-map click index."""
+        if index < 0 or index >= len(self._minimap_agents):
+            return
+        name = self._minimap_agents[index]
+        table = self.query_one("#agent-table", DataTable)
+        for idx, row_key in enumerate(table.rows):
+            agent = self._get_agent_by_key(row_key.value)
+            if agent and agent.name == name:
+                table.move_cursor(row=idx)
+                table.focus()
+                if self._interact_visible:
+                    self._refresh_interact_panel()
+                break
 
     # ── Selection helpers ─────────────────────────────────────────────
 
@@ -1362,6 +1482,33 @@ class ZeusApp(App):
         if len(self.screen_stack) > 1:
             return
         self.push_screen(HelpScreen())
+
+    def action_toggle_table(self) -> None:
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        table = self.query_one("#agent-table", ZeusDataTable)
+        if table.has_class("hidden"):
+            table.remove_class("hidden")
+        else:
+            table.add_class("hidden")
+
+    def action_toggle_minimap(self) -> None:
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        mini = self.query_one("#mini-map", Static)
+        if mini.has_class("hidden"):
+            mini.remove_class("hidden")
+        else:
+            mini.add_class("hidden")
+
+    def action_toggle_sparklines(self) -> None:
+        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+            return
+        spark = self.query_one("#sparkline-chart", Static)
+        if spark.has_class("hidden"):
+            spark.remove_class("hidden")
+        else:
+            spark.add_class("hidden")
 
     def action_toggle_split(self) -> None:
         self._split_mode = not self._split_mode

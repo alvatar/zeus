@@ -40,3 +40,10 @@ Elapsed = 5
 [minimap]
 max_name_length = 10
 max_sub_name_length = 8
+
+# ── Sparkline charts ─────────────────────────────────────────────────
+
+[sparkline]
+width = 25             # braille chars wide (each = 2 data points)
+max_samples = 120      # buffer depth (~4 min at 2s poll)
+name_width = 12        # max chars for agent name label

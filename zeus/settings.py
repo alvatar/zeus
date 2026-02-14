@@ -59,12 +59,20 @@ class MinimapConfig:
 
 
 @dataclass
+class SparklineConfig:
+    width: int
+    max_samples: int
+    name_width: int
+
+
+@dataclass
 class Settings:
     poll_interval: float
     summary_model: str
     input_history_max: int
     columns: ColumnsConfig
     minimap: MinimapConfig
+    sparkline: SparklineConfig
 
     # Raw merged dict kept for potential future use
     _raw: dict = field(default_factory=dict, repr=False)
@@ -108,12 +116,20 @@ def load_settings() -> Settings:
         max_sub_name_length=int(mm.get("max_sub_name_length", 8)),
     )
 
+    sp = raw.get("sparkline", {})
+    sparkline = SparklineConfig(
+        width=int(sp.get("width", 25)),
+        max_samples=int(sp.get("max_samples", 120)),
+        name_width=int(sp.get("name_width", 12)),
+    )
+
     return Settings(
         poll_interval=poll,
         summary_model=summary_model,
         input_history_max=history_max,
         columns=columns,
         minimap=minimap,
+        sparkline=sparkline,
         _raw=raw,
     )
 

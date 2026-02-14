@@ -47,9 +47,29 @@ Screen {
     border: round #1a3a3a;
     background: #050a0e;
     color: #cccccc;
+    link-style: none;
+    link-style-hover: none;
 }
 
 #mini-map.hidden {
+    display: none;
+}
+
+#sparkline-chart {
+    height: auto;
+    max-height: 12;
+    margin: 0 1 0 1;
+    padding: 0 2;
+    border: round #1a3a3a;
+    background: #050a0e;
+    color: #cccccc;
+}
+
+#sparkline-chart.hidden {
+    display: none;
+}
+
+#agent-table.hidden {
     display: none;
 }
 
