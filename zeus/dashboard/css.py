@@ -230,6 +230,43 @@ NewAgentScreen {
 }
 """
 
+AGENT_NOTES_CSS = """
+AgentNotesScreen {
+    align: center middle;
+}
+
+#agent-notes-dialog {
+    width: 110;
+    height: auto;
+    max-height: 34;
+    border: thick #ffaf00;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#agent-notes-dialog Label {
+    margin: 0 0 1 0;
+    color: #dddddd;
+}
+
+#agent-notes-input {
+    height: 20;
+    margin: 0 0 1 0;
+    border: solid #444444;
+    background: #0a1018;
+    color: #dddddd;
+}
+
+#agent-notes-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#agent-notes-buttons Button {
+    margin: 0 0 0 1;
+}
+"""
+
 SUBAGENT_CSS = """
 SubAgentScreen {
     align: center middle;

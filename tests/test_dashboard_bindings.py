@@ -17,3 +17,11 @@ def test_agent_management_summary_bindings_are_priority() -> None:
     assert bindings["ctrl+b"].priority is True
     assert "ctrl+m" in bindings
     assert bindings["ctrl+m"].priority is True
+
+
+def test_agent_management_keys_include_c_and_n() -> None:
+    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
+    assert "c" in bindings
+    assert bindings["c"].action == "new_agent"
+    assert "n" in bindings
+    assert bindings["n"].action == "agent_notes"

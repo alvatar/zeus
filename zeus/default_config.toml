@@ -18,22 +18,24 @@ max_entries = 10
 fixed = 3
 
 [columns.split]
-order = ["State", "P", "◉", "Name", "Elapsed", "Model/Cmd", "CPU", "RAM", "GPU", "Net"]
+order = ["State", "P", "◉", "■", "Name", "Elapsed", "Model/Cmd", "CPU", "RAM", "GPU", "Net"]
 
 [columns.split.widths]
 State = 10
 P = 1
+"■" = 1
 Elapsed = 4
 Name = 24
 "Model/Cmd" = 21
 CPU = 4
 
 [columns.wide]
-order = ["State", "P", "◉", "Name", "Elapsed", "Model/Cmd", "CPU", "RAM", "GPU", "Net", "WS", "CWD", "Tokens"]
+order = ["State", "P", "◉", "■", "Name", "Elapsed", "Model/Cmd", "CPU", "RAM", "GPU", "Net", "WS", "CWD", "Tokens"]
 
 [columns.wide.widths]
 State = 10
 P = 1
+"■" = 1
 Elapsed = 5
 "Model/Cmd" = 21
 CPU = 4

@@ -17,6 +17,7 @@ from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
 from .css import (
     NEW_AGENT_CSS,
+    AGENT_NOTES_CSS,
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
@@ -92,6 +93,48 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
         self.zeus.notify(f"Launched: {name} (pi)", timeout=3)
         self.zeus.set_timer(1.5, self.zeus.poll_and_update)
+
+
+class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = AGENT_NOTES_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("ctrl+s", "save", "Save", show=False),
+    ]
+
+    def __init__(self, agent: AgentWindow, note: str) -> None:
+        super().__init__()
+        self.agent = agent
+        self.note = note
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="agent-notes-dialog"):
+            yield Label(f"Notes for [bold]{self.agent.name}[/bold]")
+            yield Label("Personal TODO / context")
+            yield TextArea(self.note, id="agent-notes-input")
+            with Horizontal(id="agent-notes-buttons"):
+                yield Button("Cancel", variant="default", id="agent-notes-cancel-btn")
+                yield Button("Save", variant="primary", id="agent-notes-save-btn")
+
+    def on_mount(self) -> None:
+        ta = self.query_one("#agent-notes-input", TextArea)
+        ta.focus()
+        ta.move_cursor(ta.document.end)
+
+    def _save(self) -> None:
+        note = self.query_one("#agent-notes-input", TextArea).text
+        self.dismiss()
+        self.zeus.do_save_agent_notes(self.agent, note)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "agent-notes-save-btn":
+            self._save()
+        else:
+            self.dismiss()
+        event.stop()
+
+    def action_save(self) -> None:
+        self._save()
 
 
 # ── Sub-agent ─────────────────────────────────────────────────────────
@@ -543,7 +586,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),
     ("Ctrl+u", "Clear input"),
     ("", "─── Agent Management ───"),
-    ("n", "New agent"),
+    ("c", "New agent"),
+    ("n", "Edit notes for selected agent"),
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),

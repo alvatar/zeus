@@ -25,6 +25,7 @@ class SortMode(Enum):
     ALPHA = "alpha"
 
 from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
+from ..notes import load_agent_notes, save_agent_notes
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
@@ -60,7 +61,7 @@ from .stream import (
 )
 from .widgets import ZeusDataTable, ZeusTextArea, UsageBar, SplashOverlay
 from .screens import (
-    NewAgentScreen, SubAgentScreen,
+    NewAgentScreen, AgentNotesScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
     BroadcastPreparingScreen,
@@ -173,6 +174,16 @@ def _extract_share_payload(text: str) -> str | None:
     return "\n".join(lines[start + 1:end]).strip()
 
 
+def _with_notes_column(order: tuple[str, ...]) -> tuple[str, ...]:
+    """Ensure notes column exists directly after context column."""
+    if "■" in order:
+        return order
+    if "◉" in order:
+        idx = order.index("◉") + 1
+        return order[:idx] + ("■",) + order[idx:]
+    return order + ("■",)
+
+
 class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
@@ -183,7 +194,8 @@ class ZeusApp(App):
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
-        Binding("n", "new_agent", "New Agent"),
+        Binding("c", "new_agent", "New Agent"),
+        Binding("n", "agent_notes", "Notes"),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("p", "cycle_priority", "Priority"),
@@ -237,6 +249,7 @@ class ZeusApp(App):
     _broadcast_job_seq: int = 0
     _broadcast_active_job: int | None = None
     _prepare_target_selection: dict[int, str] = {}
+    _agent_notes: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -282,10 +295,12 @@ class ZeusApp(App):
         yield Static("", id="status-line")
         yield SplashOverlay(id="splash")
 
-    _FULL_COLUMNS = SETTINGS.columns.wide.order
-    _SPLIT_COLUMNS = SETTINGS.columns.split.order
-    _COL_WIDTHS: dict[str, int] = SETTINGS.columns.wide.widths
-    _COL_WIDTHS_SPLIT: dict[str, int] = SETTINGS.columns.split.widths
+    _FULL_COLUMNS = _with_notes_column(SETTINGS.columns.wide.order)
+    _SPLIT_COLUMNS = _with_notes_column(SETTINGS.columns.split.order)
+    _COL_WIDTHS: dict[str, int] = dict(SETTINGS.columns.wide.widths)
+    _COL_WIDTHS.setdefault("■", 1)
+    _COL_WIDTHS_SPLIT: dict[str, int] = dict(SETTINGS.columns.split.widths)
+    _COL_WIDTHS_SPLIT.setdefault("■", 1)
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
@@ -302,6 +317,7 @@ class ZeusApp(App):
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
         self._load_priorities()
+        self._load_agent_notes()
         self._load_panel_visibility()
         self._celebration_warmup_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -571,7 +587,7 @@ class ZeusApp(App):
         if not self.agents:
             status = self.query_one("#status-line", Static)
             status.update(
-                "  No tracked agents — press [bold]n[/] to create one, "
+                "  No tracked agents — press [bold]c[/] to create one, "
                 "or open a terminal with $mod+Return and type a name"
             )
             return
@@ -693,6 +709,11 @@ class ZeusApp(App):
             tok_cell: str | Text = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
             )
+            note_cell: str | Text = (
+                Text("■", style="bold #ffaf00")
+                if self._has_note_for_agent(a)
+                else Text("□", style="#555555")
+            )
 
             pm = a.proc_metrics
             cpu_cell: str | Text = Text(
@@ -719,6 +740,7 @@ class ZeusApp(App):
                 gpu_cell = Text(str(gpu_cell), style=row_bg)
                 net_cell = Text(str(net_cell), style=row_bg)
                 tok_cell = Text(str(tok_cell), style=row_bg)
+                note_cell = Text(str(note_cell), style=row_bg)
 
             pri_val = self._get_priority(a.name)
             _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
@@ -731,6 +753,7 @@ class ZeusApp(App):
                 "State": state_text,
                 "P": pri_cell,
                 "◉": ctx_cell,
+                "■": note_cell,
                 "Name": name_text,
                 "Elapsed": elapsed_text,
                 "Model/Cmd": Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
@@ -809,6 +832,7 @@ class ZeusApp(App):
                     "State": state_placeholder,
                     "P": "",
                     "◉": "",
+                    "■": "",
                     "Name": tmux_name,
                     "Elapsed": tmux_age,
                     "Model/Cmd": tmux_cmd,
@@ -1293,6 +1317,16 @@ class ZeusApp(App):
     @staticmethod
     def _agent_key(agent: AgentWindow) -> str:
         return f"{agent.socket}:{agent.kitty_id}"
+
+    @staticmethod
+    def _agent_notes_key(agent: AgentWindow) -> str:
+        return agent.agent_id or f"{agent.socket}:{agent.kitty_id}"
+
+    def _note_text_for_agent(self, agent: AgentWindow) -> str:
+        return self._agent_notes.get(self._agent_notes_key(agent), "")
+
+    def _has_note_for_agent(self, agent: AgentWindow) -> bool:
+        return bool(self._note_text_for_agent(agent).strip())
 
     def _broadcast_recipients(self, source_key: str) -> list[AgentWindow]:
         """Return active (non-paused) recipients excluding source."""
@@ -1935,7 +1969,13 @@ class ZeusApp(App):
         live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
         prune_histories(live_targets)
 
-    # ── Agent priorities ────────────────────────────────────────────
+    # ── Agent priorities / notes ───────────────────────────────────
+
+    def _load_agent_notes(self) -> None:
+        self._agent_notes = load_agent_notes()
+
+    def _save_agent_notes(self) -> None:
+        save_agent_notes(self._agent_notes)
 
     def _load_priorities(self) -> None:
         """Load priorities from disk."""
@@ -2179,6 +2219,27 @@ class ZeusApp(App):
 
     def action_new_agent(self) -> None:
         self.push_screen(NewAgentScreen())
+
+    def action_agent_notes(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select an agent row to edit notes", timeout=2)
+            return
+        self.push_screen(AgentNotesScreen(agent, self._note_text_for_agent(agent)))
+
+    def do_save_agent_notes(self, agent: AgentWindow, note: str) -> None:
+        key = self._agent_notes_key(agent)
+        clean = note.rstrip()
+        if clean.strip():
+            self._agent_notes[key] = clean
+            self.notify(f"Saved notes: {agent.name}", timeout=2)
+        else:
+            self._agent_notes.pop(key, None)
+            self.notify(f"Cleared notes: {agent.name}", timeout=2)
+        self._save_agent_notes()
+        self.poll_and_update()
 
     def action_spawn_subagent(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
