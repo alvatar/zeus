@@ -409,9 +409,9 @@ ConfirmBroadcastScreen {
 }
 
 #broadcast-dialog {
-    width: 100;
+    width: 120;
     height: auto;
-    max-height: 30;
+    max-height: 36;
     border: thick #ff6a00;
     background: #0a0a0a;
     padding: 1 2;
@@ -424,7 +424,7 @@ ConfirmBroadcastScreen {
 }
 
 #broadcast-preview {
-    height: 12;
+    height: 20;
     margin: 0 0 1 0;
     border: solid #444444;
     background: #0a1018;

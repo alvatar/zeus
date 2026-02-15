@@ -368,7 +368,7 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
             if extra > 0:
                 names = f"{names}, +{extra} more"
             yield Label(f"Recipients ({len(self.recipient_names)}): {names}")
-            yield Label("Message preview (read-only):")
+            yield Label("Message (editable):")
             yield TextArea(self.message, id="broadcast-preview")
             with Horizontal(id="broadcast-buttons"):
                 yield Button("Cancel", variant="default", id="broadcast-cancel-btn")
@@ -376,15 +376,18 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_mount(self) -> None:
         preview = self.query_one("#broadcast-preview", TextArea)
-        preview.read_only = True
-        self.query_one("#broadcast-cancel-btn", Button).focus()
+        preview.focus()
+        preview.move_cursor(preview.document.end)
+
+    def _current_message(self) -> str:
+        return self.query_one("#broadcast-preview", TextArea).text
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "broadcast-send-btn":
             self.zeus.do_enqueue_broadcast(
                 self.source_name,
                 self.recipient_keys,
-                self.message,
+                self._current_message(),
             )
         self.dismiss()
         event.stop()
@@ -393,7 +396,7 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
         self.zeus.do_enqueue_broadcast(
             self.source_name,
             self.recipient_keys,
-            self.message,
+            self._current_message(),
         )
         self.dismiss()
 
