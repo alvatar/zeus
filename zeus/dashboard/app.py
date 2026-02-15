@@ -1319,25 +1319,26 @@ class ZeusApp(App):
             options.append((agent.name, key))
         return options
 
-    def _source_text_for_share(self, source: AgentWindow) -> str:
-        """Return deep source text for share extraction.
+    def _share_payload_for_source(self, source: AgentWindow) -> str | None:
+        """Extract share payload preferring deep session transcript.
 
-        Combine session transcript + kitty full extent text so we can look far
-        back while still preferring freshest on-screen content.
+        Order matters:
+        1) session JSONL transcript (better formatting, deeper history)
+        2) kitty full extent text (fallback)
         """
-        chunks: list[str] = []
-
         session_path = find_current_session(source.cwd)
         if session_path:
             session_text = read_session_text(session_path)
             if session_text.strip():
-                chunks.append(session_text)
+                payload = _extract_share_payload(session_text)
+                if payload is not None:
+                    return payload
 
         screen_text = get_screen_text(source, full=True)
         if screen_text.strip():
-            chunks.append(screen_text)
+            return _extract_share_payload(screen_text)
 
-        return "\n".join(chunks)
+        return None
 
     _SHARE_MARKER_REMINDER = (
         f"No wrapped share marker found. Put {_SHARE_MARKER} on a line by "
@@ -1487,8 +1488,7 @@ class ZeusApp(App):
             )
             return
 
-        source_text = self._source_text_for_share(source)
-        payload = _extract_share_payload(source_text)
+        payload = self._share_payload_for_source(source)
         if payload is None:
             self.call_from_thread(
                 self._summary_prepare_failed,

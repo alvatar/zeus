@@ -58,3 +58,45 @@ def test_broadcast_recipients_exclude_source_and_paused() -> None:
 
     recipients = app._broadcast_recipients(app._agent_key(source))
     assert [a.name for a in recipients] == ["active"]
+
+
+def test_share_payload_prefers_session_transcript(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.find_current_session",
+        lambda cwd: "/tmp/fake-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _: "%%%%\nfrom session line 1\nfrom session line 2\n%%%%\n",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.get_screen_text",
+        lambda agent, full=False, ansi=False: "%%%%\nfrom screen\n%%%%\n",
+    )
+
+    payload = app._share_payload_for_source(source)
+    assert payload == "from session line 1\nfrom session line 2"
+
+
+def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.find_current_session",
+        lambda cwd: "/tmp/fake-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _: "no marker here",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.get_screen_text",
+        lambda agent, full=False, ansi=False: "%%%%\nfrom screen\n%%%%\n",
+    )
+
+    payload = app._share_payload_for_source(source)
+    assert payload == "from screen"
