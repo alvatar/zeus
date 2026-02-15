@@ -1612,16 +1612,12 @@ class ZeusApp(App):
         message: str,
     ) -> None:
         """Queue broadcast message to recipients (Alt+Enter semantics)."""
-        clean = message.replace("\x00", "")
         sent = 0
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
             if agent is None or self._is_paused(agent):
                 continue
-            kitty_cmd(
-                agent.socket, "send-text", "--match",
-                f"id:{agent.kitty_id}", clean + "\x1b[13;3u\x15",
-            )
+            self._queue_text_to_agent(agent, message)
             sent += 1
 
         if sent == 0:
@@ -1645,11 +1641,7 @@ class ZeusApp(App):
             self.notify("Target is no longer active", timeout=3)
             return
 
-        clean = message.replace("\x00", "")
-        kitty_cmd(
-            target.socket, "send-text", "--match",
-            f"id:{target.kitty_id}", clean + "\x1b[13;3u\x15",
-        )
+        self._queue_text_to_agent(target, message)
         self.notify(
             f"Message from {source_name} queued to {target.name}",
             timeout=3,
@@ -2481,6 +2473,14 @@ class ZeusApp(App):
             f"id:{agent.kitty_id}", clean + "\r",
         )
 
+    def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
+        """Queue text in pi (Alt+Enter), then clear pi input (Ctrl+U)."""
+        clean = text.replace("\x00", "")
+        kitty_cmd(
+            agent.socket, "send-text", "--match",
+            f"id:{agent.kitty_id}", clean + "\x1b[13;3u\x15",
+        )
+
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if not self._interact_visible:
@@ -2547,10 +2547,7 @@ class ZeusApp(App):
             self.notify("Agent no longer available", timeout=2)
             return
         # Send text, Alt+Enter to queue, then Ctrl+U to clear pi's input
-        kitty_cmd(
-            agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", text + "\x1b[13;3u\x15",
-        )
+        self._queue_text_to_agent(agent, text)
         ta.clear()
         ta.styles.height = 3
         self._reset_history_nav()
