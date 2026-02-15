@@ -588,6 +588,8 @@ _HIT_ART = [
 class DopamineOverlay(Static):
     """Firework celebration when efficiency hits 80%."""
 
+    can_focus = True
+
     DEFAULT_CSS = """
     DopamineOverlay {
         layer: splash;
@@ -608,6 +610,7 @@ class DopamineOverlay(Static):
         self._tick_timer: Timer | None = None
 
     def on_mount(self) -> None:
+        self.focus()
         self._frame = 0
         self._tick_timer = self.set_interval(0.07, self._tick)
         self.set_timer(5.0, self._fade_out)
@@ -893,6 +896,8 @@ _FIRE_COLORS = ("#cc1100", "#ff3300", "#ff6600", "#ff9900", "#ffcc00")
 class SteadyLadOverlay(Static):
     """Terminator + fire animation at 50% efficiency."""
 
+    can_focus = True
+
     DEFAULT_CSS = """
     SteadyLadOverlay {
         layer: splash;
@@ -911,6 +916,7 @@ class SteadyLadOverlay(Static):
         self._tick_timer: Timer | None = None
 
     def on_mount(self) -> None:
+        self.focus()
         self._frame = 0
         self._tick_timer = self.set_interval(0.07, self._tick)
         self.set_timer(6.0, self._auto_dismiss)

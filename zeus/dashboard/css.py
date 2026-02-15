@@ -273,31 +273,33 @@ DependencySelectScreen {
 }
 
 #dependency-select-dialog {
-    width: 82;
+    width: 84;
     height: auto;
-    max-height: 14;
+    max-height: 20;
     border: thick #777777;
     background: #0a0a0a;
     padding: 1 2;
 }
 
 #dependency-select-dialog Label {
+    width: 100%;
     margin: 0 0 1 0;
-    color: #dddddd;
+    color: #cccccc;
 }
 
 #dependency-select {
+    width: 100%;
     margin: 0 0 1 0;
 }
 
 #dependency-select-buttons {
+    width: 100%;
     height: 3;
-    align: right middle;
+    align: center middle;
 }
 
 #dependency-select-buttons Button {
-    min-width: 16;
-    margin: 0 0 0 1;
+    margin: 0 1;
 }
 """
 

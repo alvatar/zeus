@@ -767,7 +767,7 @@ class ZeusApp(App):
             )
 
             if blocked:
-                icon = "⊘"
+                icon = "└"
                 state_label = "BLOCKED"
                 state_color = "#888888"
                 row_style = "#666666"
@@ -974,7 +974,7 @@ class ZeusApp(App):
 
             next_level = indent_level + 1
             for blocked in blocked_of.get(akey, []):
-                _render_agent_branch(blocked, next_level, relation_icon="↑")
+                _render_agent_branch(blocked, next_level, relation_icon="🔺")
 
             for child in children_of.get(a.name, []):
                 _render_agent_branch(child, next_level, relation_icon="🧬")
