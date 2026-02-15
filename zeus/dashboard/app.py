@@ -1159,11 +1159,6 @@ class ZeusApp(App):
         """Send ESC to selected agent from any focused widget."""
         self._send_stop_to_selected_agent()
 
-    def on_app_focus(self, event: events.AppFocus) -> None:
-        """When terminal window gains focus, focus the agent table."""
-        del event
-        self.query_one("#agent-table", DataTable).focus()
-
     def action_focus_agent(self) -> None:
         """Ctrl+Enter: teleport to the agent's kitty window or tmux client."""
         tmux = self._get_selected_tmux()
