@@ -68,3 +68,59 @@ def test_text_area_does_not_keep_global_ctrl_bindings() -> None:
     assert "ctrl+b" not in keys
     assert "ctrl+i" not in keys
     assert "ctrl+m" not in keys
+
+
+def test_text_area_ctrl_k_u_y_are_custom_bindings() -> None:
+    bindings = {binding.key: binding for binding in ZeusTextArea.BINDINGS}
+
+    assert bindings["ctrl+k"].action == "kill_to_end_of_line_or_delete_line"
+    assert bindings["ctrl+u"].action == "kill_to_line_start_or_clear_all"
+    assert bindings["ctrl+y"].action == "yank_kill_buffer"
+
+
+def test_ctrl_u_kills_all_text_and_copies_to_wl_copy(monkeypatch) -> None:
+    ta = ZeusTextArea("hello")
+
+    calls: list[tuple[list[str], bytes | str | None]] = []
+
+    def fake_run(command: list[str], **kwargs: Any):
+        calls.append((command, kwargs.get("input")))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(widgets.subprocess, "run", fake_run)
+
+    ta.action_kill_to_line_start_or_clear_all()
+
+    assert ta.text == ""
+    assert ta._kill_buffer == "hello"
+    assert calls == [(["wl-copy"], "hello")]
+
+
+def test_ctrl_y_falls_back_to_local_kill_buffer_when_clipboard_empty(monkeypatch) -> None:
+    ta = ZeusTextArea("")
+    ta._kill_buffer = "killed"
+
+    monkeypatch.setattr(ta, "_wl_paste_types", lambda: [])
+    monkeypatch.setattr(ta, "_paste_text_from_wl_clipboard", lambda offered: None)
+
+    ta.action_yank_kill_buffer()
+
+    assert ta.text == "killed"
+
+
+def test_ctrl_u_notifies_when_wl_copy_missing(monkeypatch) -> None:
+    ta = ZeusTextArea("hello")
+
+    monkeypatch.setattr(
+        widgets.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    notified: list[bool] = []
+    monkeypatch.setattr(ta, "_notify_clipboard_unavailable", lambda: notified.append(True))
+
+    ta.action_kill_to_line_start_or_clear_all()
+
+    assert ta._kill_buffer == "hello"
+    assert notified == [True]

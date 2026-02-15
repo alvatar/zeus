@@ -631,7 +631,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Interact Panel ───"),
     ("Ctrl+s", "Send message to agent / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
-    ("Ctrl+y", "Paste text; image clipboard inserts temp file path"),
+    ("Ctrl+y", "Yank killed text (system clipboard, fallback local kill buffer)"),
     ("Ctrl+a / Ctrl+e", "Move cursor to line start / end"),
     ("Alt+b / Alt+f", "Move cursor one word left / right"),
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),

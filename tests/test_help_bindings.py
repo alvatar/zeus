@@ -8,6 +8,9 @@ def test_help_lists_text_area_navigation_commands() -> None:
 
     assert entries["Ctrl+a / Ctrl+e"] == "Move cursor to line start / end"
     assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
+    assert entries["Ctrl+y"] == (
+        "Yank killed text (system clipboard, fallback local kill buffer)"
+    )
     assert entries["Ctrl+b"] == (
         "Broadcast block between %%%% markers to active agents"
     )

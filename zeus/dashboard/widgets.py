@@ -79,7 +79,7 @@ class ZeusDataTable(DataTable):
 
 
 class ZeusTextArea(TextArea):
-    """TextArea with emacs-style alt keybindings and system clipboard paste."""
+    """TextArea with emacs-style keybindings and kill/yank clipboard support."""
     BINDINGS: ClassVar[
         list[Binding | tuple[str, str] | tuple[str, str, str]]
     ] = cast(
@@ -90,11 +90,13 @@ class ZeusTextArea(TextArea):
                 k in b.key
                 for k in (
                     "ctrl+b",
+                    "ctrl+f",
                     "ctrl+i",
+                    "ctrl+k",
                     "ctrl+m",
                     "ctrl+u",
-                    "ctrl+f",
                     "ctrl+w",
+                    "ctrl+y",
                 )
             )
         ] + [
@@ -102,14 +104,116 @@ class ZeusTextArea(TextArea):
             Binding("alt+b", "cursor_word_left", "Word left", show=False),
             Binding("alt+d", "delete_word_right", "Delete word right", show=False),
             Binding("alt+backspace", "delete_word_left", "Delete word left", show=False),
-            Binding("ctrl+u", "clear_all", "Clear", show=False),
-            Binding("ctrl+y", "paste", "Paste", show=False),
+            Binding("ctrl+k", "kill_to_end_of_line_or_delete_line", "Kill to end", show=False),
+            Binding("ctrl+u", "kill_to_line_start_or_clear_all", "Kill line start", show=False),
+            Binding("ctrl+y", "yank_kill_buffer", "Yank", show=False),
         ],
     )
 
-    def action_clear_all(self) -> None:
-        """Clear entire text area."""
+    _kill_buffer: str = ""
+
+    def _notify_clipboard_unavailable(self) -> None:
+        """Notify that wl-copy is unavailable; kill text stays local."""
+        try:
+            app = self.app
+        except Exception:
+            return
+
+        message = "wl-copy unavailable; kept deleted text in local kill buffer"
+        notify_force = getattr(app, "notify_force", None)
+        if callable(notify_force):
+            notify_force(message, timeout=3)
+            return
+
+        app.notify(message, timeout=3)
+
+    def _store_kill_text(self, text: str) -> None:
+        """Store deleted text in local kill buffer and system clipboard."""
+        if not text:
+            return
+
+        self._kill_buffer = text
+        try:
+            result = subprocess.run(
+                ["wl-copy"],
+                input=text,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except FileNotFoundError:
+            self._notify_clipboard_unavailable()
+            return
+        except (subprocess.TimeoutExpired, OSError):
+            return
+
+        if result.returncode != 0:
+            return
+
+    def _yank_from_system_or_local_buffer(self) -> str | None:
+        """Return yanked text from system clipboard, else local kill buffer."""
+        text = self._paste_text_from_wl_clipboard(self._wl_paste_types())
+        if text:
+            return text
+        if self._kill_buffer:
+            return self._kill_buffer
+        return None
+
+    def action_kill_to_end_of_line_or_delete_line(self) -> None:
+        """Ctrl+K: kill to end-of-line; if empty line, kill whole line."""
+        if self.read_only:
+            return
+
+        action = "delete_to_end_of_line"
+        if self.get_cursor_line_start_location() == self.get_cursor_line_end_location():
+            action = "delete_line"
+        elif (
+            self.selection.start
+            == self.selection.end
+            == self.get_cursor_line_end_location()
+        ):
+            action = "delete_right"
+
+        deleted = ""
+        if action == "delete_line":
+            start, end = sorted((self.selection.start, self.selection.end))
+            start_row, _start_column = start
+            end_row, end_column = end
+            if start_row != end_row and end_column == 0 and end_row >= 0:
+                end_row -= 1
+            from_location = (start_row, 0)
+            to_location = (end_row + 1, 0)
+            deleted = self.get_text_range(from_location, to_location)
+            self.action_delete_line()
+        elif action == "delete_right":
+            selection = self.selection
+            start, end = selection
+            if selection.is_empty:
+                end = self.get_cursor_right_location()
+            deleted = self.get_text_range(start, end)
+            self.action_delete_right()
+        else:
+            from_location = self.selection.end
+            to_location = self.get_cursor_line_end_location()
+            deleted = self.get_text_range(from_location, to_location)
+            self.action_delete_to_end_of_line()
+
+        self._store_kill_text(deleted)
+
+    def action_kill_to_line_start_or_clear_all(self) -> None:
+        """Ctrl+U: keep current Zeus behavior (clear all), but kill to clipboard."""
+        if self.read_only:
+            return
+        deleted = self.text
         self.clear()
+        self._store_kill_text(deleted)
+
+    def action_yank_kill_buffer(self) -> None:
+        """Ctrl+Y: yank from system clipboard, fallback to local kill buffer."""
+        text = self._yank_from_system_or_local_buffer()
+        if not text:
+            return
+        self.insert(text)
 
     def _wl_paste_types(self) -> list[str]:
         """Return MIME types currently offered by the Wayland clipboard."""

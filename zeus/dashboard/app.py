@@ -374,6 +374,24 @@ class ZeusApp(App):
             markup=markup,
         )
 
+    def notify_force(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "warning",
+        timeout: float | None = None,
+        markup: bool = True,
+    ) -> None:
+        """Show a notification even when ZEUS_NOTIFY is disabled."""
+        super().notify(
+            message,
+            title=title,
+            severity=severity,
+            timeout=timeout,
+            markup=markup,
+        )
+
     def _pulse_widget(self, selector: str, low_opacity: float) -> None:
         """Run a clearly-visible single-beat opacity pulse on a widget."""
         try:

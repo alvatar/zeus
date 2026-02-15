@@ -35,3 +35,19 @@ def test_notify_forwards_when_enabled(monkeypatch) -> None:
     app.notify("shown")
 
     assert called == ["shown"]
+
+
+def test_notify_force_bypasses_disabled_gate(monkeypatch) -> None:
+    app = ZeusApp()
+    app._notifications_enabled = False
+
+    called: list[str] = []
+
+    def fake_notify(self, message, **kwargs):  # type: ignore[no-untyped-def]
+        called.append(message)
+
+    monkeypatch.setattr(App, "notify", fake_notify)
+
+    app.notify_force("forced")
+
+    assert called == ["forced"]
