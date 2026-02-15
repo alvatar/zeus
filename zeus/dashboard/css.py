@@ -365,6 +365,44 @@ ConfirmKillScreen, ConfirmKillTmuxScreen {
 }
 """
 
+BROADCAST_PREPARING_CSS = """
+BroadcastPreparingScreen {
+    align: center middle;
+    background: #000000;
+}
+
+#broadcast-preparing {
+    width: 100%;
+    height: 100%;
+    background: #000000;
+    align: center middle;
+}
+
+#broadcast-preparing-dialog {
+    width: 72;
+    height: auto;
+    border: thick #ff6a00;
+    background: #0a0a0a;
+    padding: 2 3;
+}
+
+#broadcast-preparing-dialog Label {
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #dddddd;
+    content-align: center middle;
+}
+
+#broadcast-preparing-buttons {
+    height: 3;
+    align: center middle;
+}
+
+#broadcast-preparing-buttons Button {
+    margin: 0 1;
+}
+"""
+
 BROADCAST_CONFIRM_CSS = """
 ConfirmBroadcastScreen {
     align: center middle;

@@ -22,7 +22,6 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
     interact_idx = _HELP_BINDINGS.index(("", "─── Interact Panel ───"))
 
     global_entries = [
-        ("Ctrl+b", "Broadcast selected agent summary to active peers"),
         ("1", "Toggle agent table"),
         ("2", "Toggle mini-map"),
         ("3", "Toggle sparkline charts"),
@@ -32,3 +31,13 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
     for entry in global_entries:
         idx = _HELP_BINDINGS.index(entry)
         assert global_idx < idx < interact_idx
+
+
+def test_help_groups_ctrl_b_under_agent_management() -> None:
+    agent_mgmt_idx = _HELP_BINDINGS.index(("", "─── Agent Management ───"))
+    settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
+    ctrl_b_idx = _HELP_BINDINGS.index(
+        ("Ctrl+b", "Broadcast selected agent summary to active peers")
+    )
+
+    assert agent_mgmt_idx < ctrl_b_idx < settings_idx

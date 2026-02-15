@@ -20,6 +20,7 @@ from .css import (
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
+    BROADCAST_PREPARING_CSS,
     BROADCAST_CONFIRM_CSS,
     HELP_CSS,
 )
@@ -299,12 +300,49 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
 
 
+class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = BROADCAST_PREPARING_CSS
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=False)]
+
+    def __init__(
+        self,
+        source_name: str,
+        recipient_count: int,
+        job_id: int,
+    ) -> None:
+        super().__init__()
+        self.source_name = source_name
+        self.recipient_count = recipient_count
+        self.job_id = job_id
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="broadcast-preparing"):
+            with Vertical(id="broadcast-preparing-dialog"):
+                yield Label("Preparing broadcast summary…")
+                yield Label(f"Source: {self.source_name}")
+                yield Label(f"Recipients: {self.recipient_count}")
+                yield Label("Generating summary now. You can cancel.")
+                with Horizontal(id="broadcast-preparing-buttons"):
+                    yield Button("Cancel", variant="default", id="broadcast-preparing-cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#broadcast-preparing-cancel-btn", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "broadcast-preparing-cancel-btn":
+            self.zeus.cancel_broadcast_prepare(self.job_id)
+        self.dismiss()
+        event.stop()
+
+    def action_cancel(self) -> None:
+        self.zeus.cancel_broadcast_prepare(self.job_id)
+        self.dismiss()
+
+
 class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
     CSS = BROADCAST_CONFIRM_CSS
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
-        Binding("y", "confirm", "Send", show=False),
-        Binding("n", "cancel", "Cancel", show=False),
     ]
 
     def __init__(
@@ -323,7 +361,7 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="broadcast-dialog"):
             yield Label(
-                f"Global broadcast summary from [bold]{self.source_name}[/bold]?"
+                f"Broadcast summary from [bold]{self.source_name}[/bold]?"
             )
             names = ", ".join(self.recipient_names[:6])
             extra = len(self.recipient_names) - 6
@@ -372,7 +410,6 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+Enter", "Teleport to agent / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
     ("", "─── Global ───"),
-    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
     ("1", "Toggle agent table"),
     ("2", "Toggle mini-map"),
     ("3", "Toggle sparkline charts"),
@@ -390,6 +427,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
+    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
     ("k", "Kill agent / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename agent / tmux"),

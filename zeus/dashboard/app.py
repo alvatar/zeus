@@ -63,6 +63,7 @@ from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
+    BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
     HelpScreen,
 )
@@ -215,6 +216,8 @@ class ZeusApp(App):
     _history_nav_target: str | None = None
     _history_nav_index: int | None = None
     _history_nav_draft: str | None = None
+    _broadcast_job_seq: int = 0
+    _broadcast_active_job: int | None = None
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -1295,8 +1298,18 @@ class ZeusApp(App):
         "Terminal output (oldest to newest):\n"
     )
 
-    def _notify_brief(self, message: str, timeout: float = 3) -> None:
-        self.notify(message, timeout=timeout)
+    def _dismiss_broadcast_preparing_screen(self) -> None:
+        if len(self.screen_stack) <= 1:
+            return
+        top = self.screen_stack[-1]
+        if isinstance(top, BroadcastPreparingScreen):
+            self.pop_screen()
+
+    def cancel_broadcast_prepare(self, job_id: int) -> None:
+        """Cancel an in-flight broadcast preparation job."""
+        if self._broadcast_active_job != job_id:
+            return
+        self._broadcast_active_job = None
 
     def action_broadcast_summary(self) -> None:
         """Ctrl+B: summarize selected agent and enqueue to active peers."""
@@ -1319,27 +1332,52 @@ class ZeusApp(App):
             self.notify("No active recipients (source excluded)", timeout=2)
             return
 
-        self.notify("Preparing broadcast preview…", timeout=2)
-        self._prepare_broadcast_preview(source_key, source.name, recipient_keys)
+        self._broadcast_job_seq += 1
+        job_id = self._broadcast_job_seq
+        self._broadcast_active_job = job_id
+
+        self.push_screen(
+            BroadcastPreparingScreen(
+                source_name=source.name,
+                recipient_count=len(recipient_keys),
+                job_id=job_id,
+            )
+        )
+        self._prepare_broadcast_preview(
+            job_id,
+            source_key,
+            source.name,
+            recipient_keys,
+        )
 
     @work(thread=True, exclusive=True, group="broadcast")
     def _prepare_broadcast_preview(
         self,
+        job_id: int,
         source_key: str,
         source_name: str,
         recipient_keys: list[str],
     ) -> None:
+        if self._broadcast_active_job != job_id:
+            return
+
         source = self._get_agent_by_key(source_key)
         if source is None:
             self.call_from_thread(
-                self._notify_brief, "Broadcast source no longer available", 2,
+                self._broadcast_prepare_failed,
+                job_id,
+                "Broadcast source no longer available",
+                2,
             )
             return
 
         context = self._get_screen_context(source)
         if not context.strip():
             self.call_from_thread(
-                self._notify_brief, "Source has no recent output to summarize", 3,
+                self._broadcast_prepare_failed,
+                job_id,
+                "Source has no recent output to summarize",
+                3,
             )
             return
 
@@ -1356,24 +1394,46 @@ class ZeusApp(App):
 
         if not summary:
             self.call_from_thread(
-                self._notify_brief, "Could not generate summary for broadcast", 3,
+                self._broadcast_prepare_failed,
+                job_id,
+                "Could not generate summary for broadcast",
+                3,
             )
             return
 
         message = _build_broadcast_message(summary)
         self.call_from_thread(
             self._show_broadcast_preview,
+            job_id,
             source_name,
             recipient_keys,
             message,
         )
 
+    def _broadcast_prepare_failed(
+        self,
+        job_id: int,
+        message: str,
+        timeout: float,
+    ) -> None:
+        if self._broadcast_active_job != job_id:
+            return
+        self._broadcast_active_job = None
+        self._dismiss_broadcast_preparing_screen()
+        self.notify(message, timeout=timeout)
+
     def _show_broadcast_preview(
         self,
+        job_id: int,
         source_name: str,
         recipient_keys: list[str],
         message: str,
     ) -> None:
+        if self._broadcast_active_job != job_id:
+            return
+        self._broadcast_active_job = None
+        self._dismiss_broadcast_preparing_screen()
+
         recipient_names: list[str] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
