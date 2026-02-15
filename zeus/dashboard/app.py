@@ -347,7 +347,7 @@ class ZeusApp(App):
         table.show_row_labels = False
         table.cursor_type = "row"
         table.zebra_stripes = True
-        self.query_one("#interact-stream", RichLog).can_focus = True
+        self.query_one("#interact-stream", RichLog).can_focus = False
         self._setup_table_columns()
         self._apply_panel_visibility()
         self.poll_and_update()
