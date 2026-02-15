@@ -65,6 +65,7 @@ from .screens import (
     ConfirmKillScreen, ConfirmKillTmuxScreen,
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
+    ConfirmDirectMessageScreen,
     HelpScreen,
 )
 
@@ -176,6 +177,7 @@ class ZeusApp(App):
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
         Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
+        Binding("ctrl+m", "direct_summary", "Direct Summary", show=False, priority=True),
 
         Binding("1", "toggle_table", "Table", show=False, priority=True),
         Binding("2", "toggle_minimap", "Map", show=False, priority=True),
@@ -1306,10 +1308,38 @@ class ZeusApp(App):
             self.pop_screen()
 
     def cancel_broadcast_prepare(self, job_id: int) -> None:
-        """Cancel an in-flight broadcast preparation job."""
+        """Cancel an in-flight summary preparation job."""
         if self._broadcast_active_job != job_id:
             return
         self._broadcast_active_job = None
+
+    def _start_summary_prepare(
+        self,
+        source: AgentWindow,
+        recipient_keys: list[str],
+        *,
+        mode: str,
+        title: str,
+    ) -> None:
+        self._broadcast_job_seq += 1
+        job_id = self._broadcast_job_seq
+        self._broadcast_active_job = job_id
+
+        self.push_screen(
+            BroadcastPreparingScreen(
+                source_name=source.name,
+                recipient_count=len(recipient_keys),
+                job_id=job_id,
+                title=title,
+            )
+        )
+        self._prepare_summary_preview(
+            job_id,
+            mode,
+            self._agent_key(source),
+            source.name,
+            recipient_keys,
+        )
 
     def action_broadcast_summary(self) -> None:
         """Ctrl+B: summarize selected agent and enqueue to active peers."""
@@ -1332,28 +1362,46 @@ class ZeusApp(App):
             self.notify("No active recipients (source excluded)", timeout=2)
             return
 
-        self._broadcast_job_seq += 1
-        job_id = self._broadcast_job_seq
-        self._broadcast_active_job = job_id
-
-        self.push_screen(
-            BroadcastPreparingScreen(
-                source_name=source.name,
-                recipient_count=len(recipient_keys),
-                job_id=job_id,
-            )
-        )
-        self._prepare_broadcast_preview(
-            job_id,
-            source_key,
-            source.name,
+        self._start_summary_prepare(
+            source,
             recipient_keys,
+            mode="broadcast",
+            title="Preparing broadcast summary…",
+        )
+
+    def action_direct_summary(self) -> None:
+        """Ctrl+M: summarize selected agent and queue to one active peer."""
+        if len(self.screen_stack) > 1:
+            return
+
+        source = self._get_selected_agent()
+        if not source:
+            self.notify("Direct-message source must be an agent row", timeout=2)
+            return
+        if self._is_paused(source):
+            self.notify("Selected source is PAUSED; pick an active agent", timeout=2)
+            return
+
+        source_key = self._agent_key(source)
+        recipient_keys = [
+            self._agent_key(a) for a in self._broadcast_recipients(source_key)
+        ]
+        if not recipient_keys:
+            self.notify("No active targets (source excluded)", timeout=2)
+            return
+
+        self._start_summary_prepare(
+            source,
+            recipient_keys,
+            mode="direct",
+            title="Preparing direct summary…",
         )
 
     @work(thread=True, exclusive=True, group="broadcast")
-    def _prepare_broadcast_preview(
+    def _prepare_summary_preview(
         self,
         job_id: int,
+        mode: str,
         source_key: str,
         source_name: str,
         recipient_keys: list[str],
@@ -1364,9 +1412,9 @@ class ZeusApp(App):
         source = self._get_agent_by_key(source_key)
         if source is None:
             self.call_from_thread(
-                self._broadcast_prepare_failed,
+                self._summary_prepare_failed,
                 job_id,
-                "Broadcast source no longer available",
+                "Source agent is no longer available",
                 2,
             )
             return
@@ -1374,7 +1422,7 @@ class ZeusApp(App):
         context = self._get_screen_context(source)
         if not context.strip():
             self.call_from_thread(
-                self._broadcast_prepare_failed,
+                self._summary_prepare_failed,
                 job_id,
                 "Source has no recent output to summarize",
                 3,
@@ -1393,15 +1441,30 @@ class ZeusApp(App):
             summary = ""
 
         if not summary:
+            failure = (
+                "Could not generate summary for broadcast"
+                if mode == "broadcast"
+                else "Could not generate summary for direct message"
+            )
             self.call_from_thread(
-                self._broadcast_prepare_failed,
+                self._summary_prepare_failed,
                 job_id,
-                "Could not generate summary for broadcast",
+                failure,
                 3,
             )
             return
 
         message = _build_broadcast_message(summary)
+        if mode == "direct":
+            self.call_from_thread(
+                self._show_direct_preview,
+                job_id,
+                source_name,
+                recipient_keys,
+                message,
+            )
+            return
+
         self.call_from_thread(
             self._show_broadcast_preview,
             job_id,
@@ -1410,7 +1473,7 @@ class ZeusApp(App):
             message,
         )
 
-    def _broadcast_prepare_failed(
+    def _summary_prepare_failed(
         self,
         job_id: int,
         message: str,
@@ -1453,6 +1516,36 @@ class ZeusApp(App):
             )
         )
 
+    def _show_direct_preview(
+        self,
+        job_id: int,
+        source_name: str,
+        recipient_keys: list[str],
+        message: str,
+    ) -> None:
+        if self._broadcast_active_job != job_id:
+            return
+        self._broadcast_active_job = None
+        self._dismiss_broadcast_preparing_screen()
+
+        target_options: list[tuple[str, str]] = []
+        for key in recipient_keys:
+            agent = self._get_agent_by_key(key)
+            if agent is not None and not self._is_paused(agent):
+                target_options.append((agent.name, key))
+
+        if not target_options:
+            self.notify("No active targets (source excluded)", timeout=2)
+            return
+
+        self.push_screen(
+            ConfirmDirectMessageScreen(
+                source_name=source_name,
+                target_options=target_options,
+                message=message,
+            )
+        )
+
     def do_enqueue_broadcast(
         self,
         source_name: str,
@@ -1478,6 +1571,28 @@ class ZeusApp(App):
 
         self.notify(
             f"Broadcast from {source_name} queued to {sent} agent(s)",
+            timeout=3,
+        )
+
+    def do_enqueue_direct(
+        self,
+        source_name: str,
+        target_key: str,
+        message: str,
+    ) -> None:
+        """Queue summary message to a single selected active target."""
+        target = self._get_agent_by_key(target_key)
+        if target is None or self._is_paused(target):
+            self.notify("Target is no longer active", timeout=3)
+            return
+
+        clean = message.replace("\x00", "")
+        kitty_cmd(
+            target.socket, "send-text", "--match",
+            f"id:{target.kitty_id}", clean + "\x1b[13;3u\x15",
+        )
+        self.notify(
+            f"Summary from {source_name} queued to {target.name}",
             timeout=3,
         )
 

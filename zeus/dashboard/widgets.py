@@ -86,7 +86,10 @@ class ZeusTextArea(TextArea):
         list[Binding | tuple[str, str] | tuple[str, str, str]],
         [
             b for b in _BASE_TEXTAREA_BINDINGS
-            if not any(k in b.key for k in ("ctrl+b", "ctrl+u", "ctrl+f", "ctrl+w"))
+            if not any(
+                k in b.key
+                for k in ("ctrl+b", "ctrl+m", "ctrl+u", "ctrl+f", "ctrl+w")
+            )
         ] + [
             Binding("alt+f", "cursor_word_right", "Word right", show=False),
             Binding("alt+b", "cursor_word_left", "Word left", show=False),

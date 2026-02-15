@@ -11,7 +11,9 @@ def test_numeric_panel_toggles_are_priority_bindings() -> None:
         assert bindings[key].priority is True
 
 
-def test_ctrl_b_broadcast_is_priority_binding() -> None:
+def test_agent_management_summary_bindings_are_priority() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "ctrl+b" in bindings
     assert bindings["ctrl+b"].priority is True
+    assert "ctrl+m" in bindings
+    assert bindings["ctrl+m"].priority is True

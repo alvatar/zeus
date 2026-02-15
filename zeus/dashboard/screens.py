@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, TextArea
+from textual.widgets import Button, Input, Label, TextArea, Select
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
@@ -22,6 +22,7 @@ from .css import (
     CONFIRM_KILL_CSS,
     BROADCAST_PREPARING_CSS,
     BROADCAST_CONFIRM_CSS,
+    DIRECT_MESSAGE_CONFIRM_CSS,
     HELP_CSS,
 )
 
@@ -309,16 +310,18 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
         source_name: str,
         recipient_count: int,
         job_id: int,
+        title: str = "Preparing broadcast summary…",
     ) -> None:
         super().__init__()
         self.source_name = source_name
         self.recipient_count = recipient_count
         self.job_id = job_id
+        self.prep_title = title
 
     def compose(self) -> ComposeResult:
         with Vertical(id="broadcast-preparing"):
             with Vertical(id="broadcast-preparing-dialog"):
-                yield Label("Preparing broadcast summary…")
+                yield Label(self.prep_title)
                 yield Label(f"Source: {self.source_name}")
                 yield Label(f"Recipients: {self.recipient_count}")
                 yield Label("Generating summary now. You can cancel.")
@@ -404,6 +407,85 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
 
 
+class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = DIRECT_MESSAGE_CONFIRM_CSS
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(
+        self,
+        source_name: str,
+        target_options: list[tuple[str, str]],
+        message: str,
+    ) -> None:
+        super().__init__()
+        self.source_name = source_name
+        self.target_options = target_options
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="direct-dialog"):
+            yield Label(
+                f"Send summary from [bold]{self.source_name}[/bold]"
+            )
+            yield Label("Target agent:")
+            yield Select(
+                [(name, key) for name, key in self.target_options],
+                allow_blank=False,
+                value=self.target_options[0][1],
+                id="direct-target-select",
+            )
+            yield Label("Message (editable):")
+            yield TextArea(self.message, id="direct-preview")
+            with Horizontal(id="direct-buttons"):
+                yield Button("Cancel", variant="default", id="direct-cancel-btn")
+                yield Button("Send", variant="primary", id="direct-send-btn")
+
+    def on_mount(self) -> None:
+        select = self.query_one("#direct-target-select", Select)
+        select.focus()
+
+    def _current_message(self) -> str:
+        return self.query_one("#direct-preview", TextArea).text
+
+    def _selected_target_key(self) -> str | None:
+        select = self.query_one("#direct-target-select", Select)
+        value = select.value
+        if value is Select.BLANK:
+            return None
+        return str(value)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "direct-send-btn":
+            target_key = self._selected_target_key()
+            if not target_key:
+                self.zeus.notify("No target selected", timeout=2)
+                return
+            self.zeus.do_enqueue_direct(
+                self.source_name,
+                target_key,
+                self._current_message(),
+            )
+        self.dismiss()
+        event.stop()
+
+    def action_confirm(self) -> None:
+        target_key = self._selected_target_key()
+        if not target_key:
+            self.zeus.notify("No target selected", timeout=2)
+            return
+        self.zeus.do_enqueue_direct(
+            self.source_name,
+            target_key,
+            self._current_message(),
+        )
+        self.dismiss()
+
+    def action_cancel(self) -> None:
+        self.dismiss()
+
+
 # ── Help ──────────────────────────────────────────────────────────────
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
@@ -431,6 +513,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
     ("Ctrl+b", "Broadcast selected agent summary to active peers"),
+    ("Ctrl+m", "Prepare summary and send to one selected active agent"),
     ("k", "Kill agent / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename agent / tmux"),

@@ -440,3 +440,46 @@ ConfirmBroadcastScreen {
     margin: 0 0 0 1;
 }
 """
+
+DIRECT_MESSAGE_CONFIRM_CSS = """
+ConfirmDirectMessageScreen {
+    align: center middle;
+}
+
+#direct-dialog {
+    width: 120;
+    height: auto;
+    max-height: 38;
+    border: thick #ff6a00;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#direct-dialog Label {
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}
+
+#direct-target-select {
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
+#direct-preview {
+    height: 20;
+    margin: 0 0 1 0;
+    border: solid #444444;
+    background: #0a1018;
+    color: #dddddd;
+}
+
+#direct-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#direct-buttons Button {
+    margin: 0 0 0 1;
+}
+"""

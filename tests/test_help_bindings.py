@@ -11,6 +11,9 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["Ctrl+b"] == (
         "Broadcast selected agent summary to active peers"
     )
+    assert entries["Ctrl+m"] == (
+        "Prepare summary and send to one selected active agent"
+    )
 
     up_down_desc = entries["↑/↓"]
     assert "visual top/bottom" in up_down_desc
@@ -33,11 +36,15 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
         assert global_idx < idx < interact_idx
 
 
-def test_help_groups_ctrl_b_under_agent_management() -> None:
+def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     agent_mgmt_idx = _HELP_BINDINGS.index(("", "─── Agent Management ───"))
     settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
-    ctrl_b_idx = _HELP_BINDINGS.index(
-        ("Ctrl+b", "Broadcast selected agent summary to active peers")
-    )
 
-    assert agent_mgmt_idx < ctrl_b_idx < settings_idx
+    summary_entries = [
+        ("Ctrl+b", "Broadcast selected agent summary to active peers"),
+        ("Ctrl+m", "Prepare summary and send to one selected active agent"),
+    ]
+
+    for entry in summary_entries:
+        idx = _HELP_BINDINGS.index(entry)
+        assert agent_mgmt_idx < idx < settings_idx
