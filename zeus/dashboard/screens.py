@@ -310,7 +310,7 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
         source_name: str,
         recipient_count: int,
         job_id: int,
-        title: str = "Preparing broadcast summary…",
+        title: str = "Preparing broadcast payload…",
         target_options: list[tuple[str, str]] | None = None,
         selected_target_key: str | None = None,
     ) -> None:
@@ -342,7 +342,7 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
                         value=self.selected_target_key,
                         id="broadcast-preparing-target-select",
                     )
-                yield Label("Generating summary now. You can cancel.")
+                yield Label("Extracting content after %%%% marker. You can cancel.")
                 with Horizontal(id="broadcast-preparing-buttons"):
                     yield Button("Cancel", variant="default", id="broadcast-preparing-cancel-btn")
 
@@ -392,7 +392,7 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="broadcast-dialog"):
             yield Label(
-                f"Broadcast summary from [bold]{self.source_name}[/bold]?"
+                f"Broadcast marked block from [bold]{self.source_name}[/bold]?"
             )
             names = ", ".join(self.recipient_names[:6])
             extra = len(self.recipient_names) - 6
@@ -462,7 +462,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="direct-dialog"):
             yield Label(
-                f"Send summary from [bold]{self.source_name}[/bold]"
+                f"Send marked block from [bold]{self.source_name}[/bold]"
             )
             yield Label("Target agent:")
             yield Select(
@@ -547,8 +547,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
-    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
-    ("Ctrl+m", "Prepare summary and send to one selected active agent"),
+    ("Ctrl+b", "Broadcast block after %%%% to active peers"),
+    ("Ctrl+m", "Send block after %%%% to one selected active agent"),
     ("k", "Kill agent / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename agent / tmux"),

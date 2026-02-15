@@ -1,6 +1,6 @@
-"""Tests for broadcast-summary helpers."""
+"""Tests for broadcast/direct share helpers."""
 
-from zeus.dashboard.app import ZeusApp, _build_broadcast_message
+from zeus.dashboard.app import ZeusApp, _extract_share_payload
 from zeus.models import AgentWindow
 
 
@@ -15,13 +15,24 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
     )
 
 
-def test_build_broadcast_message_adds_prefix_and_summary() -> None:
-    msg = _build_broadcast_message("Done: migrated API and waiting on schema review.")
-    assert msg.startswith(
-        "This is a broadcast message. Read it and decide whether "
-        "this is pertaining your work or not."
+def test_extract_share_payload_returns_text_after_last_marker() -> None:
+    text = (
+        "old stuff\n"
+        "%%%%\n"
+        "old payload\n"
+        "%%%%\n"
+        "new payload line 1\n"
+        "new payload line 2\n"
     )
-    assert msg.endswith("Done: migrated API and waiting on schema review.")
+    assert _extract_share_payload(text) == "new payload line 1\nnew payload line 2"
+
+
+def test_extract_share_payload_returns_none_when_missing_marker() -> None:
+    assert _extract_share_payload("a\nb\n") is None
+
+
+def test_extract_share_payload_empty_when_marker_has_no_following_text() -> None:
+    assert _extract_share_payload("header\n%%%%\n\n") == ""
 
 
 def test_broadcast_recipients_exclude_source_and_paused() -> None:

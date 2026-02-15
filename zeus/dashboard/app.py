@@ -114,10 +114,7 @@ def _compact_name(name: str, maxlen: int) -> str:
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
-_BROADCAST_PREFIX = (
-    "This is a broadcast message. Read it and decide whether this is "
-    "pertaining your work or not."
-)
+_SHARE_MARKER = "%%%%"
 
 
 def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
@@ -149,12 +146,22 @@ def _linkify_rich_text(text: Text) -> Text:
     return text
 
 
-def _build_broadcast_message(summary: str) -> str:
-    """Build final broadcast text with standard prefix."""
-    clean_summary = summary.strip()
-    if not clean_summary:
-        return _BROADCAST_PREFIX
-    return f"{_BROADCAST_PREFIX}\n\n{clean_summary}"
+def _extract_share_payload(text: str) -> str | None:
+    """Extract payload after the last share marker line.
+
+    Returns None if marker is missing.
+    Returns empty string if marker exists but there is no payload after it.
+    """
+    lines = text.splitlines()
+    marker_idx: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == _SHARE_MARKER:
+            marker_idx = i
+
+    if marker_idx is None:
+        return None
+
+    return "\n".join(lines[marker_idx + 1:]).strip()
 
 
 class ZeusApp(App):
@@ -1303,15 +1310,9 @@ class ZeusApp(App):
             options.append((agent.name, key))
         return options
 
-    _BROADCAST_SUMMARY_PROMPT = (
-        "You summarize one coding agent's latest terminal output for peer "
-        "agents. Write a concise summary with:\n"
-        "- current objective\n"
-        "- progress done\n"
-        "- blockers or decisions needed\n"
-        "- immediate next steps\n\n"
-        "Keep it short and actionable. Do not add fluff.\n\n"
-        "Terminal output (oldest to newest):\n"
+    _SHARE_MARKER_REMINDER = (
+        f"No share marker found. Put {_SHARE_MARKER} on a line by itself "
+        "above the block to send."
     )
 
     def _dismiss_broadcast_preparing_screen(self) -> None:
@@ -1373,7 +1374,7 @@ class ZeusApp(App):
         )
 
     def action_broadcast_summary(self) -> None:
-        """Ctrl+B: summarize selected agent and enqueue to active peers."""
+        """Ctrl+B: share marked block from selected agent to active peers."""
         if len(self.screen_stack) > 1:
             return
 
@@ -1397,11 +1398,11 @@ class ZeusApp(App):
             source,
             recipient_keys,
             mode="broadcast",
-            title="Preparing broadcast summary…",
+            title="Preparing broadcast payload…",
         )
 
     def action_direct_summary(self) -> None:
-        """Ctrl+M: summarize selected agent and queue to one active peer."""
+        """Ctrl+M: share marked block from selected agent to one peer."""
         if len(self.screen_stack) > 1:
             return
 
@@ -1430,7 +1431,7 @@ class ZeusApp(App):
             source,
             recipient_keys,
             mode="direct",
-            title="Preparing direct summary…",
+            title="Preparing direct payload…",
             target_options=target_options,
             initial_target_key=target_options[0][1],
         )
@@ -1457,42 +1458,27 @@ class ZeusApp(App):
             )
             return
 
-        context = self._get_screen_context(source)
-        if not context.strip():
+        full_text = get_screen_text(source, full=True)
+        payload = _extract_share_payload(full_text)
+        if payload is None:
             self.call_from_thread(
                 self._summary_prepare_failed,
                 job_id,
-                "Source has no recent output to summarize",
-                3,
+                self._SHARE_MARKER_REMINDER,
+                4,
             )
             return
 
-        prompt = self._BROADCAST_SUMMARY_PROMPT + context
-        try:
-            r = subprocess.run(
-                ["pi", "--print", "--no-session", "--no-tools",
-                 "--model", SETTINGS.summary_model, prompt],
-                capture_output=True, text=True, timeout=45,
-            )
-            summary = r.stdout.strip() if r.returncode == 0 else ""
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            summary = ""
-
-        if not summary:
-            failure = (
-                "Could not generate summary for broadcast"
-                if mode == "broadcast"
-                else "Could not generate summary for direct message"
-            )
+        if not payload:
             self.call_from_thread(
                 self._summary_prepare_failed,
                 job_id,
-                failure,
-                3,
+                f"Share marker found, but nothing follows {_SHARE_MARKER}.",
+                4,
             )
             return
 
-        message = _build_broadcast_message(summary)
+        message = payload
         if mode == "direct":
             self.call_from_thread(
                 self._show_direct_preview,
@@ -1621,7 +1607,7 @@ class ZeusApp(App):
         target_key: str,
         message: str,
     ) -> None:
-        """Queue summary message to a single selected active target."""
+        """Queue marked message to a single selected active target."""
         target = self._get_agent_by_key(target_key)
         if target is None or self._is_paused(target):
             self.notify("Target is no longer active", timeout=3)
@@ -1633,7 +1619,7 @@ class ZeusApp(App):
             f"id:{target.kitty_id}", clean + "\x1b[13;3u\x15",
         )
         self.notify(
-            f"Summary from {source_name} queued to {target.name}",
+            f"Message from {source_name} queued to {target.name}",
             timeout=3,
         )
 

@@ -38,7 +38,7 @@ def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
     assert args[:3] == ("send-text", "--match", f"id:{target.kitty_id}")
     assert args[3].startswith("hello")
     assert args[3].endswith("\x1b[13;3u\x15")
-    assert notices[-1] == "Summary from source queued to target"
+    assert notices[-1] == "Message from source queued to target"
 
 
 def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
