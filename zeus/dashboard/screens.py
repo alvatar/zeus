@@ -11,7 +11,15 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, TextArea, Select
+from textual.widgets import (
+    Button,
+    Input,
+    Label,
+    RadioButton,
+    RadioSet,
+    Select,
+    TextArea,
+)
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
@@ -142,6 +150,9 @@ class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
     CSS = DEPENDENCY_SELECT_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
+    REL_BLOCKED_BY = "blocked_by"
+    REL_SUPERVISES = "supervises"
+
     def __init__(
         self,
         blocked_agent: AgentWindow,
@@ -154,16 +165,29 @@ class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="dependency-select-dialog"):
             yield Label(
-                f"Set blocking dependency for [bold]{self.blocked_agent.name}[/bold]"
+                f"Set relationship for [bold]{self.blocked_agent.name}[/bold]"
             )
-            yield Label("Blocked by:")
+            yield Label("Relationship:")
+            yield RadioSet(
+                RadioButton("Blocked by", id="dependency-rel-blocked-by", value=True),
+                RadioButton("Supervises", id="dependency-rel-supervises"),
+                id="dependency-relationship",
+            )
+            yield Label("Target agent:")
             yield Select(self.options, id="dependency-select")
             with Horizontal(id="dependency-select-buttons"):
                 yield Button("Cancel", variant="default", id="dependency-cancel-btn")
-                yield Button("Set dependency", variant="primary", id="dependency-save-btn")
+                yield Button("Set relationship", variant="primary", id="dependency-save-btn")
 
     def on_mount(self) -> None:
-        self.query_one("#dependency-select", Select).focus()
+        self.query_one("#dependency-relationship", RadioSet).focus()
+
+    def _selected_relationship(self) -> str:
+        radio_set = self.query_one("#dependency-relationship", RadioSet)
+        pressed = radio_set.pressed_button
+        if pressed is not None and pressed.id == "dependency-rel-supervises":
+            return self.REL_SUPERVISES
+        return self.REL_BLOCKED_BY
 
     def _selected_dependency_key(self) -> str | None:
         select = self.query_one("#dependency-select", Select)
@@ -173,9 +197,17 @@ class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
         return str(value)
 
     def _confirm(self) -> None:
+        relationship = self._selected_relationship()
+        if relationship == self.REL_SUPERVISES:
+            self.zeus.notify(
+                "Relationship 'supervises' is not implemented yet",
+                timeout=2,
+            )
+            return
+
         dep_key = self._selected_dependency_key()
         if not dep_key:
-            self.zeus.notify("Select a dependency target", timeout=2)
+            self.zeus.notify("Select a relationship target", timeout=2)
             return
         self.dismiss()
         self.zeus.do_set_dependency(self.blocked_agent, dep_key)
@@ -641,7 +673,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Agent Management ───"),
     ("c", "New agent"),
     ("n", "Edit notes for selected agent"),
-    ("Ctrl+i", "Set/remove blocking dependency for selected agent"),
+    ("Ctrl+i", "Set/remove relationship for selected agent"),
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),

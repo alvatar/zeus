@@ -1,6 +1,7 @@
 """Tests for dashboard dependency helpers."""
 
 from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.screens import DependencySelectScreen
 from zeus.models import AgentWindow
 
 
@@ -68,3 +69,59 @@ def test_do_set_dependency_rejects_cycle(monkeypatch) -> None:
 
     assert app._agent_dependencies == {"b-id": "a-id"}
     assert notices[-1] == "Dependency rejected: would create cycle"
+
+
+def test_dependency_screen_confirm_blocked_by_dispatches_dependency(monkeypatch) -> None:
+    blocked = _agent("blocked", 1, agent_id="blocked-id")
+    screen = DependencySelectScreen(blocked, [("target", "target-id")])
+
+    called: list[tuple[AgentWindow, str]] = []
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def do_set_dependency(self, agent: AgentWindow, dep_key: str) -> None:
+            called.append((agent, dep_key))
+
+        def notify(self, message: str, timeout: int = 2) -> None:
+            notices.append(message)
+
+    monkeypatch.setattr(DependencySelectScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "_selected_relationship", lambda: screen.REL_BLOCKED_BY)
+    monkeypatch.setattr(screen, "_selected_dependency_key", lambda: "target-id")
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._confirm()
+
+    assert called == [(blocked, "target-id")]
+    assert notices == []
+    assert dismissed == [True]
+
+
+def test_dependency_screen_supervises_shows_not_implemented_notice(monkeypatch) -> None:
+    blocked = _agent("blocked", 1, agent_id="blocked-id")
+    screen = DependencySelectScreen(blocked, [("target", "target-id")])
+
+    called: list[tuple[AgentWindow, str]] = []
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def do_set_dependency(self, agent: AgentWindow, dep_key: str) -> None:
+            called.append((agent, dep_key))
+
+        def notify(self, message: str, timeout: int = 2) -> None:
+            notices.append(message)
+
+    monkeypatch.setattr(DependencySelectScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "_selected_relationship", lambda: screen.REL_SUPERVISES)
+    monkeypatch.setattr(screen, "_selected_dependency_key", lambda: "target-id")
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._confirm()
+
+    assert called == []
+    assert dismissed == []
+    assert notices == ["Relationship 'supervises' is not implemented yet"]

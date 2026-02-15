@@ -22,7 +22,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     )
     assert entries["c"] == "New agent"
     assert entries["n"] == "Edit notes for selected agent"
-    assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected agent"
+    assert entries["Ctrl+i"] == "Set/remove relationship for selected agent"
 
     up_down_desc = entries["↑/↓"]
     assert "visual top/bottom" in up_down_desc
@@ -51,7 +51,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     mgmt_entries = [
         ("c", "New agent"),
         ("n", "Edit notes for selected agent"),
-        ("Ctrl+i", "Set/remove blocking dependency for selected agent"),
+        ("Ctrl+i", "Set/remove relationship for selected agent"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active agents"),
         ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
     ]
