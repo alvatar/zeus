@@ -2824,12 +2824,21 @@ class ZeusApp(App):
         )
 
     def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
-        """Queue text in pi (Alt+Enter), then clear pi input (Ctrl+U)."""
+        """Queue cross-agent text and clear remote editor robustly."""
         clean = text.replace("\x00", "")
         match = f"id:{agent.kitty_id}"
         kitty_cmd(agent.socket, "send-text", "--match", match, clean)
         kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
-        # Keep two clears to tolerate occasional dropped immediate clear events.
+        # Pi maps Ctrl+C to "clear editor"; keep Ctrl+U as a fallback.
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x03")
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
+
+    def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> None:
+        """Queue via Ctrl+W path (kept as legacy known-good behavior)."""
+        clean = text.replace("\x00", "")
+        match = f"id:{agent.kitty_id}"
+        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
         kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
         kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
 
@@ -2900,8 +2909,8 @@ class ZeusApp(App):
         if not agent:
             self.notify("Agent no longer available", timeout=2)
             return
-        # Send text, Alt+Enter to queue, then Ctrl+U to clear pi's input
-        self._queue_text_to_agent(agent, text)
+        # Keep Ctrl+W semantics on the long-standing queue path.
+        self._queue_text_to_agent_interact(agent, text)
         ta.clear()
         ta.styles.height = 3
         self._reset_history_nav()

@@ -47,7 +47,7 @@ def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
     clear_socket_1, clear_args_1 = sent[2]
     assert clear_socket_1 == target.socket
     assert clear_args_1 == (
-        "send-text", "--match", f"id:{target.kitty_id}", "\x15"
+        "send-text", "--match", f"id:{target.kitty_id}", "\x03"
     )
 
     clear_socket_2, clear_args_2 = sent[3]

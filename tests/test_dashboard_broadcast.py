@@ -132,7 +132,7 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
     expected_first = [
         (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "payload")),
         (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x1b[13;3u")),
-        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x15")),
+        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x03")),
         (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x15")),
     ]
     assert sent[:4] == expected_first
@@ -140,7 +140,7 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
     expected_second = [
         (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "payload")),
         (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x1b[13;3u")),
-        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
+        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x03")),
         (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
     ]
     assert sent[4:] == expected_second
