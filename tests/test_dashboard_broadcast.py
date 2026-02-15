@@ -100,3 +100,45 @@ def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch
 
     payload = app._share_payload_for_source(source)
     assert payload == "from screen"
+
+
+def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    a1 = _agent("alpha", 2)
+    a2 = _agent("beta", 3)
+    paused = _agent("paused", 4)
+    app.agents = [source, a1, a2, paused]
+    app._agent_priorities = {"paused": 4}
+
+    sent: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.kitty_cmd",
+        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
+    )
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    recipients = [app._agent_key(a1), app._agent_key(a2), app._agent_key(paused)]
+    app.do_enqueue_broadcast("source", recipients, "payload")
+
+    assert len(sent) == 8
+
+    expected_first = [
+        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "payload")),
+        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x1b[13;3u")),
+        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x15")),
+        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x15")),
+    ]
+    assert sent[:4] == expected_first
+
+    expected_second = [
+        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "payload")),
+        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x1b[13;3u")),
+        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
+        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
+    ]
+    assert sent[4:] == expected_second
+
+    assert notices[-1] == "Broadcast from source queued to 2 agent(s)"

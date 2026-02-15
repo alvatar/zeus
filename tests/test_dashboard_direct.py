@@ -32,13 +32,49 @@ def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
 
     app.do_enqueue_direct("source", app._agent_key(target), "hello")
 
-    assert len(sent) == 1
+    assert len(sent) == 4
+
     socket, args = sent[0]
     assert socket == target.socket
-    assert args[:3] == ("send-text", "--match", f"id:{target.kitty_id}")
-    assert args[3].startswith("hello")
-    assert args[3].endswith("\x1b[13;3u\x15")
+    assert args == ("send-text", "--match", f"id:{target.kitty_id}", "hello")
+
+    queue_socket, queue_args = sent[1]
+    assert queue_socket == target.socket
+    assert queue_args == (
+        "send-text", "--match", f"id:{target.kitty_id}", "\x1b[13;3u"
+    )
+
+    clear_socket_1, clear_args_1 = sent[2]
+    assert clear_socket_1 == target.socket
+    assert clear_args_1 == (
+        "send-text", "--match", f"id:{target.kitty_id}", "\x15"
+    )
+
+    clear_socket_2, clear_args_2 = sent[3]
+    assert clear_socket_2 == target.socket
+    assert clear_args_2 == (
+        "send-text", "--match", f"id:{target.kitty_id}", "\x15"
+    )
+
     assert notices[-1] == "Message from source queued to target"
+
+
+def test_do_enqueue_direct_strips_nul_bytes_before_queueing(monkeypatch) -> None:
+    app = ZeusApp()
+    target = _agent("target", 2)
+    app.agents = [target]
+
+    sent: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.kitty_cmd",
+        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
+    )
+
+    app.do_enqueue_direct("source", app._agent_key(target), "hi\x00there")
+
+    assert sent[0][1] == (
+        "send-text", "--match", f"id:{target.kitty_id}", "hithere"
+    )
 
 
 def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:

@@ -184,6 +184,16 @@ def _with_notes_column(order: tuple[str, ...]) -> tuple[str, ...]:
     return order + ("■",)
 
 
+def _format_ram_mb(ram_mb: float) -> str:
+    """Render RAM in compact M/G units for narrow table columns."""
+    if ram_mb >= 1000:
+        gb = ram_mb / 1000.0
+        if gb >= 10:
+            return f"{gb:.0f}G"
+        return f"{gb:.1f}".rstrip("0").rstrip(".") + "G"
+    return f"{int(ram_mb)}M"
+
+
 class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
@@ -299,8 +309,10 @@ class ZeusApp(App):
     _SPLIT_COLUMNS = _with_notes_column(SETTINGS.columns.split.order)
     _COL_WIDTHS: dict[str, int] = dict(SETTINGS.columns.wide.widths)
     _COL_WIDTHS.setdefault("■", 1)
+    _COL_WIDTHS.setdefault("RAM", 4)
     _COL_WIDTHS_SPLIT: dict[str, int] = dict(SETTINGS.columns.split.widths)
     _COL_WIDTHS_SPLIT.setdefault("■", 1)
+    _COL_WIDTHS_SPLIT.setdefault("RAM", 4)
 
     def _setup_table_columns(self) -> None:
         table = self.query_one("#agent-table", DataTable)
@@ -720,7 +732,7 @@ class ZeusApp(App):
                 f"{pm.cpu_pct:.0f}%",
                 style=_gradient_color(pm.cpu_pct),
             )
-            ram_cell: str | Text = f"{pm.ram_mb:.0f}M"
+            ram_cell: str | Text = _format_ram_mb(pm.ram_mb)
             gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
@@ -802,7 +814,7 @@ class ZeusApp(App):
                         f"{pm.cpu_pct:.0f}%",
                         style=_gradient_color(pm.cpu_pct),
                     )
-                    ram_t = f"{pm.ram_mb:.0f}M"
+                    ram_t = _format_ram_mb(pm.ram_mb)
                     gpu_str: str = f"{pm.gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
@@ -2537,10 +2549,12 @@ class ZeusApp(App):
     def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Queue text in pi (Alt+Enter), then clear pi input (Ctrl+U)."""
         clean = text.replace("\x00", "")
-        kitty_cmd(
-            agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", clean + "\x1b[13;3u\x15",
-        )
+        match = f"id:{agent.kitty_id}"
+        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
+        # Keep two clears to tolerate occasional dropped immediate clear events.
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
+        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
 
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""

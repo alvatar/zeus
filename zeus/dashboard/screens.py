@@ -591,7 +591,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
-    ("Ctrl+b", "Broadcast block between %%%% markers to active peers"),
+    ("Ctrl+b", "Broadcast block between %%%% markers to active agents"),
     ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
     ("k", "Kill agent / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
