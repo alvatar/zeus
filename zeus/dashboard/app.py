@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 import subprocess
 import time
 
@@ -105,6 +106,34 @@ def _compact_name(name: str, maxlen: int) -> str:
         suffix_len = budget - prefix_len
 
     return f"{first[:prefix_len]}…{last[-suffix_len:]}"
+
+
+_URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
+_URL_TRAILING = ".,;:!?)]}"
+
+
+def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
+    """Find URL spans in plain text and return link targets."""
+    out: list[tuple[int, int, str]] = []
+    for m in _URL_RE.finditer(text):
+        raw = m.group(0)
+        trimmed = raw.rstrip(_URL_TRAILING)
+        if not trimmed:
+            continue
+        start = m.start()
+        end = start + len(trimmed)
+        url = trimmed
+        if url.startswith("www."):
+            url = f"https://{url}"
+        out.append((start, end, url))
+    return out
+
+
+def _linkify_rich_text(text: Text) -> Text:
+    """Add hyperlink styles for detected URLs in a Rich Text object."""
+    for start, end, url in _iter_url_ranges(text.plain):
+        text.stylize(f"link {url}", start, end)
+    return text
 
 
 class ZeusApp(App):
@@ -1955,7 +1984,7 @@ class ZeusApp(App):
             return
         raw = kitty_ansi_to_standard(content)
         stream.clear()
-        stream.write(Text.from_ansi(raw))
+        stream.write(_linkify_rich_text(Text.from_ansi(raw)))
 
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
@@ -1990,7 +2019,7 @@ class ZeusApp(App):
 
         raw = kitty_ansi_to_standard(content)
         stream.clear()
-        stream.write(Text.from_ansi(raw))
+        stream.write(_linkify_rich_text(Text.from_ansi(raw)))
 
     def _current_interact_target_paused(self) -> bool:
         """Return True if current interact target is paused (priority 4)."""
