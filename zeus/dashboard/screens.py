@@ -323,7 +323,7 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="broadcast-dialog"):
             yield Label(
-                f"Broadcast summary from [bold]{self.source_name}[/bold]?"
+                f"Global broadcast summary from [bold]{self.source_name}[/bold]?"
             )
             names = ", ".join(self.recipient_names[:6])
             extra = len(self.recipient_names) - 6
@@ -371,10 +371,11 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Esc", "Back to agent table"),
     ("Ctrl+Enter", "Teleport to agent / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
+    ("", "─── Global ───"),
+    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
     ("", "─── Interact Panel ───"),
     ("Ctrl+s", "Send message to agent / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
-    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
     ("Ctrl+y", "Paste text; image clipboard inserts temp file path"),
     ("Ctrl+a / Ctrl+e", "Move cursor to line start / end"),
     ("Alt+b / Alt+f", "Move cursor one word left / right"),
