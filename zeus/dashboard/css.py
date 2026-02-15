@@ -177,6 +177,11 @@ DataTable > .datatable--odd-row {
     color: #cccccc;
 }
 
+/* Match the paused/read-only caret color even when editable. */
+#interact-input .text-area--cursor {
+    background: $warning-darken-1;
+}
+
 #interact-input:focus {
     border: none;
     border-top: solid #ff6a00;
