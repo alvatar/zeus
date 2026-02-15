@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label
+from textual.widgets import Button, Input, Label, TextArea
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
@@ -20,8 +20,8 @@ from .css import (
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
+    BROADCAST_CONFIRM_CSS,
     HELP_CSS,
-
 )
 
 if TYPE_CHECKING:
@@ -299,6 +299,70 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
 
 
+class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = BROADCAST_CONFIRM_CSS
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("y", "confirm", "Send", show=False),
+        Binding("n", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(
+        self,
+        source_name: str,
+        recipient_keys: list[str],
+        recipient_names: list[str],
+        message: str,
+    ) -> None:
+        super().__init__()
+        self.source_name = source_name
+        self.recipient_keys = recipient_keys
+        self.recipient_names = recipient_names
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="broadcast-dialog"):
+            yield Label(
+                f"Broadcast summary from [bold]{self.source_name}[/bold]?"
+            )
+            names = ", ".join(self.recipient_names[:6])
+            extra = len(self.recipient_names) - 6
+            if extra > 0:
+                names = f"{names}, +{extra} more"
+            yield Label(f"Recipients ({len(self.recipient_names)}): {names}")
+            yield Label("Message preview (read-only):")
+            yield TextArea(self.message, id="broadcast-preview")
+            with Horizontal(id="broadcast-buttons"):
+                yield Button("Cancel", variant="default", id="broadcast-cancel-btn")
+                yield Button("Broadcast", variant="primary", id="broadcast-send-btn")
+
+    def on_mount(self) -> None:
+        preview = self.query_one("#broadcast-preview", TextArea)
+        preview.read_only = True
+        self.query_one("#broadcast-cancel-btn", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "broadcast-send-btn":
+            self.zeus.do_enqueue_broadcast(
+                self.source_name,
+                self.recipient_keys,
+                self.message,
+            )
+        self.dismiss()
+        event.stop()
+
+    def action_confirm(self) -> None:
+        self.zeus.do_enqueue_broadcast(
+            self.source_name,
+            self.recipient_keys,
+            self.message,
+        )
+        self.dismiss()
+
+    def action_cancel(self) -> None:
+        self.dismiss()
+
+
 # ── Help ──────────────────────────────────────────────────────────────
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
@@ -310,6 +374,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Interact Panel ───"),
     ("Ctrl+s", "Send message to agent / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
+    ("Ctrl+b", "Broadcast selected agent summary to active peers"),
     ("Ctrl+y", "Paste text; image clipboard inserts temp file path"),
     ("Ctrl+a / Ctrl+e", "Move cursor to line start / end"),
     ("Alt+b / Alt+f", "Move cursor one word left / right"),

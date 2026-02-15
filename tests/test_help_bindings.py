@@ -8,6 +8,9 @@ def test_help_lists_text_area_navigation_commands() -> None:
 
     assert entries["Ctrl+a / Ctrl+e"] == "Move cursor to line start / end"
     assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
+    assert entries["Ctrl+b"] == (
+        "Broadcast selected agent summary to active peers"
+    )
 
     up_down_desc = entries["↑/↓"]
     assert "visual top/bottom" in up_down_desc

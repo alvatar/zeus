@@ -63,6 +63,7 @@ from .screens import (
     NewAgentScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
+    ConfirmBroadcastScreen,
     HelpScreen,
 )
 
@@ -111,6 +112,10 @@ def _compact_name(name: str, maxlen: int) -> str:
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
+_BROADCAST_PREFIX = (
+    "This is a broadcast message. Read it and decide whether this is "
+    "pertaining your work or not."
+)
 
 
 def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
@@ -142,6 +147,14 @@ def _linkify_rich_text(text: Text) -> Text:
     return text
 
 
+def _build_broadcast_message(summary: str) -> str:
+    """Build final broadcast text with standard prefix."""
+    clean_summary = summary.strip()
+    if not clean_summary:
+        return _BROADCAST_PREFIX
+    return f"{_BROADCAST_PREFIX}\n\n{clean_summary}"
+
+
 class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
@@ -161,7 +174,7 @@ class ZeusApp(App):
 
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
-
+        Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
 
         Binding("1", "toggle_table", "Table", show=False),
         Binding("2", "toggle_minimap", "Map", show=False),
@@ -1254,6 +1267,159 @@ class ZeusApp(App):
             pass
 
         self.notify("Could not open link", timeout=2)
+
+    @staticmethod
+    def _agent_key(agent: AgentWindow) -> str:
+        return f"{agent.socket}:{agent.kitty_id}"
+
+    def _broadcast_recipients(self, source_key: str) -> list[AgentWindow]:
+        """Return active (non-paused) recipients excluding source."""
+        recipients: list[AgentWindow] = []
+        for agent in self.agents:
+            key = self._agent_key(agent)
+            if key == source_key:
+                continue
+            if self._is_paused(agent):
+                continue
+            recipients.append(agent)
+        return recipients
+
+    _BROADCAST_SUMMARY_PROMPT = (
+        "You summarize one coding agent's latest terminal output for peer "
+        "agents. Write a concise summary with:\n"
+        "- current objective\n"
+        "- progress done\n"
+        "- blockers or decisions needed\n"
+        "- immediate next steps\n\n"
+        "Keep it short and actionable. Do not add fluff.\n\n"
+        "Terminal output (oldest to newest):\n"
+    )
+
+    def _notify_brief(self, message: str, timeout: float = 3) -> None:
+        self.notify(message, timeout=timeout)
+
+    def action_broadcast_summary(self) -> None:
+        """Ctrl+B: summarize selected agent and enqueue to active peers."""
+        if len(self.screen_stack) > 1:
+            return
+
+        source = self._get_selected_agent()
+        if not source:
+            self.notify("Broadcast source must be an agent row", timeout=2)
+            return
+        if self._is_paused(source):
+            self.notify("Selected source is PAUSED; pick an active agent", timeout=2)
+            return
+
+        source_key = self._agent_key(source)
+        recipient_keys = [
+            self._agent_key(a) for a in self._broadcast_recipients(source_key)
+        ]
+        if not recipient_keys:
+            self.notify("No active recipients (source excluded)", timeout=2)
+            return
+
+        self.notify("Preparing broadcast preview…", timeout=2)
+        self._prepare_broadcast_preview(source_key, source.name, recipient_keys)
+
+    @work(thread=True, exclusive=True, group="broadcast")
+    def _prepare_broadcast_preview(
+        self,
+        source_key: str,
+        source_name: str,
+        recipient_keys: list[str],
+    ) -> None:
+        source = self._get_agent_by_key(source_key)
+        if source is None:
+            self.call_from_thread(
+                self._notify_brief, "Broadcast source no longer available", 2,
+            )
+            return
+
+        context = self._get_screen_context(source)
+        if not context.strip():
+            self.call_from_thread(
+                self._notify_brief, "Source has no recent output to summarize", 3,
+            )
+            return
+
+        prompt = self._BROADCAST_SUMMARY_PROMPT + context
+        try:
+            r = subprocess.run(
+                ["pi", "--print", "--no-session", "--no-tools",
+                 "--model", SETTINGS.summary_model, prompt],
+                capture_output=True, text=True, timeout=45,
+            )
+            summary = r.stdout.strip() if r.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            summary = ""
+
+        if not summary:
+            self.call_from_thread(
+                self._notify_brief, "Could not generate summary for broadcast", 3,
+            )
+            return
+
+        message = _build_broadcast_message(summary)
+        self.call_from_thread(
+            self._show_broadcast_preview,
+            source_name,
+            recipient_keys,
+            message,
+        )
+
+    def _show_broadcast_preview(
+        self,
+        source_name: str,
+        recipient_keys: list[str],
+        message: str,
+    ) -> None:
+        recipient_names: list[str] = []
+        for key in recipient_keys:
+            agent = self._get_agent_by_key(key)
+            if agent is not None and not self._is_paused(agent):
+                recipient_names.append(agent.name)
+
+        if not recipient_names:
+            self.notify("No active recipients (source excluded)", timeout=2)
+            return
+
+        self.push_screen(
+            ConfirmBroadcastScreen(
+                source_name=source_name,
+                recipient_keys=recipient_keys,
+                recipient_names=recipient_names,
+                message=message,
+            )
+        )
+
+    def do_enqueue_broadcast(
+        self,
+        source_name: str,
+        recipient_keys: list[str],
+        message: str,
+    ) -> None:
+        """Queue broadcast message to recipients (Alt+Enter semantics)."""
+        clean = message.replace("\x00", "")
+        sent = 0
+        for key in recipient_keys:
+            agent = self._get_agent_by_key(key)
+            if agent is None or self._is_paused(agent):
+                continue
+            kitty_cmd(
+                agent.socket, "send-text", "--match",
+                f"id:{agent.kitty_id}", clean + "\x1b[13;3u\x15",
+            )
+            sent += 1
+
+        if sent == 0:
+            self.notify("Broadcast aborted: no active recipients", timeout=3)
+            return
+
+        self.notify(
+            f"Broadcast from {source_name} queued to {sent} agent(s)",
+            timeout=3,
+        )
 
     def _interact_draft_key(self) -> str | None:
         """Return a key for the current interact target's draft."""
