@@ -4,7 +4,7 @@ import argparse
 
 from .commands import cmd_new, cmd_ls, cmd_focus, cmd_kill
 from .dashboard import cmd_dashboard
-from .usage import fetch_openai_usage
+from .usage import fetch_openai_usage, fetch_claude_usage
 
 
 def main():
@@ -30,9 +30,16 @@ def main():
     p_kill.add_argument("id", help="Window ID or name")
     p_kill.set_defaults(func=cmd_kill)
 
-    # Hidden/internal command
-    p_fetch = sub.add_parser("fetch-openai-usage", help=argparse.SUPPRESS)
-    p_fetch.set_defaults(func=lambda _args: fetch_openai_usage())
+    # Hidden/internal commands
+    p_fetch_openai = sub.add_parser(
+        "fetch-openai-usage", help=argparse.SUPPRESS
+    )
+    p_fetch_openai.set_defaults(func=lambda _args: fetch_openai_usage())
+
+    p_fetch_claude = sub.add_parser(
+        "fetch-claude-usage", help=argparse.SUPPRESS
+    )
+    p_fetch_claude.set_defaults(func=lambda _args: fetch_claude_usage())
 
     p_dash = sub.add_parser("dashboard", aliases=["d"], help="Live dashboard")
     p_dash.set_defaults(func=cmd_dashboard)
