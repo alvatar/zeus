@@ -77,6 +77,24 @@ def test_do_enqueue_direct_strips_nul_bytes_before_queueing(monkeypatch) -> None
     )
 
 
+def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
+    app = ZeusApp()
+    target = _agent("target", 2)
+    app.agents = [target]
+
+    sent: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.kitty_cmd",
+        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
+    )
+
+    app.do_enqueue_direct("source", app._agent_key(target), "a\r\nb\r\nc\r")
+
+    assert sent[0][1] == (
+        "send-text", "--match", f"id:{target.kitty_id}", "a\nb\nc\n"
+    )
+
+
 def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
     app = ZeusApp()
     target = _agent("target", 2)

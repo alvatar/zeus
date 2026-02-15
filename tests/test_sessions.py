@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 
 import zeus.sessions as sessions
-from zeus.sessions import _encode_session_dir, read_session_text, make_new_session_path
+from zeus.sessions import (
+    _encode_session_dir,
+    read_session_text,
+    read_session_user_text,
+    make_new_session_path,
+)
 
 
 def test_encode_session_dir_basic():
@@ -64,3 +69,50 @@ def test_read_session_text_collects_text_content(tmp_path):
     session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 
     assert read_session_text(str(session)) == "hello\nworld"
+
+
+def test_read_session_text_avoids_artificial_double_newlines(tmp_path):
+    session = tmp_path / "double-newlines.jsonl"
+    lines = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "line1\n"},
+                    {"type": "text", "text": "line2"},
+                ],
+            },
+        }
+    ]
+    session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+
+    assert read_session_text(str(session)) == "line1\nline2"
+
+
+def test_read_session_user_text_filters_non_user_messages(tmp_path):
+    session = tmp_path / "user-only.jsonl"
+    lines = [
+        {"type": "session", "id": "abc"},
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "assistant text"}],
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "%%%%\n"},
+                    {"type": "text", "text": "payload\n"},
+                    {"type": "text", "text": "%%%%"},
+                ],
+            },
+        },
+    ]
+    session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+
+    assert read_session_user_text(str(session)) == "%%%%\npayload\n%%%%"

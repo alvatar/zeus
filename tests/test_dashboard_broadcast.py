@@ -73,7 +73,7 @@ def test_share_payload_prefers_session_transcript(monkeypatch) -> None:
         lambda agent: "/tmp/fake-session.jsonl",
     )
     monkeypatch.setattr(
-        "zeus.dashboard.app.read_session_text",
+        "zeus.dashboard.app.read_session_user_text",
         lambda _: "%%%%\nfrom session line 1\nfrom session line 2\n%%%%\n",
     )
     monkeypatch.setattr(
@@ -94,7 +94,7 @@ def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch
         lambda agent: "/tmp/fake-session.jsonl",
     )
     monkeypatch.setattr(
-        "zeus.dashboard.app.read_session_text",
+        "zeus.dashboard.app.read_session_user_text",
         lambda _: "no marker here",
     )
     monkeypatch.setattr(

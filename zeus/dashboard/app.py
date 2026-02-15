@@ -40,7 +40,7 @@ from ..kitty import (
     resolve_agent_session_path,
     spawn_subagent, load_names, save_names, kitty_cmd,
 )
-from ..sessions import read_session_text
+from ..sessions import read_session_user_text
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -1538,7 +1538,7 @@ class ZeusApp(App):
         """
         session_path = resolve_agent_session_path(source)
         if session_path:
-            session_text = read_session_text(session_path)
+            session_text = read_session_user_text(session_path)
             if session_text.strip():
                 payload = _extract_share_payload(session_text)
                 if payload is not None:
@@ -2844,9 +2844,14 @@ class ZeusApp(App):
                     return _reason_for(agent)
         return None
 
+    @staticmethod
+    def _normalize_outgoing_text(text: str) -> str:
+        """Normalize outgoing text for terminal send-text compatibility."""
+        return text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
+
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
-        clean = text.replace("\x00", "")
+        clean = self._normalize_outgoing_text(text)
         kitty_cmd(
             agent.socket, "send-text", "--match",
             f"id:{agent.kitty_id}", clean + "\r",
@@ -2854,7 +2859,7 @@ class ZeusApp(App):
 
     def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Queue cross-agent text and clear remote editor robustly."""
-        clean = text.replace("\x00", "")
+        clean = self._normalize_outgoing_text(text)
         match = f"id:{agent.kitty_id}"
         kitty_cmd(agent.socket, "send-text", "--match", match, clean)
         kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
@@ -2864,7 +2869,7 @@ class ZeusApp(App):
 
     def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> None:
         """Queue via Ctrl+W path (kept as legacy known-good behavior)."""
-        clean = text.replace("\x00", "")
+        clean = self._normalize_outgoing_text(text)
         match = f"id:{agent.kitty_id}"
         kitty_cmd(agent.socket, "send-text", "--match", match, clean)
         kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
@@ -2884,11 +2889,12 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
+        wire_text = self._normalize_outgoing_text(text)
         if self._interact_tmux_name:
             try:
                 subprocess.run(
                     ["tmux", "send-keys", "-t", self._interact_tmux_name,
-                     text, "Enter"],
+                     wire_text, "Enter"],
                     capture_output=True, timeout=3,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -2920,11 +2926,12 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
+        wire_text = self._normalize_outgoing_text(text)
         if self._interact_tmux_name:
             try:
                 subprocess.run(
                     ["tmux", "send-keys", "-t", self._interact_tmux_name,
-                     text, "M-Enter"],
+                     wire_text, "M-Enter"],
                     capture_output=True, timeout=3,
                 )
             except (subprocess.TimeoutExpired, FileNotFoundError):
