@@ -179,7 +179,7 @@ DataTable > .datatable--odd-row {
 
 #interact-input:focus {
     border: none;
-    border-top: solid #00d7d7;
+    border-top: solid #ff6a00;
 }
 
 #empty-message {
