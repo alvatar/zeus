@@ -17,11 +17,18 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert "history" in up_down_desc
 
 
-def test_help_groups_ctrl_b_as_global_command() -> None:
+def test_help_groups_global_shortcuts_before_interact_section() -> None:
     global_idx = _HELP_BINDINGS.index(("", "─── Global ───"))
     interact_idx = _HELP_BINDINGS.index(("", "─── Interact Panel ───"))
-    ctrl_b_idx = _HELP_BINDINGS.index(
-        ("Ctrl+b", "Broadcast selected agent summary to active peers")
-    )
 
-    assert global_idx < ctrl_b_idx < interact_idx
+    global_entries = [
+        ("Ctrl+b", "Broadcast selected agent summary to active peers"),
+        ("1", "Toggle agent table"),
+        ("2", "Toggle mini-map"),
+        ("3", "Toggle sparkline charts"),
+        ("4", "Toggle interact target band"),
+    ]
+
+    for entry in global_entries:
+        idx = _HELP_BINDINGS.index(entry)
+        assert global_idx < idx < interact_idx

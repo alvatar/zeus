@@ -176,10 +176,10 @@ class ZeusApp(App):
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
         Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
 
-        Binding("1", "toggle_table", "Table", show=False),
-        Binding("2", "toggle_minimap", "Map", show=False),
-        Binding("3", "toggle_sparklines", "Sparks", show=False),
-        Binding("4", "toggle_target_band", "Target", show=False),
+        Binding("1", "toggle_table", "Table", show=False, priority=True),
+        Binding("2", "toggle_minimap", "Map", show=False, priority=True),
+        Binding("3", "toggle_sparklines", "Sparks", show=False, priority=True),
+        Binding("4", "toggle_target_band", "Target", show=False, priority=True),
         Binding("f4", "toggle_sort", "Sort"),
         Binding("f6", "toggle_split", "Split"),
 
@@ -2022,28 +2022,28 @@ class ZeusApp(App):
         self.push_screen(HelpScreen())
 
     def action_toggle_table(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+        if len(self.screen_stack) > 1:
             return
         self._show_table = not self._show_table
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_minimap(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+        if len(self.screen_stack) > 1:
             return
         self._show_minimap = not self._show_minimap
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_sparklines(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+        if len(self.screen_stack) > 1:
             return
         self._show_sparklines = not self._show_sparklines
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_target_band(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+        if len(self.screen_stack) > 1:
             return
         self._show_target_band = not self._show_target_band
         self._apply_panel_visibility()
