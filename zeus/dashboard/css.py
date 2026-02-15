@@ -347,11 +347,18 @@ HelpScreen {
 
 #help-dialog {
     width: 90;
-    height: auto;
-    max-height: 30;
+    height: 90%;
+    max-height: 36;
     border: solid #00d7d7;
     background: #0a0a0a;
     padding: 1 3;
+}
+
+#help-bindings-scroll {
+    height: 1fr;
+    overflow-y: auto;
+    scrollbar-size: 1 1;
+    margin: 0 0 1 0;
 }
 
 #help-dialog Label {
@@ -364,6 +371,10 @@ HelpScreen {
     color: #00d7d7;
     text-style: bold;
     margin: 0 0 1 0;
+}
+
+#help-dialog .help-footer {
+    color: #888888;
 }
 
 #help-dialog .help-key {

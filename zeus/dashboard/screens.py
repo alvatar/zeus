@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, TextArea, Select
 
@@ -613,19 +613,39 @@ class HelpScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="help-dialog"):
             yield Label("⚡ Zeus — Keybindings", classes="help-title")
-            for key, desc in _HELP_BINDINGS:
-                if not key:
-                    yield Label(f"  [dim]{desc}[/]")
-                else:
-                    yield Label(
-                        f"  [bold #00d7d7]{key:<12}[/]  {desc}"
-                    )
-            yield Label("")
+            with VerticalScroll(id="help-bindings-scroll"):
+                for key, desc in _HELP_BINDINGS:
+                    if not key:
+                        yield Label(f"  [dim]{desc}[/]")
+                    else:
+                        yield Label(
+                            f"  [bold #00d7d7]{key:<12}[/]  {desc}"
+                        )
             yield Label(
-                "  [dim]Press any key to close[/]",
+                "  [dim]↑/↓ PgUp/PgDn scroll • Esc closes[/]",
+                classes="help-footer",
             )
 
+    def on_mount(self) -> None:
+        self.query_one("#help-bindings-scroll", VerticalScroll).focus()
+
     def on_key(self, event: events.Key) -> None:
-        self.dismiss()
+        scroller = self.query_one("#help-bindings-scroll", VerticalScroll)
+        key = event.key
+        if key == "up":
+            scroller.scroll_up(animate=False)
+        elif key == "down":
+            scroller.scroll_down(animate=False)
+        elif key == "pageup":
+            scroller.scroll_page_up(animate=False)
+        elif key == "pagedown":
+            scroller.scroll_page_down(animate=False)
+        elif key == "home":
+            scroller.scroll_home(animate=False)
+        elif key == "end":
+            scroller.scroll_end(animate=False)
+        else:
+            return
+
         event.stop()
         event.prevent_default()
