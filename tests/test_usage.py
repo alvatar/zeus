@@ -17,6 +17,11 @@ def test_time_left_duration_hours():
     assert time_left("1h") == "1h00m"
 
 
+def test_time_left_duration_days():
+    assert time_left("24h") == "1d00h"
+    assert time_left("111h") == "4d15h"
+
+
 def test_time_left_duration_seconds():
     assert time_left("45s") == "45s"
     assert time_left("0s") == "now"

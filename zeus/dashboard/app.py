@@ -166,6 +166,7 @@ class ZeusApp(App):
     idle_notified: set[str] = set()
     _history_nav_target: str | None = None
     _history_nav_index: int | None = None
+    _history_nav_draft: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -178,7 +179,6 @@ class ZeusApp(App):
                 Horizontal(
                     UsageBar("Claude Session:", classes="usage-item", id="usage-session"),
                     UsageBar("Week:", classes="usage-item", id="usage-week"),
-                    UsageBar("Extra:", classes="usage-item", id="usage-extra"),
                     id="usage-bar",
                 ),
                 Horizontal(
@@ -461,22 +461,21 @@ class ZeusApp(App):
                 self._refresh_interact_panel()
 
         # Update Claude usage bars
+        sess_bar = self.query_one("#usage-session", UsageBar)
+        week_bar = self.query_one("#usage-week", UsageBar)
         if r.usage.available:
-            sess_bar = self.query_one("#usage-session", UsageBar)
             sess_bar.pct = r.usage.session_pct
             sess_left: str = time_left(r.usage.session_resets_at)
             sess_bar.extra_text = f"({sess_left})" if sess_left else ""
 
-            week_bar = self.query_one("#usage-week", UsageBar)
             week_bar.pct = r.usage.week_pct
-
-            extra_bar = self.query_one("#usage-extra", UsageBar)
-            extra_bar.pct = r.usage.extra_pct
-            if r.usage.extra_limit > 0:
-                extra_bar.extra_text = (
-                    f"${r.usage.extra_used / 100:.2f}"
-                    f"/${r.usage.extra_limit / 100:.2f}"
-                )
+            week_left: str = time_left(r.usage.week_resets_at)
+            week_bar.extra_text = f"({week_left})" if week_left else ""
+        else:
+            sess_bar.pct = 0
+            sess_bar.extra_text = "(unavailable)"
+            week_bar.pct = 0
+            week_bar.extra_text = ""
 
         # Update OpenAI usage bars
         o_sess = self.query_one("#openai-session", UsageBar)
@@ -486,7 +485,8 @@ class ZeusApp(App):
             left: str = time_left(r.openai.requests_resets_at)
             o_sess.extra_text = f"({left})" if left else ""
             o_week.pct = r.openai.tokens_pct
-            o_week.extra_text = ""
+            week_left_openai: str = time_left(r.openai.tokens_resets_at)
+            o_week.extra_text = f"({week_left_openai})" if week_left_openai else ""
         else:
             o_sess.pct = 0
             o_sess.extra_text = "(unavailable)"
@@ -1214,6 +1214,32 @@ class ZeusApp(App):
             total += max(1, -(-len(line) // width))  # ceil division
         return total
 
+    @staticmethod
+    def _visual_cursor_info(ta: TextArea) -> tuple[int, int]:
+        """Return (cursor_visual_line_index, total_visual_lines)."""
+        width = max(1, ta.size.width - 2)
+        lines = ta.text.split("\n")
+        total = 0
+        for line in lines:
+            total += max(1, -(-len(line) // width))
+
+        row, col = ta.cursor_location
+        if not lines:
+            return (0, 1)
+        row = max(0, min(row, len(lines) - 1))
+
+        cur = 0
+        for i, line in enumerate(lines):
+            vis = max(1, -(-len(line) // width))
+            if i < row:
+                cur += vis
+                continue
+            clamped_col = max(0, min(col, len(line)))
+            cur += min(vis - 1, clamped_col // width)
+            break
+
+        return (cur, max(1, total))
+
     def _resize_interact_input(self, ta: TextArea) -> None:
         """Resize interact input to fit visual content (1–8 lines)."""
         lines = self._visual_line_count(ta)
@@ -1360,17 +1386,25 @@ class ZeusApp(App):
     def _reset_history_nav(self) -> None:
         self._history_nav_target = None
         self._history_nav_index = None
+        self._history_nav_draft = None
 
-    def _set_interact_input_text(self, text: str) -> None:
+    def _set_interact_input_text(self, text: str, *, cursor_end: bool = False) -> None:
         ta = self.query_one("#interact-input", ZeusTextArea)
         if text:
             ta.load_text(text)
         else:
             ta.clear()
+        if cursor_end:
+            ta.move_cursor(ta.document.end)
         self._resize_interact_input(ta)
 
     def _handle_interact_history_nav(self, key: str) -> bool:
-        """Handle Up/Down history traversal for interact input."""
+        """Handle Up/Down history traversal for interact input.
+
+        - Up/Down first navigate within current multiline entry.
+        - History item switching happens only at visual top/bottom boundaries.
+        - When leaving history at the bottom, restore pre-history draft.
+        """
         target = self._history_target_key()
         if not target:
             return False
@@ -1383,11 +1417,19 @@ class ZeusApp(App):
         if self._history_nav_target != target:
             self._history_nav_target = target
             self._history_nav_index = None
+            self._history_nav_draft = None
+
+        cur_vline, total_vlines = self._visual_cursor_info(ta)
+        at_top = cur_vline == 0
+        at_bottom = cur_vline >= total_vlines - 1
 
         if key == "up":
+            # Let TextArea handle normal cursor movement first.
+            if not at_top:
+                return False
+
             if self._history_nav_index is None:
-                if ta.text.strip():
-                    return False
+                self._history_nav_draft = ta.text
                 self._history_nav_index = len(entries) - 1
             elif self._history_nav_index > 0:
                 self._history_nav_index -= 1
@@ -1402,13 +1444,20 @@ class ZeusApp(App):
             down_idx = self._history_nav_index
             if down_idx is None:
                 return False
+
+            # Let TextArea handle normal cursor movement first.
+            if not at_bottom:
+                return False
+
             if down_idx < len(entries) - 1:
                 next_idx = down_idx + 1
                 self._history_nav_index = next_idx
                 self._set_interact_input_text(entries[next_idx])
             else:
                 self._history_nav_index = None
-                self._set_interact_input_text("")
+                draft = self._history_nav_draft
+                self._history_nav_draft = None
+                self._set_interact_input_text(draft or "", cursor_end=True)
             return True
 
         return False

@@ -19,6 +19,21 @@ from .models import UsageData, OpenAIUsageData
 # Time helpers
 # ---------------------------------------------------------------------------
 
+def _fmt_countdown(secs: int) -> str:
+    if secs <= 0:
+        return "now"
+    d, rem = divmod(secs, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    if d > 0:
+        return f"{d}d{h:02d}h"
+    if h > 0:
+        return f"{h}h{m:02d}m"
+    if m > 0:
+        return f"{m}m"
+    return f"{s}s"
+
+
 def time_left(value: str) -> str:
     """Convert a reset timestamp or duration to a human-readable countdown."""
     if not value:
@@ -37,15 +52,7 @@ def time_left(value: str) -> str:
             secs = int(round(amount * 3600))
         else:
             secs = int(round(amount))
-        if secs <= 0:
-            return "now"
-        h, rem = divmod(secs, 3600)
-        m, s = divmod(rem, 60)
-        if h > 0:
-            return f"{h}h{m:02d}m"
-        if m > 0:
-            return f"{m}m"
-        return f"{s}s"
+        return _fmt_countdown(secs)
 
     try:
         from datetime import datetime, timezone
@@ -53,12 +60,7 @@ def time_left(value: str) -> str:
         now = datetime.now(timezone.utc)
         delta = resets - now
         secs = int(delta.total_seconds())
-        if secs <= 0:
-            return "now"
-        h, m = secs // 3600, (secs % 3600) // 60
-        if h > 0:
-            return f"{h}h{m:02d}m"
-        return f"{m}m"
+        return _fmt_countdown(secs)
     except (ValueError, TypeError, OverflowError):
         return ""
 
