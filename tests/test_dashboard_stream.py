@@ -62,10 +62,15 @@ def test_iter_url_ranges_trims_trailing_punctuation():
     ]
 
 
-def test_linkify_rich_text_adds_link_style_spans():
+def test_linkify_rich_text_adds_clickable_link_style_spans():
     t = Text("Open https://example.com.")
     out = _linkify_rich_text(t)
     assert any(
-        str(span.style) == "link https://example.com"
+        getattr(span.style, "meta", {}).get("@click")
+        == "app.open_url('https://example.com')"
+        for span in out.spans
+    )
+    assert any(
+        "link https://example.com" in str(span.style)
         for span in out.spans
     )

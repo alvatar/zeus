@@ -16,6 +16,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.timer import Timer
 from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
 from textual.widget import Widget
+from rich.style import Style
 from rich.text import Text
 
 
@@ -130,9 +131,14 @@ def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
 
 
 def _linkify_rich_text(text: Text) -> Text:
-    """Add hyperlink styles for detected URLs in a Rich Text object."""
+    """Add clickable hyperlink styles for detected URLs in a Rich Text object."""
     for start, end, url in _iter_url_ranges(text.plain):
-        text.stylize(f"link {url}", start, end)
+        action = f"app.open_url({url!r})"
+        text.stylize(
+            Style(link=url, underline=True, meta={"@click": action}),
+            start,
+            end,
+        )
     return text
 
 
@@ -980,13 +986,18 @@ class ZeusApp(App):
             wait_pct = raw_waiting / total * 100
             idle_pct = (total - raw_working - raw_waiting) / total * 100
 
-            # Celebration triggers (require ≥10 minutes since app start)
+            # Celebration triggers require:
+            # - ≥10 minutes since app start, and
+            # - at least 4 active (non-paused) agents.
             warmup_start = self._celebration_warmup_started_at
             warmup_done = (
                 warmup_start is not None
                 and (time.time() - warmup_start) >= 600
             )
-            if warmup_done:
+            active_agents = sum(1 for a in self.agents if not self._is_paused(a))
+            trigger_ready = warmup_done and active_agents >= 4
+
+            if trigger_ready:
                 if eff_pct >= 80 and self._steady_armed:
                     self._steady_armed = False
                     self._show_steady_lad(eff_pct)
@@ -998,6 +1009,11 @@ class ZeusApp(App):
                     self._show_dopamine_hit(eff_pct)
                 elif eff_pct < 60:
                     self._dopamine_armed = True
+            else:
+                # Re-arm while prerequisites are not met so the animation can
+                # trigger once conditions become valid again.
+                self._steady_armed = True
+                self._dopamine_armed = True
 
             header = (
                 f"[#888888]Efficiency: {eff_pct:.0f}%[/]  │  "
@@ -1213,6 +1229,36 @@ class ZeusApp(App):
             return
 
         self.notify(f"Shell: {label}", timeout=2)
+
+    def action_open_url(self, url: str) -> None:
+        """Open URL from interact stream in default browser."""
+        if not url:
+            return
+
+        for cmd in (["xdg-open", url], ["gio", "open", url]):
+            try:
+                subprocess.Popen(
+                    cmd,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.notify(f"Opening: {url}", timeout=2)
+                return
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
+
+        try:
+            import webbrowser
+            if webbrowser.open(url):
+                self.notify(f"Opening: {url}", timeout=2)
+                return
+        except Exception:
+            pass
+
+        self.notify("Could not open link", timeout=2)
 
     def _interact_draft_key(self) -> str | None:
         """Return a key for the current interact target's draft."""
