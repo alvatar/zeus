@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 import os
 import re
 import subprocess
@@ -531,16 +533,32 @@ class ZeusApp(App):
     def _apply_poll_result(self, r: PollResult) -> None:
         """Apply gathered data to the UI (runs on the main thread)."""
         old_states = self.prev_states
-        # Commit state tracking
-        self.agents = r.agents
-        self.prev_states = r.prev_states
-        self.state_changed_at = r.state_changed_at
-        self.idle_since = r.idle_since
-        self.idle_notified = r.idle_notified
+        self._commit_poll_state(r)
+
+        state_changed_any = self._any_agent_state_changed(old_states)
+        self._update_action_needed(old_states)
+        self._collect_sparkline_samples()
+        self._refresh_interact_if_state_changed(old_states)
+        self._update_usage_bars(r.usage, r.openai)
+
+        if not self._render_agent_table_and_status():
+            return
+
+        if state_changed_any:
+            self._pulse_agent_table()
+
+
+    def _commit_poll_state(self, result: PollResult) -> None:
+        self.agents = result.agents
+        self.prev_states = result.prev_states
+        self.state_changed_at = result.state_changed_at
+        self.idle_since = result.idle_since
+        self.idle_notified = result.idle_notified
         self._reconcile_agent_dependencies()
         self._prune_interact_histories()
 
-        state_changed_any = any(
+    def _any_agent_state_changed(self, old_states: dict[str, State]) -> bool:
+        return any(
             (
                 old_states.get(f"{a.socket}:{a.kitty_id}") is not None
                 and old_states.get(f"{a.socket}:{a.kitty_id}") != a.state
@@ -548,6 +566,7 @@ class ZeusApp(App):
             for a in self.agents
         )
 
+    def _update_action_needed(self, old_states: dict[str, State]) -> None:
         # Action-needed checks:
         # - when an agent transitions WORKING -> IDLE
         # - once when an agent is first seen already IDLE (startup/new window)
@@ -562,25 +581,20 @@ class ZeusApp(App):
                 continue
 
             old_state = old_states.get(key)
-            just_became_idle = (
-                old_state == State.WORKING
-                and a.state == State.IDLE
-            )
-            first_seen_idle = (
-                old_state is None
-                and a.state == State.IDLE
-            )
+            just_became_idle = old_state == State.WORKING and a.state == State.IDLE
+            first_seen_idle = old_state is None and a.state == State.IDLE
             if (just_became_idle or first_seen_idle) and key not in self._action_check_pending:
                 self._action_check_pending.add(key)
                 self._check_action_needed(a, key)
             elif a.state == State.WORKING:
                 self._action_check_pending.discard(key)
                 self._action_needed.discard(key)
+
         self._action_check_pending &= live_keys
         self._action_needed &= live_keys
 
-        # Collect sparkline state samples
-        max_s = SETTINGS.sparkline.max_samples
+    def _collect_sparkline_samples(self) -> None:
+        max_samples = SETTINGS.sparkline.max_samples
         live_names: set[str] = set()
         for a in self.agents:
             if self._is_input_blocked(a):
@@ -591,31 +605,39 @@ class ZeusApp(App):
             state_label = "WAITING" if waiting else a.state.value.upper()
             samples = self._sparkline_samples.setdefault(a.name, [])
             samples.append(state_label)
-            if len(samples) > max_s:
-                del samples[: len(samples) - max_s]
-        for k in list(self._sparkline_samples):
-            if k not in live_names:
-                del self._sparkline_samples[k]
+            if len(samples) > max_samples:
+                del samples[: len(samples) - max_samples]
 
-        # Refresh interact panel if the viewed agent changed state
-        if self._interact_visible and self._interact_agent_key:
-            ikey = self._interact_agent_key
-            old_st = old_states.get(ikey)
-            new_st = r.prev_states.get(ikey)
-            if old_st is not None and new_st is not None \
-                    and old_st != new_st:
-                self._refresh_interact_panel()
+        for name in list(self._sparkline_samples):
+            if name not in live_names:
+                del self._sparkline_samples[name]
 
-        # Update Claude usage bars
+    def _refresh_interact_if_state_changed(self, old_states: dict[str, State]) -> None:
+        if not self._interact_visible or not self._interact_agent_key:
+            return
+
+        key = self._interact_agent_key
+        old_state = old_states.get(key)
+        new_state = self.prev_states.get(key)
+        if old_state is None or new_state is None:
+            return
+        if old_state != new_state:
+            self._refresh_interact_panel()
+
+    def _update_usage_bars(
+        self,
+        usage: UsageData,
+        openai: OpenAIUsageData,
+    ) -> None:
         sess_bar = self.query_one("#usage-session", UsageBar)
         week_bar = self.query_one("#usage-week", UsageBar)
-        if r.usage.available:
-            sess_bar.pct = r.usage.session_pct
-            sess_left: str = time_left(r.usage.session_resets_at)
+        if usage.available:
+            sess_bar.pct = usage.session_pct
+            sess_left = time_left(usage.session_resets_at)
             sess_bar.extra_text = f"({sess_left})" if sess_left else ""
 
-            week_bar.pct = r.usage.week_pct
-            week_left: str = time_left(r.usage.week_resets_at)
+            week_bar.pct = usage.week_pct
+            week_left = time_left(usage.week_resets_at)
             week_bar.extra_text = f"({week_left})" if week_left else ""
         else:
             sess_bar.pct = 0
@@ -623,15 +645,14 @@ class ZeusApp(App):
             week_bar.pct = 0
             week_bar.extra_text = ""
 
-        # Update OpenAI usage bars
         o_sess = self.query_one("#openai-session", UsageBar)
         o_week = self.query_one("#openai-week", UsageBar)
-        if r.openai.available:
-            o_sess.pct = r.openai.requests_pct
-            left: str = time_left(r.openai.requests_resets_at)
+        if openai.available:
+            o_sess.pct = openai.requests_pct
+            left = time_left(openai.requests_resets_at)
             o_sess.extra_text = f"({left})" if left else ""
-            o_week.pct = r.openai.tokens_pct
-            week_left_openai: str = time_left(r.openai.tokens_resets_at)
+            o_week.pct = openai.tokens_pct
+            week_left_openai = time_left(openai.tokens_resets_at)
             o_week.extra_text = f"({week_left_openai})" if week_left_openai else ""
         else:
             o_sess.pct = 0
@@ -639,6 +660,7 @@ class ZeusApp(App):
             o_week.pct = 0
             o_week.extra_text = ""
 
+    def _render_agent_table_and_status(self) -> bool:
         # Update table
         table = self.query_one("#agent-table", DataTable)
         _saved_key: str | None = self._get_selected_row_key()
@@ -650,7 +672,7 @@ class ZeusApp(App):
                 "  No tracked agents — press [bold]c[/] to create one, "
                 "or open a terminal with $mod+Return and type a name"
             )
-            return
+            return False
 
         # Separate top-level/sub-agent tree and blocked-dependency tree.
         parent_names: set[str] = {a.name for a in self.agents}
@@ -1017,8 +1039,8 @@ class ZeusApp(App):
             f"Poll: {SETTINGS.poll_interval}s"
         )
 
-        if state_changed_any:
-            self._pulse_agent_table()
+
+        return True
 
 
     # ── Mini-map ──────────────────────────────────────────────────────
@@ -1335,7 +1357,7 @@ class ZeusApp(App):
 
     def _send_stop_to_selected_agent(self) -> None:
         """Send ESC to the currently selected agent row."""
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -1348,7 +1370,7 @@ class ZeusApp(App):
 
     def action_stop_agent(self) -> None:
         """Send ESC to selected agent (table-focused safety behavior)."""
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
+        if self._is_text_input_focused():
             return
         self._send_stop_to_selected_agent()
 
@@ -1387,7 +1409,7 @@ class ZeusApp(App):
 
     def action_open_shell_here(self) -> None:
         """Ctrl+O: open a plain kitty shell in selected target's directory."""
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
 
         tmux = self._get_selected_tmux()
@@ -1615,7 +1637,7 @@ class ZeusApp(App):
 
     def action_broadcast_summary(self) -> None:
         """Ctrl+B: share marked block from selected agent to active peers."""
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
 
         source = self._get_selected_agent()
@@ -1643,7 +1665,7 @@ class ZeusApp(App):
 
     def action_direct_summary(self) -> None:
         """Ctrl+M: share marked block from selected agent to one peer."""
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
 
         source = self._get_selected_agent()
@@ -2207,61 +2229,76 @@ class ZeusApp(App):
         if changed:
             self._save_agent_dependencies()
 
+    @staticmethod
+    def _read_json_dict(path: Path) -> dict[str, object] | None:
+        """Best-effort JSON-dict loader."""
+        import json
+
+        try:
+            raw = json.loads(path.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+        if not isinstance(raw, dict):
+            return None
+        return raw
+
+    @staticmethod
+    def _write_json_dict(path: Path, data: Mapping[str, object]) -> None:
+        """Persist a JSON dictionary to disk."""
+        import json
+
+        path.write_text(json.dumps(data))
+
     def _load_priorities(self) -> None:
         """Load priorities from disk."""
-        try:
-            import json
-            data = json.loads(PRIORITIES_FILE.read_text())
-            if isinstance(data, dict):
-                self._agent_priorities = {
-                    k: v for k, v in data.items()
-                    if isinstance(k, str) and isinstance(v, int) and 1 <= v <= 4
-                }
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass
+        data = self._read_json_dict(PRIORITIES_FILE)
+        if data is None:
+            return
+        self._agent_priorities = {
+            k: v for k, v in data.items()
+            if isinstance(k, str) and isinstance(v, int) and 1 <= v <= 4
+        }
 
     def _save_priorities(self) -> None:
         """Persist priorities to disk."""
-        import json
-        PRIORITIES_FILE.write_text(json.dumps(self._agent_priorities))
+        self._write_json_dict(PRIORITIES_FILE, self._agent_priorities)
 
     # ── Panel visibility ───────────────────────────────────────────
 
     def _load_panel_visibility(self) -> None:
         """Load panel toggle states from disk."""
-        import json
-        try:
-            data = json.loads(PANEL_VISIBILITY_FILE.read_text())
-            if isinstance(data, dict):
-                self._show_minimap = bool(data.get("minimap", True))
-                self._show_sparklines = bool(data.get("sparklines", True))
-                self._show_target_band = bool(data.get("target_band", True))
+        data = self._read_json_dict(PANEL_VISIBILITY_FILE)
+        if data is None:
+            return
 
-                # Migrate legacy "table" flag away (table is always visible now).
-                if "table" in data:
-                    try:
-                        PANEL_VISIBILITY_FILE.write_text(
-                            json.dumps(
-                                {
-                                    "minimap": self._show_minimap,
-                                    "sparklines": self._show_sparklines,
-                                    "target_band": self._show_target_band,
-                                }
-                            )
-                        )
-                    except OSError:
-                        pass
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass
+        self._show_minimap = bool(data.get("minimap", True))
+        self._show_sparklines = bool(data.get("sparklines", True))
+        self._show_target_band = bool(data.get("target_band", True))
+
+        # Migrate legacy "table" flag away (table is always visible now).
+        if "table" in data:
+            try:
+                self._write_json_dict(
+                    PANEL_VISIBILITY_FILE,
+                    {
+                        "minimap": self._show_minimap,
+                        "sparklines": self._show_sparklines,
+                        "target_band": self._show_target_band,
+                    },
+                )
+            except OSError:
+                pass
 
     def _save_panel_visibility(self) -> None:
         """Persist panel toggle states to disk."""
-        import json
-        PANEL_VISIBILITY_FILE.write_text(json.dumps({
-            "minimap": self._show_minimap,
-            "sparklines": self._show_sparklines,
-            "target_band": self._show_target_band,
-        }))
+        self._write_json_dict(
+            PANEL_VISIBILITY_FILE,
+            {
+                "minimap": self._show_minimap,
+                "sparklines": self._show_sparklines,
+                "target_band": self._show_target_band,
+            },
+        )
 
     def _apply_panel_visibility(self) -> None:
         """Apply current panel visibility flags to widgets."""
@@ -2291,11 +2328,19 @@ class ZeusApp(App):
     def _is_paused(self, agent: AgentWindow) -> bool:
         return self._get_priority(agent.name) == 4
 
+    def _is_text_input_focused(self) -> bool:
+        return isinstance(self.focused, (Input, TextArea, ZeusTextArea))
+
+    def _has_modal_open(self) -> bool:
+        return len(self.screen_stack) > 1
+
+    def _should_ignore_table_action(self) -> bool:
+        """Return True when table-centric actions should be ignored."""
+        return self._is_text_input_focused() or self._has_modal_open()
+
     def action_cycle_priority(self) -> None:
         """Cycle priority 3→2→1→4→3 for the selected agent."""
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
+        if self._should_ignore_table_action():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -2411,9 +2456,7 @@ class ZeusApp(App):
     # ── Kill ──────────────────────────────────────────────────────────
 
     def action_kill_agent(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
+        if self._should_ignore_table_action():
             return
         agent = self._get_selected_agent()
         if agent:
@@ -2458,7 +2501,7 @@ class ZeusApp(App):
         self.push_screen(NewAgentScreen())
 
     def action_agent_notes(self) -> None:
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -2480,7 +2523,7 @@ class ZeusApp(App):
 
     def action_toggle_dependency(self) -> None:
         """Ctrl+I: toggle blocked dependency for selected agent."""
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
 
         blocked_agent = self._get_selected_agent()
@@ -2545,9 +2588,7 @@ class ZeusApp(App):
             self._refresh_interact_panel()
 
     def action_spawn_subagent(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
+        if self._should_ignore_table_action():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -2586,9 +2627,7 @@ class ZeusApp(App):
             )
 
     def action_rename(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
+        if self._should_ignore_table_action():
             return
         agent = self._get_selected_agent()
         if agent:
@@ -2619,26 +2658,26 @@ class ZeusApp(App):
     # ── Log panel ─────────────────────────────────────────────────────
 
     def action_show_help(self) -> None:
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         self.push_screen(HelpScreen())
 
     def action_toggle_minimap(self) -> None:
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         self._show_minimap = not self._show_minimap
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_sparklines(self) -> None:
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         self._show_sparklines = not self._show_sparklines
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_target_band(self) -> None:
-        if len(self.screen_stack) > 1:
+        if self._has_modal_open():
             return
         self._show_target_band = not self._show_target_band
         self._apply_panel_visibility()
@@ -2660,9 +2699,7 @@ class ZeusApp(App):
             self._refresh_interact_panel()
 
     def action_toggle_sort(self) -> None:
-        if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
-            return
-        if len(self.screen_stack) > 1:
+        if self._should_ignore_table_action():
             return
         if self.sort_mode == SortMode.PRIORITY:
             self.sort_mode = SortMode.ALPHA
@@ -2849,32 +2886,66 @@ class ZeusApp(App):
         """Normalize outgoing text for terminal send-text compatibility."""
         return text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
 
+    _QUEUE_SEQUENCE_DEFAULT: tuple[str, ...] = ("\x1b[13;3u", "\x03", "\x15")
+    _QUEUE_SEQUENCE_LEGACY_W: tuple[str, ...] = ("\x1b[13;3u", "\x15", "\x15")
+
+    def _dispatch_agent_text(
+        self,
+        agent: AgentWindow,
+        text: str,
+        *,
+        queue_sequence: tuple[str, ...] | None = None,
+    ) -> None:
+        """Send text to an agent either as plain Enter or queue sequence."""
+        clean = self._normalize_outgoing_text(text)
+        match = f"id:{agent.kitty_id}"
+
+        if queue_sequence is None:
+            kitty_cmd(agent.socket, "send-text", "--match", match, clean + "\r")
+            return
+
+        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
+        for key in queue_sequence:
+            kitty_cmd(agent.socket, "send-text", "--match", match, key)
+
+    def _dispatch_tmux_text(
+        self,
+        sess_name: str,
+        text: str,
+        *,
+        queue: bool,
+    ) -> None:
+        """Send text to tmux target as Enter or Alt+Enter queue."""
+        wire_text = self._normalize_outgoing_text(text)
+        key = "M-Enter" if queue else "Enter"
+        try:
+            subprocess.run(
+                ["tmux", "send-keys", "-t", sess_name, wire_text, key],
+                capture_output=True,
+                timeout=3,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
-        clean = self._normalize_outgoing_text(text)
-        kitty_cmd(
-            agent.socket, "send-text", "--match",
-            f"id:{agent.kitty_id}", clean + "\r",
-        )
+        self._dispatch_agent_text(agent, text)
 
     def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Queue cross-agent text and clear remote editor robustly."""
-        clean = self._normalize_outgoing_text(text)
-        match = f"id:{agent.kitty_id}"
-        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
-        # Pi maps Ctrl+C to "clear editor"; keep Ctrl+U as a fallback.
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x03")
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
+        self._dispatch_agent_text(
+            agent,
+            text,
+            queue_sequence=self._QUEUE_SEQUENCE_DEFAULT,
+        )
 
     def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> None:
         """Queue via Ctrl+W path (kept as legacy known-good behavior)."""
-        clean = self._normalize_outgoing_text(text)
-        match = f"id:{agent.kitty_id}"
-        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x1b[13;3u")
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
-        kitty_cmd(agent.socket, "send-text", "--match", match, "\x15")
+        self._dispatch_agent_text(
+            agent,
+            text,
+            queue_sequence=self._QUEUE_SEQUENCE_LEGACY_W,
+        )
 
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
@@ -2889,16 +2960,8 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
-        wire_text = self._normalize_outgoing_text(text)
         if self._interact_tmux_name:
-            try:
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", self._interact_tmux_name,
-                     wire_text, "Enter"],
-                    capture_output=True, timeout=3,
-                )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+            self._dispatch_tmux_text(self._interact_tmux_name, text, queue=False)
             ta.clear()
             ta.styles.height = 3
             self._reset_history_nav()
@@ -2926,16 +2989,8 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
-        wire_text = self._normalize_outgoing_text(text)
         if self._interact_tmux_name:
-            try:
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", self._interact_tmux_name,
-                     wire_text, "M-Enter"],
-                    capture_output=True, timeout=3,
-                )
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+            self._dispatch_tmux_text(self._interact_tmux_name, text, queue=True)
             ta.clear()
             ta.styles.height = 3
             self._reset_history_nav()

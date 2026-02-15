@@ -1,5 +1,29 @@
 """All CSS strings for the Zeus dashboard."""
 
+
+def _button_row_css(
+    row_id: str,
+    *,
+    align: str = "right middle",
+    row_margin: str | None = None,
+    button_margin: str = "0 0 0 1",
+    width: str | None = None,
+) -> str:
+    width_rule = f"    width: {width};\n" if width else ""
+    row_margin_rule = f"    margin: {row_margin};\n" if row_margin else ""
+    return (
+        f"#{row_id} {{\n"
+        f"{width_rule}"
+        "    height: 3;\n"
+        f"    align: {align};\n"
+        f"{row_margin_rule}"
+        "}\n\n"
+        f"#{row_id} Button {{\n"
+        f"    margin: {button_margin};\n"
+        "}\n"
+    )
+
+
 APP_CSS = """
 Screen {
     background: #000000;
@@ -192,182 +216,144 @@ DataTable > .datatable--odd-row {
 }
 """
 
-NEW_AGENT_CSS = """
-NewAgentScreen {
+NEW_AGENT_CSS = f"""
+NewAgentScreen {{
     align: center middle;
-}
+}}
 
-#new-agent-dialog {
+#new-agent-dialog {{
     width: 60;
     height: auto;
     max-height: 16;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#new-agent-dialog Label {
+#new-agent-dialog Label {{
     margin: 1 0 0 0;
     color: #00d7d7;
-}
+}}
 
-#new-agent-dialog Input {
+#new-agent-dialog Input {{
     margin: 0 0 1 0;
-}
+}}
 
-#new-agent-buttons {
-    height: 3;
-    align: right middle;
-    margin: 1 0 0 0;
-}
-
-#new-agent-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("new-agent-buttons", row_margin="1 0 0 0")}
 """
 
-AGENT_NOTES_CSS = """
-AgentNotesScreen {
+AGENT_NOTES_CSS = f"""
+AgentNotesScreen {{
     align: center middle;
-}
+}}
 
-#agent-notes-dialog {
+#agent-notes-dialog {{
     width: 110;
     height: auto;
     max-height: 34;
     border: thick #ffaf00;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#agent-notes-dialog Label {
+#agent-notes-dialog Label {{
     margin: 0 0 1 0;
     color: #dddddd;
-}
+}}
 
-#agent-notes-input {
+#agent-notes-input {{
     height: 20;
     margin: 0 0 1 0;
     border: solid #444444;
     background: #0a1018;
     color: #dddddd;
-}
+}}
 
-#agent-notes-buttons {
-    height: 3;
-    align: right middle;
-}
-
-#agent-notes-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("agent-notes-buttons")}
 """
 
-DEPENDENCY_SELECT_CSS = """
-DependencySelectScreen {
+DEPENDENCY_SELECT_CSS = f"""
+DependencySelectScreen {{
     align: center middle;
-}
+}}
 
-#dependency-select-dialog {
+#dependency-select-dialog {{
     width: 84;
     height: auto;
     max-height: 20;
     border: thick #777777;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#dependency-select-dialog Label {
+#dependency-select-dialog Label {{
     width: 100%;
     margin: 0 0 1 0;
     color: #cccccc;
-}
+}}
 
-#dependency-select {
+#dependency-select {{
     width: 100%;
     margin: 0 0 1 0;
-}
+}}
 
-#dependency-select-buttons {
-    width: 100%;
-    height: 3;
-    align: center middle;
-}
-
-#dependency-select-buttons Button {
-    margin: 0 1;
-}
+{_button_row_css("dependency-select-buttons", align="center middle", button_margin="0 1", width="100%")}
 """
 
-SUBAGENT_CSS = """
-SubAgentScreen {
+SUBAGENT_CSS = f"""
+SubAgentScreen {{
     align: center middle;
-}
+}}
 
-#subagent-dialog {
+#subagent-dialog {{
     width: 60;
     height: auto;
     max-height: 12;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#subagent-dialog Label {
+#subagent-dialog Label {{
     margin: 1 0 0 0;
     color: #00d7d7;
-}
+}}
 
-#subagent-dialog .dim-label {
+#subagent-dialog .dim-label {{
     color: #447777;
     margin: 0;
-}
+}}
 
-#subagent-dialog Input {
+#subagent-dialog Input {{
     margin: 0 0 1 0;
-}
+}}
 
-#subagent-buttons {
-    height: 3;
-    align: right middle;
-    margin: 1 0 0 0;
-}
-
-#subagent-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("subagent-buttons", row_margin="1 0 0 0")}
 """
 
-RENAME_CSS = """
-RenameScreen, RenameTmuxScreen {
+RENAME_CSS = f"""
+RenameScreen, RenameTmuxScreen {{
     align: center middle;
-}
+}}
 
-#rename-dialog {
+#rename-dialog {{
     width: 55;
     height: auto;
     border: solid #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#rename-dialog Label {
+#rename-dialog Label {{
     margin: 0;
     color: #00d7d7;
-}
+}}
 
-#rename-dialog Input {
+#rename-dialog Input {{
     margin: 1 0;
-}
+}}
 
-#rename-buttons {
-    height: 3;
-    align: right middle;
-}
-
-#rename-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("rename-buttons")}
 """
 
 
@@ -414,157 +400,129 @@ HelpScreen {
 }
 """
 
-CONFIRM_KILL_CSS = """
-ConfirmKillScreen, ConfirmKillTmuxScreen {
+CONFIRM_KILL_CSS = f"""
+ConfirmKillScreen, ConfirmKillTmuxScreen {{
     align: center middle;
-}
+}}
 
-#confirm-kill-dialog {
+#confirm-kill-dialog {{
     width: 60;
     height: auto;
     max-height: 12;
     border: thick #ff3366;
     background: #0a0a0a;
     padding: 2 3;
-}
+}}
 
-#confirm-kill-dialog Label {
+#confirm-kill-dialog Label {{
     width: 100%;
     content-align: center middle;
     margin: 0 0 1 0;
     color: #cccccc;
-}
+}}
 
-#confirm-kill-buttons {
-    height: 3;
-    align: center middle;
-}
-
-#confirm-kill-buttons Button {
-    margin: 0 1;
-}
+{_button_row_css("confirm-kill-buttons", align="center middle", button_margin="0 1")}
 """
 
-BROADCAST_PREPARING_CSS = """
-BroadcastPreparingScreen {
+BROADCAST_PREPARING_CSS = f"""
+BroadcastPreparingScreen {{
     align: center middle;
     background: #000000;
-}
+}}
 
-#broadcast-preparing {
+#broadcast-preparing {{
     width: 100%;
     height: 100%;
     background: #000000;
     align: center middle;
-}
+}}
 
-#broadcast-preparing-dialog {
+#broadcast-preparing-dialog {{
     width: 72;
     height: auto;
     border: thick #ff6a00;
     background: #0a0a0a;
     padding: 2 3;
-}
+}}
 
-#broadcast-preparing-dialog Label {
+#broadcast-preparing-dialog Label {{
     width: 100%;
     margin: 0 0 1 0;
     color: #dddddd;
     content-align: center middle;
-}
+}}
 
-#broadcast-preparing-target-select {
+#broadcast-preparing-target-select {{
     width: 100%;
     margin: 0 0 1 0;
-}
+}}
 
-#broadcast-preparing-buttons {
-    height: 3;
-    align: center middle;
-}
-
-#broadcast-preparing-buttons Button {
-    margin: 0 1;
-}
+{_button_row_css("broadcast-preparing-buttons", align="center middle", button_margin="0 1")}
 """
 
-BROADCAST_CONFIRM_CSS = """
-ConfirmBroadcastScreen {
+BROADCAST_CONFIRM_CSS = f"""
+ConfirmBroadcastScreen {{
     align: center middle;
-}
+}}
 
-#broadcast-dialog {
+#broadcast-dialog {{
     width: 120;
     height: auto;
     max-height: 36;
     border: thick #ff6a00;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#broadcast-dialog Label {
+#broadcast-dialog Label {{
     width: 100%;
     margin: 0 0 1 0;
     color: #cccccc;
-}
+}}
 
-#broadcast-preview {
+#broadcast-preview {{
     height: 20;
     margin: 0 0 1 0;
     border: solid #444444;
     background: #0a1018;
     color: #dddddd;
-}
+}}
 
-#broadcast-buttons {
-    height: 3;
-    align: right middle;
-}
-
-#broadcast-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("broadcast-buttons")}
 """
 
-DIRECT_MESSAGE_CONFIRM_CSS = """
-ConfirmDirectMessageScreen {
+DIRECT_MESSAGE_CONFIRM_CSS = f"""
+ConfirmDirectMessageScreen {{
     align: center middle;
-}
+}}
 
-#direct-dialog {
+#direct-dialog {{
     width: 120;
     height: auto;
     max-height: 38;
     border: thick #ff6a00;
     background: #0a0a0a;
     padding: 1 2;
-}
+}}
 
-#direct-dialog Label {
+#direct-dialog Label {{
     width: 100%;
     margin: 0 0 1 0;
     color: #cccccc;
-}
+}}
 
-#direct-target-select {
+#direct-target-select {{
     width: 100%;
     margin: 0 0 1 0;
-}
+}}
 
-#direct-preview {
+#direct-preview {{
     height: 20;
     margin: 0 0 1 0;
     border: solid #444444;
     background: #0a1018;
     color: #dddddd;
-}
+}}
 
-#direct-buttons {
-    height: 3;
-    align: right middle;
-}
-
-#direct-buttons Button {
-    margin: 0 0 0 1;
-}
+{_button_row_css("direct-buttons")}
 """

@@ -2,6 +2,7 @@
 
 from zeus.dashboard.app import ZeusApp
 from zeus.models import AgentWindow
+from tests.helpers import capture_kitty_cmd
 
 
 def _agent(name: str, kitty_id: int) -> AgentWindow:
@@ -19,11 +20,7 @@ def test_queue_text_to_agent_interact_keeps_ctrl_w_clear_sequence(monkeypatch) -
     app = ZeusApp()
     agent = _agent("target", 2)
 
-    sent: list[tuple[str, tuple[str, ...]]] = []
-    monkeypatch.setattr(
-        "zeus.dashboard.app.kitty_cmd",
-        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
-    )
+    sent = capture_kitty_cmd(monkeypatch)
 
     app._queue_text_to_agent_interact(agent, "hello")
 

@@ -120,3 +120,11 @@ def test_ctrl_u_notifies_when_wl_copy_missing(monkeypatch) -> None:
 
     assert ta._kill_buffer == "hello"
     assert notified == [True]
+
+
+def test_widgets_module_exposes_clipboard_patch_targets() -> None:
+    import zeus.dashboard.widgets_text as widgets_text
+
+    assert widgets.subprocess is widgets_text.subprocess
+    assert widgets.shutil is widgets_text.shutil
+    assert widgets.tempfile is widgets_text.tempfile

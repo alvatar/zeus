@@ -58,8 +58,33 @@ def _join_text_chunks(chunks: list[str]) -> str:
     return out
 
 
-def read_session_text(session_path: str) -> str:
-    """Read all text content fragments from a pi session JSONL file."""
+def _iter_message_texts(entry: dict, role_filter: set[str] | None) -> Iterator[str]:
+    """Yield text chunks from a parsed session entry with optional role filter."""
+    if entry.get("type") == "message":
+        message = entry.get("message")
+        if not isinstance(message, dict):
+            return
+        role = message.get("role")
+        if role_filter is not None and role not in role_filter:
+            return
+
+        content = message.get("content")
+        if isinstance(content, str):
+            if content:
+                yield content
+            return
+        yield from _iter_text_content(content)
+        return
+
+    if role_filter is None:
+        yield from _iter_text_content(entry)
+
+
+def _read_session_text_filtered(
+    session_path: str,
+    *,
+    role_filter: set[str] | None,
+) -> str:
     path = Path(session_path)
     if not path.is_file():
         return ""
@@ -75,7 +100,7 @@ def read_session_text(session_path: str) -> str:
                     entry = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                for text in _iter_text_content(entry):
+                for text in _iter_message_texts(entry, role_filter):
                     if text:
                         chunks.append(text)
     except OSError:
@@ -84,44 +109,14 @@ def read_session_text(session_path: str) -> str:
     return _join_text_chunks(chunks)
 
 
+def read_session_text(session_path: str) -> str:
+    """Read all text content fragments from a pi session JSONL file."""
+    return _read_session_text_filtered(session_path, role_filter=None)
+
+
 def read_session_user_text(session_path: str) -> str:
     """Read text fragments from user-role messages only."""
-    path = Path(session_path)
-    if not path.is_file():
-        return ""
-
-    messages: list[str] = []
-    try:
-        with open(path) as f:
-            for line in f:
-                raw = line.strip()
-                if not raw:
-                    continue
-                try:
-                    entry = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-
-                if entry.get("type") != "message":
-                    continue
-                message = entry.get("message")
-                if not isinstance(message, dict):
-                    continue
-                if message.get("role") != "user":
-                    continue
-
-                content = message.get("content")
-                if isinstance(content, str):
-                    parts = [content]
-                else:
-                    parts = list(_iter_text_content(content))
-                message_text = _join_text_chunks(parts)
-                if message_text:
-                    messages.append(message_text)
-    except OSError:
-        return ""
-
-    return _join_text_chunks(messages)
+    return _read_session_text_filtered(session_path, role_filter={"user"})
 
 
 def _new_session_file(target_cwd: str) -> Path:

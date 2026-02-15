@@ -2,6 +2,7 @@
 
 from zeus.dashboard.app import ZeusApp, _extract_share_payload
 from zeus.models import AgentWindow
+from tests.helpers import capture_kitty_cmd, capture_notify
 
 
 def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindow:
@@ -115,14 +116,8 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
     app.agents = [source, a1, a2, paused]
     app._agent_priorities = {"paused": 4}
 
-    sent: list[tuple[str, tuple[str, ...]]] = []
-    monkeypatch.setattr(
-        "zeus.dashboard.app.kitty_cmd",
-        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
-    )
-
-    notices: list[str] = []
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    sent = capture_kitty_cmd(monkeypatch)
+    notices = capture_notify(app, monkeypatch)
 
     recipients = [app._agent_key(a1), app._agent_key(a2), app._agent_key(paused)]
     app.do_enqueue_broadcast("source", recipients, "payload")

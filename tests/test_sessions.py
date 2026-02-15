@@ -116,3 +116,49 @@ def test_read_session_user_text_filters_non_user_messages(tmp_path):
     session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 
     assert read_session_user_text(str(session)) == "%%%%\npayload\n%%%%"
+
+
+def test_read_session_text_includes_string_message_content(tmp_path):
+    session = tmp_path / "string-content.jsonl"
+    lines = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": "assistant line",
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": "user line",
+            },
+        },
+    ]
+    session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+
+    assert read_session_text(str(session)) == "assistant line\nuser line"
+
+
+def test_read_session_user_text_includes_string_message_content(tmp_path):
+    session = tmp_path / "user-string-content.jsonl"
+    lines = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": "assistant line",
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": "user line",
+            },
+        },
+    ]
+    session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+
+    assert read_session_user_text(str(session)) == "user line"
