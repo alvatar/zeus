@@ -280,7 +280,7 @@ DependencySelectScreen {{
 #dependency-select-dialog {{
     width: 84;
     height: auto;
-    max-height: 20;
+    max-height: 24;
     border: thick #777777;
     background: #0a0a0a;
     padding: 1 2;
@@ -302,7 +302,7 @@ DependencySelectScreen {{
     margin: 0 0 1 0;
 }}
 
-{_button_row_css("dependency-select-buttons", align="center middle", button_margin="0 1", width="100%")}
+{_button_row_css("dependency-select-buttons", align="center middle", row_margin="1 0 0 0", button_margin="0 1", width="100%")}
 """
 
 SUBAGENT_CSS = f"""
