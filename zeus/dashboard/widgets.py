@@ -88,7 +88,14 @@ class ZeusTextArea(TextArea):
             b for b in _BASE_TEXTAREA_BINDINGS
             if not any(
                 k in b.key
-                for k in ("ctrl+b", "ctrl+m", "ctrl+u", "ctrl+f", "ctrl+w")
+                for k in (
+                    "ctrl+b",
+                    "ctrl+i",
+                    "ctrl+m",
+                    "ctrl+u",
+                    "ctrl+f",
+                    "ctrl+w",
+                )
             )
         ] + [
             Binding("alt+f", "cursor_word_right", "Word right", show=False),

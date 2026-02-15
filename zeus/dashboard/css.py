@@ -267,6 +267,40 @@ AgentNotesScreen {
 }
 """
 
+DEPENDENCY_SELECT_CSS = """
+DependencySelectScreen {
+    align: center middle;
+}
+
+#dependency-select-dialog {
+    width: 82;
+    height: auto;
+    max-height: 14;
+    border: thick #777777;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#dependency-select-dialog Label {
+    margin: 0 0 1 0;
+    color: #dddddd;
+}
+
+#dependency-select {
+    margin: 0 0 1 0;
+}
+
+#dependency-select-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#dependency-select-buttons Button {
+    min-width: 16;
+    margin: 0 0 0 1;
+}
+"""
+
 SUBAGENT_CSS = """
 SubAgentScreen {
     align: center middle;

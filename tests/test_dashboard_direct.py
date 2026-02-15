@@ -98,6 +98,30 @@ def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
     assert notices[-1] == "Target is no longer active"
 
 
+def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    target = _agent("target", 2)
+    app.agents = [source, target]
+    app._agent_dependencies = {
+        app._agent_dependency_key(target): app._agent_dependency_key(source)
+    }
+
+    sent: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.kitty_cmd",
+        lambda socket, *args, timeout=3: sent.append((socket, args)) or "",
+    )
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.do_enqueue_direct("source", app._agent_key(target), "hello")
+
+    assert sent == []
+    assert notices[-1] == "Target is no longer active"
+
+
 def test_show_direct_preview_uses_selection_from_preparing_dialog(monkeypatch) -> None:
     app = ZeusApp()
     a1 = _agent("alpha", 1)

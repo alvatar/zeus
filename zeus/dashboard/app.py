@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 from enum import Enum
+import os
 import re
 import subprocess
 import time
@@ -13,6 +14,7 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.notifications import SeverityLevel
 from textual.timer import Timer
 from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
 from textual.widget import Widget
@@ -26,6 +28,7 @@ class SortMode(Enum):
 
 from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
 from ..notes import load_agent_notes, save_agent_notes
+from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
@@ -61,7 +64,7 @@ from .stream import (
 )
 from .widgets import ZeusDataTable, ZeusTextArea, UsageBar, SplashOverlay
 from .screens import (
-    NewAgentScreen, AgentNotesScreen, SubAgentScreen,
+    NewAgentScreen, AgentNotesScreen, DependencySelectScreen, SubAgentScreen,
     RenameScreen, RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
     BroadcastPreparingScreen,
@@ -206,6 +209,7 @@ class ZeusApp(App):
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("c", "new_agent", "New Agent"),
         Binding("n", "agent_notes", "Notes"),
+        Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Agent"),
         Binding("k", "kill_agent", "Kill Agent"),
         Binding("p", "cycle_priority", "Priority"),
@@ -260,6 +264,11 @@ class ZeusApp(App):
     _broadcast_active_job: int | None = None
     _prepare_target_selection: dict[int, str] = {}
     _agent_notes: dict[str, str] = {}
+    _agent_dependencies: dict[str, str] = {}
+    _dependency_missing_polls: dict[str, int] = {}
+    _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
+        "1", "true", "yes", "on",
+    }
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -330,6 +339,7 @@ class ZeusApp(App):
         ensure_tmux_update_environment()
         self._load_priorities()
         self._load_agent_notes()
+        self._load_agent_dependencies()
         self._load_panel_visibility()
         self._celebration_warmup_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -343,6 +353,26 @@ class ZeusApp(App):
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_interact_stream)
+
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "information",
+        timeout: float | None = None,
+        markup: bool = True,
+    ) -> None:
+        """Disable toast notifications unless ZEUS_NOTIFY is enabled."""
+        if not self._notifications_enabled:
+            return
+        super().notify(
+            message,
+            title=title,
+            severity=severity,
+            timeout=timeout,
+            markup=markup,
+        )
 
     def _pulse_widget(self, selector: str, low_opacity: float) -> None:
         """Run a clearly-visible single-beat opacity pulse on a widget."""
@@ -490,6 +520,7 @@ class ZeusApp(App):
         self.state_changed_at = r.state_changed_at
         self.idle_since = r.idle_since
         self.idle_notified = r.idle_notified
+        self._reconcile_agent_dependencies()
         self._prune_interact_histories()
 
         state_changed_any = any(
@@ -508,7 +539,7 @@ class ZeusApp(App):
             key = f"{a.socket}:{a.kitty_id}"
             live_keys.add(key)
 
-            if self._is_paused(a):
+            if self._is_input_blocked(a):
                 self._action_check_pending.discard(key)
                 self._action_needed.discard(key)
                 continue
@@ -535,8 +566,8 @@ class ZeusApp(App):
         max_s = SETTINGS.sparkline.max_samples
         live_names: set[str] = set()
         for a in self.agents:
-            if self._is_paused(a):
-                continue  # paused agents are excluded from statistics
+            if self._is_input_blocked(a):
+                continue  # paused/blocked agents are excluded from statistics
             akey = f"{a.socket}:{a.kitty_id}"
             live_names.add(a.name)
             waiting = a.state == State.IDLE and akey in self._action_needed
@@ -604,14 +635,36 @@ class ZeusApp(App):
             )
             return
 
-        # Separate top-level agents from sub-agents
+        # Separate top-level/sub-agent tree and blocked-dependency tree.
         parent_names: set[str] = {a.name for a in self.agents}
+
+        blocked_by_key: dict[str, str] = {}
+        blocked_of: dict[str, list[AgentWindow]] = {}
+        for a in self.agents:
+            blocked_key = self._agent_dependency_key(a)
+            blocker_dep_key = self._agent_dependencies.get(blocked_key)
+            if not blocker_dep_key:
+                continue
+            blocker = self._agent_by_dependency_key(blocker_dep_key)
+            if blocker is None:
+                continue
+            blocker_row_key = self._agent_key(blocker)
+            blocked_row_key = self._agent_key(a)
+            if blocker_row_key == blocked_row_key:
+                continue
+            blocked_by_key[blocked_row_key] = blocker_row_key
+            blocked_of.setdefault(blocker_row_key, []).append(a)
+
         top_level: list[AgentWindow] = [
             a for a in self.agents
-            if not a.parent_name or a.parent_name not in parent_names
+            if self._agent_key(a) not in blocked_by_key
+            and (not a.parent_name or a.parent_name not in parent_names)
         ]
+
         children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
+            if self._agent_key(a) in blocked_by_key:
+                continue
             if a.parent_name and a.parent_name in parent_names:
                 children_of.setdefault(a.parent_name, []).append(a)
 
@@ -620,10 +673,12 @@ class ZeusApp(App):
         ) -> tuple[int, int, float, str]:
             # Priority first (1=high … 4=paused)
             p = self._get_priority(a.name)
-            # State: WAITING (0) → WORKING (1) → IDLE (2) → PAUSED (3)
+            # State: WAITING (0) → WORKING (1) → IDLE (2) → BLOCKED (3) → PAUSED (4)
             akey: str = f"{a.socket}:{a.kitty_id}"
-            if self._is_paused(a):
+            if self._is_blocked(a):
                 st = 3
+            elif self._is_paused(a):
+                st = 4
             elif a.state == State.IDLE and akey in self._action_needed:
                 st = 0  # WAITING
             elif a.state == State.WORKING:
@@ -644,6 +699,8 @@ class ZeusApp(App):
         top_level.sort(key=sort_key)
         for kids in children_of.values():
             kids.sort(key=sort_key)
+        for blocked in blocked_of.values():
+            blocked.sort(key=sort_key)
 
         def _fmt_duration(seconds: float) -> str:
             s = int(seconds)
@@ -676,38 +733,57 @@ class ZeusApp(App):
             self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
         ).get("State", 10)
 
-        def _add_agent_row(a: AgentWindow, indent: str = "") -> None:
+        def _add_agent_row(
+            a: AgentWindow,
+            indent_level: int = 0,
+            relation_icon: str | None = None,
+        ) -> None:
             akey: str = f"{a.socket}:{a.kitty_id}"
+            blocked: bool = self._is_blocked(a)
             paused: bool = self._is_paused(a)
             waiting: bool = (
                 (not paused)
+                and (not blocked)
                 and a.state == State.IDLE
                 and akey in self._action_needed
             )
 
-            if paused:
+            if blocked:
+                icon = "⊘"
+                state_label = "BLOCKED"
+                state_color = "#888888"
+                row_style = "#666666"
+            elif paused:
                 icon = "⏸"
                 state_label = "PAUSED"
                 state_color = "#666666"
-                row_bg = ""
+                row_style = "#666666"
             elif waiting:
                 icon = "⏸"
                 state_label = "WAITING"
                 state_color = "#d7af00"
-                row_bg = ""
+                row_style = ""
             elif a.state == State.WORKING:
                 icon = "▶"
                 state_label = "WORKING"
                 state_color = "#00d700"
-                row_bg = ""
+                row_style = ""
             else:
                 icon = "⏹"
                 state_label = "IDLE"
                 state_color = "#ff3333"
-                row_bg = ""
+                row_style = ""
 
-            raw_name: str = f"{indent}🧬 {a.name}" if indent else a.name
-            name_text = Text(raw_name, style=row_bg) if row_bg else raw_name
+            if indent_level > 0:
+                branch_prefix = f"{'  ' * indent_level}└ "
+                if relation_icon:
+                    raw_name = f"{branch_prefix}{relation_icon} {a.name}"
+                else:
+                    raw_name = f"{branch_prefix}{a.name}"
+            else:
+                raw_name = a.name
+
+            name_text = Text(raw_name, style=row_style) if row_style else raw_name
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
                 state_cell,
@@ -744,21 +820,24 @@ class ZeusApp(App):
                 f"↑{fmt_bytes(pm.io_write_bps)}"
             )
 
-            if row_bg:
-                elapsed_text = Text(str(elapsed_text), style=row_bg)
-                ctx_cell = Text(str(ctx_cell), style=row_bg)
-                cpu_cell = Text(str(cpu_cell), style=row_bg)
-                ram_cell = Text(str(ram_cell), style=row_bg)
-                gpu_cell = Text(str(gpu_cell), style=row_bg)
-                net_cell = Text(str(net_cell), style=row_bg)
-                tok_cell = Text(str(tok_cell), style=row_bg)
-                note_cell = Text(str(note_cell), style=row_bg)
+            if row_style:
+                elapsed_text = Text(str(elapsed_text), style=row_style)
+                ctx_cell = Text(str(ctx_cell), style=row_style)
+                cpu_cell = Text(str(cpu_cell), style=row_style)
+                ram_cell = Text(str(ram_cell), style=row_style)
+                gpu_cell = Text(str(gpu_cell), style=row_style)
+                net_cell = Text(str(net_cell), style=row_style)
+                tok_cell = Text(str(tok_cell), style=row_style)
+                note_cell = Text(str(note_cell), style=row_style)
 
-            pri_val = self._get_priority(a.name)
-            _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
-            pri_cell: str | Text = Text(
-                str(pri_val), style=f"bold {_pri_colors[pri_val]}",
-            )
+            if blocked:
+                pri_cell: str | Text = Text("-", style="bold #666666")
+            else:
+                pri_val = self._get_priority(a.name)
+                _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
+                pri_cell = Text(
+                    str(pri_val), style=f"bold {_pri_colors[pri_val]}",
+                )
 
             row_key: str = akey
             cells: dict[str, str | Text] = {
@@ -768,13 +847,13 @@ class ZeusApp(App):
                 "■": note_cell,
                 "Name": name_text,
                 "Elapsed": elapsed_text,
-                "Model/Cmd": Text(a.model or "—", style=row_bg) if row_bg else (a.model or "—"),
+                "Model/Cmd": Text(a.model or "—", style=row_style) if row_style else (a.model or "—"),
                 "CPU": cpu_cell,
                 "RAM": ram_cell,
                 "GPU": gpu_cell,
                 "Net": net_cell,
-                "WS": Text(a.workspace or "?", style=row_bg) if row_bg else (a.workspace or "?"),
-                "CWD": Text(a.cwd, style=row_bg) if row_bg else a.cwd,
+                "WS": Text(a.workspace or "?", style=row_style) if row_style else (a.workspace or "?"),
+                "CWD": Text(a.cwd, style=row_style) if row_style else a.cwd,
                 "Tokens": tok_cell,
             }
             cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
@@ -789,7 +868,8 @@ class ZeusApp(App):
             c = re.sub(r'^cd\s+\S+\s*(?:&&|;)\s*', '', c)
             return c[:40] or "—"
 
-        def _add_tmux_rows(a: AgentWindow) -> None:
+        def _add_tmux_rows(a: AgentWindow, indent_level: int = 1) -> None:
+            tmux_prefix = f"{'  ' * indent_level}└ 🔍 "
             for sess in a.tmux_sessions:
                 age_s: int = (
                     int(time.time()) - sess.created if sess.created else 0
@@ -827,12 +907,12 @@ class ZeusApp(App):
                     )
                     net_t = net_str
                 if sess.attached:
-                    tmux_name = f"  └ 🔍 {sess.name}"
+                    tmux_name = f"{tmux_prefix}{sess.name}"
                     tmux_cmd = cleaned_cmd
                     tmux_age = f"⏱ {age_str} ●"
                 else:
                     dim: str = "#555555"
-                    tmux_name = Text(f"  └ 🔍 {sess.name}", style=dim)
+                    tmux_name = Text(f"{tmux_prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(f"⏱ {age_str}", style=dim)
                     for v in (cpu_t, ram_t, gpu_t, net_t):
@@ -860,12 +940,36 @@ class ZeusApp(App):
                 row = [tcells.get(c, "") for c in cols]
                 table.add_row(*row, key=tmux_key)
 
-        for a in top_level:
-            _add_agent_row(a)
+        rendered_agents: set[str] = set()
+
+        def _render_agent_branch(
+            a: AgentWindow,
+            indent_level: int = 0,
+            relation_icon: str | None = None,
+        ) -> None:
+            akey = self._agent_key(a)
+            if akey in rendered_agents:
+                return
+            rendered_agents.add(akey)
+
+            _add_agent_row(a, indent_level=indent_level, relation_icon=relation_icon)
+
+            next_level = indent_level + 1
+            for blocked in blocked_of.get(akey, []):
+                _render_agent_branch(blocked, next_level, relation_icon="↑")
+
             for child in children_of.get(a.name, []):
-                _add_agent_row(child, indent="  └ ")
-                _add_tmux_rows(child)
-            _add_tmux_rows(a)
+                _render_agent_branch(child, next_level, relation_icon="🧬")
+
+            _add_tmux_rows(a, indent_level=next_level)
+
+        for a in top_level:
+            _render_agent_branch(a)
+
+        # Fallback for any non-rendered agent (guards against malformed trees).
+        for a in self.agents:
+            if self._agent_key(a) not in rendered_agents:
+                _render_agent_branch(a)
 
         # Restore selected row
         if _saved_key:
@@ -879,11 +983,11 @@ class ZeusApp(App):
 
         n_working: int = sum(
             1 for a in self.agents
-            if (not self._is_paused(a)) and a.state == State.WORKING
+            if (not self._is_input_blocked(a)) and a.state == State.WORKING
         )
         n_idle: int = sum(
             1 for a in self.agents
-            if (not self._is_paused(a)) and a.state == State.IDLE
+            if (not self._is_input_blocked(a)) and a.state == State.IDLE
         )
         status = self.query_one("#status-line", Static)
         sort_label: str = self.sort_mode.value
@@ -915,6 +1019,7 @@ class ZeusApp(App):
             "WORKING": ("#00ff00", "#006600", "#003300", "#1a2a1a"),
             "WAITING": ("#ffdd00", "#776600", "#333300", "#2a2a1a"),
             "IDLE":    ("#ff4444", "#771111", "#330a0a", "#2a1a1a"),
+            "BLOCKED": ("#888888", "#666666", "#444444", "#1f1f1f"),
             "PAUSED":  ("#777777", "#555555", "#333333", "#1a1a1a"),
         }
 
@@ -934,7 +1039,9 @@ class ZeusApp(App):
 
         def _agent_color(a: AgentWindow) -> str:
             akey = f"{a.socket}:{a.kitty_id}"
-            if self._is_paused(a):
+            if self._is_blocked(a):
+                state_label = "BLOCKED"
+            elif self._is_paused(a):
                 state_label = "PAUSED"
             else:
                 waiting = a.state == State.IDLE and akey in self._action_needed
@@ -947,6 +1054,8 @@ class ZeusApp(App):
             return colors[idx]
 
         def _agent_state(a: AgentWindow) -> str:
+            if self._is_blocked(a):
+                return "BLOCKED"
             if self._is_paused(a):
                 return "PAUSED"
             akey = f"{a.socket}:{a.kitty_id}"
@@ -1036,7 +1145,7 @@ class ZeusApp(App):
         raw_waiting = 0
         raw_total = 0
         for agent in self.agents:
-            if self._is_paused(agent):
+            if self._is_input_blocked(agent):
                 continue
             samples = self._sparkline_samples.get(agent.name, [])
             if not samples:
@@ -1059,13 +1168,13 @@ class ZeusApp(App):
 
             # Celebration triggers require:
             # - ≥10 minutes since app start, and
-            # - at least 4 active (non-paused) agents.
+            # - at least 4 active (non-paused/non-blocked) agents.
             warmup_start = self._celebration_warmup_started_at
             warmup_done = (
                 warmup_start is not None
                 and (time.time() - warmup_start) >= 600
             )
-            active_agents = sum(1 for a in self.agents if not self._is_paused(a))
+            active_agents = sum(1 for a in self.agents if not self._is_input_blocked(a))
             trigger_ready = warmup_done and active_agents >= 4
 
             if trigger_ready:
@@ -1101,7 +1210,7 @@ class ZeusApp(App):
         # Prefix width: "100% " = 5 chars
         prefix_w = 5
         for agent in ordered:
-            if self._is_paused(agent):
+            if self._is_input_blocked(agent):
                 continue
             samples = self._sparkline_samples.get(agent.name, [])
             if not samples:
@@ -1331,8 +1440,20 @@ class ZeusApp(App):
         return f"{agent.socket}:{agent.kitty_id}"
 
     @staticmethod
-    def _agent_notes_key(agent: AgentWindow) -> str:
+    def _agent_identity_key(agent: AgentWindow) -> str:
         return agent.agent_id or f"{agent.socket}:{agent.kitty_id}"
+
+    def _agent_notes_key(self, agent: AgentWindow) -> str:
+        return self._agent_identity_key(agent)
+
+    def _agent_dependency_key(self, agent: AgentWindow) -> str:
+        return self._agent_identity_key(agent)
+
+    def _agent_by_dependency_key(self, dep_key: str) -> AgentWindow | None:
+        for agent in self.agents:
+            if self._agent_dependency_key(agent) == dep_key:
+                return agent
+        return None
 
     def _note_text_for_agent(self, agent: AgentWindow) -> str:
         return self._agent_notes.get(self._agent_notes_key(agent), "")
@@ -1340,14 +1461,40 @@ class ZeusApp(App):
     def _has_note_for_agent(self, agent: AgentWindow) -> bool:
         return bool(self._note_text_for_agent(agent).strip())
 
+    def _is_blocked(self, agent: AgentWindow) -> bool:
+        return self._agent_dependency_key(agent) in self._agent_dependencies
+
+    def _blocking_agent_for(self, agent: AgentWindow) -> AgentWindow | None:
+        blocker_key = self._agent_dependencies.get(self._agent_dependency_key(agent))
+        if not blocker_key:
+            return None
+        return self._agent_by_dependency_key(blocker_key)
+
+    def _is_input_blocked(self, agent: AgentWindow) -> bool:
+        return self._is_paused(agent) or self._is_blocked(agent)
+
+    def _would_create_dependency_cycle(
+        self,
+        blocked_dep_key: str,
+        blocker_dep_key: str,
+    ) -> bool:
+        visited: set[str] = {blocked_dep_key}
+        cur = blocker_dep_key
+        while cur:
+            if cur in visited:
+                return True
+            visited.add(cur)
+            cur = self._agent_dependencies.get(cur, "")
+        return False
+
     def _broadcast_recipients(self, source_key: str) -> list[AgentWindow]:
-        """Return active (non-paused) recipients excluding source."""
+        """Return active (non-paused/non-blocked) recipients excluding source."""
         recipients: list[AgentWindow] = []
         for agent in self.agents:
             key = self._agent_key(agent)
             if key == source_key:
                 continue
-            if self._is_paused(agent):
+            if self._is_input_blocked(agent):
                 continue
             recipients.append(agent)
         return recipients
@@ -1360,7 +1507,7 @@ class ZeusApp(App):
         options: list[tuple[str, str]] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is None or self._is_paused(agent):
+            if agent is None or self._is_input_blocked(agent):
                 continue
             options.append((agent.name, key))
         return options
@@ -1458,8 +1605,8 @@ class ZeusApp(App):
         if not source:
             self.notify("Broadcast source must be an agent row", timeout=2)
             return
-        if self._is_paused(source):
-            self.notify("Selected source is PAUSED; pick an active agent", timeout=2)
+        if self._is_input_blocked(source):
+            self.notify("Selected source is not active; pick another agent", timeout=2)
             return
 
         source_key = self._agent_key(source)
@@ -1486,8 +1633,8 @@ class ZeusApp(App):
         if not source:
             self.notify("Direct-message source must be an agent row", timeout=2)
             return
-        if self._is_paused(source):
-            self.notify("Selected source is PAUSED; pick an active agent", timeout=2)
+        if self._is_input_blocked(source):
+            self.notify("Selected source is not active; pick another agent", timeout=2)
             return
 
         source_key = self._agent_key(source)
@@ -1604,7 +1751,7 @@ class ZeusApp(App):
         recipient_names: list[str] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is not None and not self._is_paused(agent):
+            if agent is not None and not self._is_input_blocked(agent):
                 recipient_names.append(agent.name)
 
         if not recipient_names:
@@ -1661,7 +1808,7 @@ class ZeusApp(App):
         sent = 0
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is None or self._is_paused(agent):
+            if agent is None or self._is_input_blocked(agent):
                 continue
             self._queue_text_to_agent(agent, message)
             sent += 1
@@ -1683,7 +1830,7 @@ class ZeusApp(App):
     ) -> None:
         """Queue marked message to a single selected active target."""
         target = self._get_agent_by_key(target_key)
-        if target is None or self._is_paused(target):
+        if target is None or self._is_input_blocked(target):
             self.notify("Target is no longer active", timeout=3)
             return
 
@@ -1784,7 +1931,9 @@ class ZeusApp(App):
         if tmux:
             self._set_interact_target_name(tmux.name)
             parent = self._find_agent_for_tmux(tmux)
-            self._set_interact_editable(not (parent is not None and self._is_paused(parent)))
+            self._set_interact_editable(
+                not (parent is not None and self._is_input_blocked(parent))
+            )
             target_changed = (
                 old_agent_key is not None
                 or old_tmux_name != tmux.name
@@ -1804,7 +1953,7 @@ class ZeusApp(App):
             self._set_interact_editable(True)
             return
         self._set_interact_target_name(agent.name)
-        self._set_interact_editable(not self._is_paused(agent))
+        self._set_interact_editable(not self._is_input_blocked(agent))
         key = f"{agent.socket}:{agent.kitty_id}"
         target_changed = (
             old_agent_key != key
@@ -1981,13 +2130,65 @@ class ZeusApp(App):
         live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
         prune_histories(live_targets)
 
-    # ── Agent priorities / notes ───────────────────────────────────
+    # ── Agent priorities / notes / dependencies ───────────────────
 
     def _load_agent_notes(self) -> None:
         self._agent_notes = load_agent_notes()
 
     def _save_agent_notes(self) -> None:
         save_agent_notes(self._agent_notes)
+
+    def _load_agent_dependencies(self) -> None:
+        self._agent_dependencies = load_agent_dependencies()
+
+    def _save_agent_dependencies(self) -> None:
+        save_agent_dependencies(self._agent_dependencies)
+
+    def _reconcile_agent_dependencies(self) -> None:
+        """Clear stale blockers only after consecutive missing polls."""
+        if not self._agent_dependencies:
+            self._dependency_missing_polls.clear()
+            return
+
+        live_dep_keys = {
+            self._agent_dependency_key(agent)
+            for agent in self.agents
+        }
+
+        changed = False
+        for blocked_dep_key, blocker_dep_key in list(self._agent_dependencies.items()):
+            if blocked_dep_key == blocker_dep_key:
+                self._agent_dependencies.pop(blocked_dep_key, None)
+                self._dependency_missing_polls.pop(blocked_dep_key, None)
+                changed = True
+                continue
+
+            # If the blocked agent is not currently present, keep dependency.
+            if blocked_dep_key not in live_dep_keys:
+                self._dependency_missing_polls.pop(blocked_dep_key, None)
+                continue
+
+            if blocker_dep_key in live_dep_keys:
+                self._dependency_missing_polls.pop(blocked_dep_key, None)
+                continue
+
+            misses = self._dependency_missing_polls.get(blocked_dep_key, 0) + 1
+            self._dependency_missing_polls[blocked_dep_key] = misses
+            if misses < 2:
+                continue
+
+            blocked_agent = self._agent_by_dependency_key(blocked_dep_key)
+            blocked_name = blocked_agent.name if blocked_agent else blocked_dep_key
+            self._agent_dependencies.pop(blocked_dep_key, None)
+            self._dependency_missing_polls.pop(blocked_dep_key, None)
+            self.notify(
+                f"Dependency cleared for {blocked_name}: blocker missing",
+                timeout=3,
+            )
+            changed = True
+
+        if changed:
+            self._save_agent_dependencies()
 
     def _load_priorities(self) -> None:
         """Load priorities from disk."""
@@ -2253,6 +2454,72 @@ class ZeusApp(App):
         self._save_agent_notes()
         self.poll_and_update()
 
+    def action_toggle_dependency(self) -> None:
+        """Ctrl+I: toggle blocked dependency for selected agent."""
+        if len(self.screen_stack) > 1:
+            return
+
+        blocked_agent = self._get_selected_agent()
+        if not blocked_agent:
+            self.notify("Select an agent row to set dependency", timeout=2)
+            return
+
+        blocked_dep_key = self._agent_dependency_key(blocked_agent)
+        if blocked_dep_key in self._agent_dependencies:
+            self._agent_dependencies.pop(blocked_dep_key, None)
+            self._dependency_missing_polls.pop(blocked_dep_key, None)
+            self._save_agent_dependencies()
+            self.notify(f"Dependency cleared: {blocked_agent.name}", timeout=2)
+            self.poll_and_update()
+            if self._interact_visible:
+                self._refresh_interact_panel()
+            return
+
+        options: list[tuple[str, str]] = []
+        blocked_row_key = self._agent_key(blocked_agent)
+        for candidate in sorted(self.agents, key=lambda a: a.name.lower()):
+            if self._agent_key(candidate) == blocked_row_key:
+                continue
+            options.append((candidate.name, self._agent_dependency_key(candidate)))
+
+        if not options:
+            self.notify("No other agents available as dependency targets", timeout=2)
+            return
+
+        self.push_screen(DependencySelectScreen(blocked_agent, options))
+
+    def do_set_dependency(
+        self,
+        blocked_agent: AgentWindow,
+        blocker_dep_key: str,
+    ) -> None:
+        blocked_dep_key = self._agent_dependency_key(blocked_agent)
+        live_blocked = self._agent_by_dependency_key(blocked_dep_key)
+        if live_blocked is None:
+            self.notify("Selected blocked agent is no longer active", timeout=2)
+            return
+
+        if blocker_dep_key == blocked_dep_key:
+            self.notify("An agent cannot depend on itself", timeout=2)
+            return
+
+        blocker = self._agent_by_dependency_key(blocker_dep_key)
+        if blocker is None:
+            self.notify("Selected dependency target is no longer active", timeout=2)
+            return
+
+        if self._would_create_dependency_cycle(blocked_dep_key, blocker_dep_key):
+            self.notify("Dependency rejected: would create cycle", timeout=3)
+            return
+
+        self._agent_dependencies[blocked_dep_key] = blocker_dep_key
+        self._dependency_missing_polls.pop(blocked_dep_key, None)
+        self._save_agent_dependencies()
+        self.notify(f"{live_blocked.name} blocked by {blocker.name}", timeout=3)
+        self.poll_and_update()
+        if self._interact_visible:
+            self._refresh_interact_panel()
+
     def action_spawn_subagent(self) -> None:
         if isinstance(self.focused, (Input, TextArea, ZeusTextArea)):
             return
@@ -2442,7 +2709,7 @@ class ZeusApp(App):
         """Store action-needed result."""
         self._action_check_pending.discard(key)
         agent = self._get_agent_by_key(key)
-        if not agent or agent.state != State.IDLE or self._is_paused(agent):
+        if not agent or agent.state != State.IDLE or self._is_input_blocked(agent):
             self._action_needed.discard(key)
             return
         if needs_action:
@@ -2527,16 +2794,26 @@ class ZeusApp(App):
         stream.clear()
         stream.write(_linkify_rich_text(Text.from_ansi(raw)))
 
-    def _current_interact_target_paused(self) -> bool:
-        """Return True if current interact target is paused (priority 4)."""
+    def _current_interact_block_reason(self) -> str | None:
+        """Return reason text when interact input must be disabled."""
+        def _reason_for(agent: AgentWindow) -> str | None:
+            if self._is_blocked(agent):
+                return "Agent is BLOCKED by dependency; input disabled"
+            if self._is_paused(agent):
+                return "Agent is PAUSED (priority 4); input disabled"
+            return None
+
         if self._interact_agent_key:
             agent = self._get_agent_by_key(self._interact_agent_key)
-            return bool(agent and self._is_paused(agent))
+            if not agent:
+                return None
+            return _reason_for(agent)
+
         if self._interact_tmux_name:
             for agent in self.agents:
                 if any(s.name == self._interact_tmux_name for s in agent.tmux_sessions):
-                    return self._is_paused(agent)
-        return False
+                    return _reason_for(agent)
+        return None
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
         """Send text to the agent's kitty window followed by Enter."""
@@ -2560,8 +2837,9 @@ class ZeusApp(App):
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if not self._interact_visible:
             return
-        if self._current_interact_target_paused():
-            self.notify("Agent is PAUSED (priority 4); input disabled", timeout=2)
+        block_reason = self._current_interact_block_reason()
+        if block_reason:
+            self.notify(block_reason, timeout=2)
             return
         ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()
@@ -2595,8 +2873,9 @@ class ZeusApp(App):
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
         if not self._interact_visible:
             return
-        if self._current_interact_target_paused():
-            self.notify("Agent is PAUSED (priority 4); input disabled", timeout=2)
+        block_reason = self._current_interact_block_reason()
+        if block_reason:
+            self.notify(block_reason, timeout=2)
             return
         ta = self.query_one("#interact-input", ZeusTextArea)
         text = ta.text.strip()

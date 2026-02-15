@@ -63,7 +63,8 @@ def test_action_paste_saves_image_and_inserts_file_path(monkeypatch, tmp_path):
     assert pasted_path.read_bytes() == image_bytes
 
 
-def test_text_area_does_not_keep_ctrl_b_binding() -> None:
+def test_text_area_does_not_keep_global_ctrl_bindings() -> None:
     keys = [binding.key for binding in ZeusTextArea.BINDINGS]
     assert "ctrl+b" not in keys
+    assert "ctrl+i" not in keys
     assert "ctrl+m" not in keys

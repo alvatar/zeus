@@ -18,6 +18,7 @@ from ..models import AgentWindow, TmuxSession
 from .css import (
     NEW_AGENT_CSS,
     AGENT_NOTES_CSS,
+    DEPENDENCY_SELECT_CSS,
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
@@ -135,6 +136,56 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
 
     def action_save(self) -> None:
         self._save()
+
+
+class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = DEPENDENCY_SELECT_CSS
+    BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+
+    def __init__(
+        self,
+        blocked_agent: AgentWindow,
+        options: list[tuple[str, str]],
+    ) -> None:
+        super().__init__()
+        self.blocked_agent = blocked_agent
+        self.options = options
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dependency-select-dialog"):
+            yield Label(
+                f"Set blocking dependency for [bold]{self.blocked_agent.name}[/bold]"
+            )
+            yield Label("Blocked by:")
+            yield Select(self.options, id="dependency-select")
+            with Horizontal(id="dependency-select-buttons"):
+                yield Button("Cancel", variant="default", id="dependency-cancel-btn")
+                yield Button("Set dependency", variant="primary", id="dependency-save-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#dependency-select", Select).focus()
+
+    def _selected_dependency_key(self) -> str | None:
+        select = self.query_one("#dependency-select", Select)
+        value = select.value
+        if value is Select.BLANK:
+            return None
+        return str(value)
+
+    def _confirm(self) -> None:
+        dep_key = self._selected_dependency_key()
+        if not dep_key:
+            self.zeus.notify("Select a dependency target", timeout=2)
+            return
+        self.dismiss()
+        self.zeus.do_set_dependency(self.blocked_agent, dep_key)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "dependency-save-btn":
+            self._confirm()
+        else:
+            self.dismiss()
+        event.stop()
 
 
 # ── Sub-agent ─────────────────────────────────────────────────────────
@@ -588,6 +639,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Agent Management ───"),
     ("c", "New agent"),
     ("n", "Edit notes for selected agent"),
+    ("Ctrl+i", "Set/remove blocking dependency for selected agent"),
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),

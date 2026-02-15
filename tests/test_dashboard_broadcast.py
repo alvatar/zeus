@@ -47,14 +47,18 @@ def test_extract_share_payload_empty_when_wrapped_block_empty() -> None:
     assert _extract_share_payload("x\n%%%%\n\n%%%%\n") == ""
 
 
-def test_broadcast_recipients_exclude_source_and_paused() -> None:
+def test_broadcast_recipients_exclude_source_paused_and_blocked() -> None:
     app = ZeusApp()
     source = _agent("source", 1)
     active = _agent("active", 2)
     paused = _agent("paused", 3)
+    blocked = _agent("blocked", 4)
 
-    app.agents = [source, active, paused]
+    app.agents = [source, active, paused, blocked]
     app._agent_priorities = {"paused": 4}
+    app._agent_dependencies = {
+        app._agent_dependency_key(blocked): app._agent_dependency_key(active),
+    }
 
     recipients = app._broadcast_recipients(app._agent_key(source))
     assert [a.name for a in recipients] == ["active"]
