@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import re
 import shlex
 import subprocess
@@ -168,6 +169,7 @@ def discover_agents() -> list[AgentWindow]:
                         cwd=win.get("cwd", ""),
                         agent_id=agent_id,
                         parent_name=env.get("ZEUS_PARENT", ""),
+                        session_path=env.get("ZEUS_SESSION_PATH", ""),
                     ))
 
     stale_keys = [k for k in ids if k not in live_keys]
@@ -213,13 +215,25 @@ def close_window(agent: AgentWindow) -> None:
     kitty_cmd(agent.socket, "close-window", "--match", f"id:{agent.kitty_id}")
 
 
+def resolve_agent_session_path(agent: AgentWindow) -> str | None:
+    """Resolve the best-known pi session file for an agent.
+
+    Prefer explicit ZEUS_SESSION_PATH (deterministic per-window), then
+    fallback to newest session for the working directory.
+    """
+    explicit = (agent.session_path or "").strip()
+    if explicit:
+        return explicit
+    return find_current_session(agent.cwd)
+
+
 def spawn_subagent(
     agent: AgentWindow, name: str, workspace: str = ""
 ) -> str | None:
     """Fork the agent's session and launch a sub-agent in a new kitty window."""
     cwd: str = agent.cwd
-    source: str | None = find_current_session(cwd)
-    if not source:
+    source: str | None = resolve_agent_session_path(agent)
+    if not source or not Path(source).is_file():
         return None
     forked: str | None = fork_session(source, cwd)
     if not forked:
@@ -228,9 +242,10 @@ def spawn_subagent(
     env["AGENTMON_NAME"] = name
     env["ZEUS_PARENT"] = agent.name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
+    env["ZEUS_SESSION_PATH"] = forked
     proc = subprocess.Popen(
         ["kitty", "--directory", cwd, "--hold",
-         "bash", "-lc", f"pi --session {forked}"],
+         "bash", "-lc", f"pi --session {shlex.quote(forked)}"],
         env=env, start_new_session=True,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )

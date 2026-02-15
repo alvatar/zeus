@@ -2,7 +2,10 @@
 
 import json
 
-from zeus.sessions import _encode_session_dir, read_session_text
+from pathlib import Path
+
+import zeus.sessions as sessions
+from zeus.sessions import _encode_session_dir, read_session_text, make_new_session_path
 
 
 def test_encode_session_dir_basic():
@@ -22,6 +25,16 @@ def test_encode_session_dir_nested():
 def test_encode_session_dir_with_colon():
     result = _encode_session_dir("/mnt/drive:C/stuff")
     assert ":" not in result
+
+
+def test_make_new_session_path_creates_target_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(sessions, "AGENT_SESSIONS_DIR", tmp_path)
+
+    path = Path(make_new_session_path("/home/user/project"))
+
+    assert path.parent == tmp_path / "--home-user-project--"
+    assert path.suffix == ".jsonl"
+    assert path.parent.is_dir()
 
 
 def test_read_session_text_collects_text_content(tmp_path):

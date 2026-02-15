@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import subprocess
 import sys
 
@@ -16,6 +17,7 @@ from .kitty import (
 )
 from .state import detect_state, parse_footer
 from .sway import build_pid_workspace_map
+from .sessions import make_new_session_path
 from .tmux import ensure_tmux_update_environment
 
 
@@ -26,8 +28,18 @@ def cmd_new(args: argparse.Namespace) -> None:
     env: dict[str, str] = os.environ.copy()
     env["AGENTMON_NAME"] = name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
+
+    session_path = make_new_session_path(directory)
+    env["ZEUS_SESSION_PATH"] = session_path
+
     cmd: list[str] = [
-        "kitty", "--directory", directory, "--hold", "bash", "-lc", "pi"
+        "kitty",
+        "--directory",
+        directory,
+        "--hold",
+        "bash",
+        "-lc",
+        f"pi --session {shlex.quote(session_path)}",
     ]
     subprocess.Popen(
         cmd, env=env, start_new_session=True,

@@ -50,6 +50,7 @@ class AgentWindow:
     tokens_out: str = ""
     workspace: str = ""
     parent_name: str = ""
+    session_path: str = ""
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)
     _screen_text: str = ""

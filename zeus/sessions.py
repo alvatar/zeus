@@ -68,12 +68,30 @@ def read_session_text(session_path: str) -> str:
     return "\n".join(chunks)
 
 
+def _new_session_file(target_cwd: str) -> Path:
+    """Build a unique session file path under pi's session directory."""
+    import uuid
+    from datetime import datetime, timezone
+
+    session_dir: Path = AGENT_SESSIONS_DIR / _encode_session_dir(target_cwd)
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    new_id: str = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    ts: str = now.strftime("%Y-%m-%dT%H-%M-%S-") + f"{now.microsecond // 1000:03d}Z"
+    return session_dir / f"{ts}_{new_id}.jsonl"
+
+
+def make_new_session_path(target_cwd: str) -> str:
+    """Return a fresh session file path for launching a new pi session."""
+    return str(_new_session_file(target_cwd))
+
+
 def fork_session(source_path: str, target_cwd: str) -> str | None:
     """Fork a pi session file into a new independent session.
 
     Returns the path to the new session file, or None on failure.
     """
-    import uuid
     from datetime import datetime, timezone
 
     source = Path(source_path)
@@ -98,18 +116,13 @@ def fork_session(source_path: str, target_cwd: str) -> str | None:
     if not header:
         return None
 
-    session_dir: Path = AGENT_SESSIONS_DIR / _encode_session_dir(target_cwd)
-    session_dir.mkdir(parents=True, exist_ok=True)
-
-    new_id: str = str(uuid.uuid4())
+    new_file: Path = _new_session_file(target_cwd)
     now = datetime.now(timezone.utc)
-    ts: str = now.strftime("%Y-%m-%dT%H-%M-%S-") + f"{now.microsecond // 1000:03d}Z"
-    new_file: Path = session_dir / f"{ts}_{new_id}.jsonl"
 
     new_header: dict = {
         "type": "session",
         "version": header.get("version", 3),
-        "id": new_id,
+        "id": new_file.stem.split("_", 1)[1],
         "timestamp": now.isoformat(),
         "cwd": target_cwd,
         "parentSession": source_path,

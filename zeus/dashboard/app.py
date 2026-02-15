@@ -37,9 +37,10 @@ from ..input_history import append_history, load_history, prune_histories
 from ..process import fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
+    resolve_agent_session_path,
     spawn_subagent, load_names, save_names, kitty_cmd,
 )
-from ..sessions import find_current_session, read_session_text
+from ..sessions import read_session_text
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -1535,7 +1536,7 @@ class ZeusApp(App):
         1) session JSONL transcript (better formatting, deeper history)
         2) kitty full extent text (fallback)
         """
-        session_path = find_current_session(source.cwd)
+        session_path = resolve_agent_session_path(source)
         if session_path:
             session_text = read_session_text(session_path)
             if session_text.strip():
@@ -2552,8 +2553,20 @@ class ZeusApp(App):
         if not agent:
             self.notify("No agent selected", timeout=2)
             return
-        session: str | None = find_current_session(agent.cwd)
-        if not session:
+
+        if not agent.session_path:
+            same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
+            if len(same_cwd) > 1:
+                self.notify(
+                    "Cannot reliably fork this legacy agent: multiple agents "
+                    "share the same cwd without pinned sessions. "
+                    "Restart the parent agent and try again.",
+                    timeout=4,
+                )
+                return
+
+        session: str | None = resolve_agent_session_path(agent)
+        if not session or not os.path.isfile(session):
             self.notify(
                 f"No session found for {agent.name}", timeout=3
             )
