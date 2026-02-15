@@ -624,7 +624,6 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+Enter", "Teleport to agent / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
     ("", "─── Global ───"),
-    ("1", "Toggle agent table"),
     ("2", "Toggle mini-map"),
     ("3", "Toggle sparkline charts"),
     ("4", "Toggle interact target band"),

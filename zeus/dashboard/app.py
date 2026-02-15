@@ -221,7 +221,6 @@ class ZeusApp(App):
         Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
         Binding("ctrl+m", "direct_summary", "Direct Summary", show=False, priority=True),
 
-        Binding("1", "toggle_table", "Table", show=False, priority=True),
         Binding("2", "toggle_minimap", "Map", show=False, priority=True),
         Binding("3", "toggle_sparklines", "Sparks", show=False, priority=True),
         Binding("4", "toggle_target_band", "Target", show=False, priority=True),
@@ -248,7 +247,6 @@ class ZeusApp(App):
     _celebration_warmup_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
-    _show_table: bool = True
     _show_minimap: bool = True
     _show_sparklines: bool = True
     _show_target_band: bool = True
@@ -2234,10 +2232,24 @@ class ZeusApp(App):
         try:
             data = json.loads(PANEL_VISIBILITY_FILE.read_text())
             if isinstance(data, dict):
-                self._show_table = bool(data.get("table", True))
                 self._show_minimap = bool(data.get("minimap", True))
                 self._show_sparklines = bool(data.get("sparklines", True))
                 self._show_target_band = bool(data.get("target_band", True))
+
+                # Migrate legacy "table" flag away (table is always visible now).
+                if "table" in data:
+                    try:
+                        PANEL_VISIBILITY_FILE.write_text(
+                            json.dumps(
+                                {
+                                    "minimap": self._show_minimap,
+                                    "sparklines": self._show_sparklines,
+                                    "target_band": self._show_target_band,
+                                }
+                            )
+                        )
+                    except OSError:
+                        pass
         except (FileNotFoundError, json.JSONDecodeError):
             pass
 
@@ -2245,7 +2257,6 @@ class ZeusApp(App):
         """Persist panel toggle states to disk."""
         import json
         PANEL_VISIBILITY_FILE.write_text(json.dumps({
-            "table": self._show_table,
             "minimap": self._show_minimap,
             "sparklines": self._show_sparklines,
             "target_band": self._show_target_band,
@@ -2253,15 +2264,9 @@ class ZeusApp(App):
 
     def _apply_panel_visibility(self) -> None:
         """Apply current panel visibility flags to widgets."""
-        table = self.query_one("#agent-table", ZeusDataTable)
         mini = self.query_one("#mini-map", Static)
         spark = self.query_one("#sparkline-chart", Static)
         target = self.query_one("#interact-target", Static)
-
-        if self._show_table:
-            table.remove_class("hidden")
-        else:
-            table.add_class("hidden")
 
         if self._show_minimap:
             mini.remove_class("hidden")
@@ -2604,13 +2609,6 @@ class ZeusApp(App):
         if len(self.screen_stack) > 1:
             return
         self.push_screen(HelpScreen())
-
-    def action_toggle_table(self) -> None:
-        if len(self.screen_stack) > 1:
-            return
-        self._show_table = not self._show_table
-        self._apply_panel_visibility()
-        self._save_panel_visibility()
 
     def action_toggle_minimap(self) -> None:
         if len(self.screen_stack) > 1:

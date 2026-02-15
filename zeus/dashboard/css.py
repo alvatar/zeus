@@ -69,10 +69,6 @@ Screen {
     display: none;
 }
 
-#agent-table.hidden {
-    display: none;
-}
-
 #main-content {
     height: 1fr;
     layout: vertical;

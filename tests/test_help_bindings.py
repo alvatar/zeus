@@ -31,7 +31,6 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
     interact_idx = _HELP_BINDINGS.index(("", "─── Interact Panel ───"))
 
     global_entries = [
-        ("1", "Toggle agent table"),
         ("2", "Toggle mini-map"),
         ("3", "Toggle sparkline charts"),
         ("4", "Toggle interact target band"),
