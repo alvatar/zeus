@@ -8,6 +8,9 @@ def test_help_lists_text_area_navigation_commands() -> None:
 
     assert entries["Ctrl+a / Ctrl+e"] == "Move cursor to line start / end"
     assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
+    assert entries["Alt+d / Alt+Backspace"] == "Delete word right / left"
+    assert entries["Ctrl+k"] == "Kill to end-of-line (or delete line if empty)"
+    assert entries["Ctrl+u"] == "Clear input"
     assert entries["Ctrl+y"] == (
         "Yank killed text (system clipboard, fallback local kill buffer)"
     )
@@ -56,3 +59,47 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     for entry in mgmt_entries:
         idx = _HELP_BINDINGS.index(entry)
         assert agent_mgmt_idx < idx < settings_idx
+
+
+def test_help_lists_all_top_level_app_bindings() -> None:
+    keys = {key for key, _desc in _HELP_BINDINGS if key}
+
+    expected = {
+        "q",
+        "Ctrl+q",
+        "F10",
+        "Tab",
+        "Ctrl+Enter",
+        "Ctrl+o",
+        "c",
+        "n",
+        "Ctrl+i",
+        "s",
+        "k",
+        "p",
+        "r",
+        "F5",
+        "Ctrl+s",
+        "Ctrl+w",
+        "Ctrl+b",
+        "Ctrl+m",
+        "2",
+        "3",
+        "4",
+        "F4",
+        "F6",
+        "F8",
+        "?",
+    }
+
+    assert expected <= keys
+
+
+def test_help_lists_modal_only_bindings() -> None:
+    entries = {key: desc for key, desc in _HELP_BINDINGS if key}
+
+    assert entries["Esc (dialog)"] == "Close/cancel active dialog"
+    assert entries["Ctrl+s (notes dialog)"] == "Save notes in Agent Notes dialog"
+    assert entries["y / n / Enter (kill confirm)"] == (
+        "Confirm or cancel kill confirmation dialogs"
+    )
