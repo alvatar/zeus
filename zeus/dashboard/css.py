@@ -393,6 +393,11 @@ BroadcastPreparingScreen {
     content-align: center middle;
 }
 
+#broadcast-preparing-target-select {
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
 #broadcast-preparing-buttons {
     height: 3;
     align: center middle;

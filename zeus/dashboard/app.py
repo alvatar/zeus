@@ -220,6 +220,7 @@ class ZeusApp(App):
     _history_nav_draft: str | None = None
     _broadcast_job_seq: int = 0
     _broadcast_active_job: int | None = None
+    _prepare_target_selection: dict[int, str] = {}
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -1289,6 +1290,19 @@ class ZeusApp(App):
             recipients.append(agent)
         return recipients
 
+    def _target_options_from_keys(
+        self,
+        recipient_keys: list[str],
+    ) -> list[tuple[str, str]]:
+        """Return active target options as (name, key)."""
+        options: list[tuple[str, str]] = []
+        for key in recipient_keys:
+            agent = self._get_agent_by_key(key)
+            if agent is None or self._is_paused(agent):
+                continue
+            options.append((agent.name, key))
+        return options
+
     _BROADCAST_SUMMARY_PROMPT = (
         "You summarize one coding agent's latest terminal output for peer "
         "agents. Write a concise summary with:\n"
@@ -1312,6 +1326,16 @@ class ZeusApp(App):
         if self._broadcast_active_job != job_id:
             return
         self._broadcast_active_job = None
+        self._prepare_target_selection.pop(job_id, None)
+
+    def set_prepare_target_selection(self, job_id: int, target_key: str) -> None:
+        """Persist target pick made in the preparing modal."""
+        if self._broadcast_active_job != job_id:
+            return
+        self._prepare_target_selection[job_id] = target_key
+
+    def _consume_prepare_target_selection(self, job_id: int) -> str | None:
+        return self._prepare_target_selection.pop(job_id, None)
 
     def _start_summary_prepare(
         self,
@@ -1320,10 +1344,15 @@ class ZeusApp(App):
         *,
         mode: str,
         title: str,
+        target_options: list[tuple[str, str]] | None = None,
+        initial_target_key: str | None = None,
     ) -> None:
         self._broadcast_job_seq += 1
         job_id = self._broadcast_job_seq
         self._broadcast_active_job = job_id
+
+        if initial_target_key is not None:
+            self._prepare_target_selection[job_id] = initial_target_key
 
         self.push_screen(
             BroadcastPreparingScreen(
@@ -1331,6 +1360,8 @@ class ZeusApp(App):
                 recipient_count=len(recipient_keys),
                 job_id=job_id,
                 title=title,
+                target_options=target_options,
+                selected_target_key=initial_target_key,
             )
         )
         self._prepare_summary_preview(
@@ -1390,11 +1421,18 @@ class ZeusApp(App):
             self.notify("No active targets (source excluded)", timeout=2)
             return
 
+        target_options = self._target_options_from_keys(recipient_keys)
+        if not target_options:
+            self.notify("No active targets (source excluded)", timeout=2)
+            return
+
         self._start_summary_prepare(
             source,
             recipient_keys,
             mode="direct",
             title="Preparing direct summary…",
+            target_options=target_options,
+            initial_target_key=target_options[0][1],
         )
 
     @work(thread=True, exclusive=True, group="broadcast")
@@ -1482,6 +1520,7 @@ class ZeusApp(App):
         if self._broadcast_active_job != job_id:
             return
         self._broadcast_active_job = None
+        self._consume_prepare_target_selection(job_id)
         self._dismiss_broadcast_preparing_screen()
         self.notify(message, timeout=timeout)
 
@@ -1495,6 +1534,7 @@ class ZeusApp(App):
         if self._broadcast_active_job != job_id:
             return
         self._broadcast_active_job = None
+        self._consume_prepare_target_selection(job_id)
         self._dismiss_broadcast_preparing_screen()
 
         recipient_names: list[str] = []
@@ -1526,23 +1566,24 @@ class ZeusApp(App):
         if self._broadcast_active_job != job_id:
             return
         self._broadcast_active_job = None
+        preferred_target_key = self._consume_prepare_target_selection(job_id)
         self._dismiss_broadcast_preparing_screen()
 
-        target_options: list[tuple[str, str]] = []
-        for key in recipient_keys:
-            agent = self._get_agent_by_key(key)
-            if agent is not None and not self._is_paused(agent):
-                target_options.append((agent.name, key))
-
+        target_options = self._target_options_from_keys(recipient_keys)
         if not target_options:
             self.notify("No active targets (source excluded)", timeout=2)
             return
+
+        option_keys = {key for _, key in target_options}
+        if preferred_target_key not in option_keys:
+            preferred_target_key = target_options[0][1]
 
         self.push_screen(
             ConfirmDirectMessageScreen(
                 source_name=source_name,
                 target_options=target_options,
                 message=message,
+                initial_target_key=preferred_target_key,
             )
         )
 

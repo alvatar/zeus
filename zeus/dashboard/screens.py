@@ -311,12 +311,22 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
         recipient_count: int,
         job_id: int,
         title: str = "Preparing broadcast summary…",
+        target_options: list[tuple[str, str]] | None = None,
+        selected_target_key: str | None = None,
     ) -> None:
         super().__init__()
         self.source_name = source_name
         self.recipient_count = recipient_count
         self.job_id = job_id
         self.prep_title = title
+        self.target_options = target_options or []
+
+        self.selected_target_key: str | None = None
+        option_keys = {key for _, key in self.target_options}
+        if selected_target_key in option_keys:
+            self.selected_target_key = selected_target_key
+        elif self.target_options:
+            self.selected_target_key = self.target_options[0][1]
 
     def compose(self) -> ComposeResult:
         with Vertical(id="broadcast-preparing"):
@@ -324,12 +334,30 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
                 yield Label(self.prep_title)
                 yield Label(f"Source: {self.source_name}")
                 yield Label(f"Recipients: {self.recipient_count}")
+                if self.target_options:
+                    yield Label("Target agent (choose while preparing):")
+                    yield Select(
+                        [(name, key) for name, key in self.target_options],
+                        allow_blank=False,
+                        value=self.selected_target_key,
+                        id="broadcast-preparing-target-select",
+                    )
                 yield Label("Generating summary now. You can cancel.")
                 with Horizontal(id="broadcast-preparing-buttons"):
                     yield Button("Cancel", variant="default", id="broadcast-preparing-cancel-btn")
 
     def on_mount(self) -> None:
+        if self.target_options:
+            self.query_one("#broadcast-preparing-target-select", Select).focus()
+            return
         self.query_one("#broadcast-preparing-cancel-btn", Button).focus()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "broadcast-preparing-target-select":
+            return
+        if event.value is Select.BLANK:
+            return
+        self.zeus.set_prepare_target_selection(self.job_id, str(event.value))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "broadcast-preparing-cancel-btn":
@@ -418,11 +446,18 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
         source_name: str,
         target_options: list[tuple[str, str]],
         message: str,
+        initial_target_key: str | None = None,
     ) -> None:
         super().__init__()
         self.source_name = source_name
         self.target_options = target_options
         self.message = message
+
+        option_keys = {key for _, key in self.target_options}
+        if initial_target_key in option_keys:
+            self.initial_target_key = initial_target_key
+        else:
+            self.initial_target_key = self.target_options[0][1]
 
     def compose(self) -> ComposeResult:
         with Vertical(id="direct-dialog"):
@@ -433,7 +468,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
             yield Select(
                 [(name, key) for name, key in self.target_options],
                 allow_blank=False,
-                value=self.target_options[0][1],
+                value=self.initial_target_key,
                 id="direct-target-select",
             )
             yield Label("Message (editable):")
