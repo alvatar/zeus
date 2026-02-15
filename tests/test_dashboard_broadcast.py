@@ -15,24 +15,36 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
     )
 
 
-def test_extract_share_payload_returns_text_after_last_marker() -> None:
+def test_extract_share_payload_returns_text_between_last_complete_pair() -> None:
     text = (
-        "old stuff\n"
         "%%%%\n"
         "old payload\n"
         "%%%%\n"
+        "noise\n"
+        "%%%%\n"
         "new payload line 1\n"
         "new payload line 2\n"
+        "%%%%\n"
     )
     assert _extract_share_payload(text) == "new payload line 1\nnew payload line 2"
 
 
-def test_extract_share_payload_returns_none_when_missing_marker() -> None:
-    assert _extract_share_payload("a\nb\n") is None
+def test_extract_share_payload_ignores_unmatched_trailing_marker() -> None:
+    text = (
+        "%%%%\n"
+        "payload\n"
+        "%%%%\n"
+        "%%%%\n"
+    )
+    assert _extract_share_payload(text) == "payload"
 
 
-def test_extract_share_payload_empty_when_marker_has_no_following_text() -> None:
-    assert _extract_share_payload("header\n%%%%\n\n") == ""
+def test_extract_share_payload_returns_none_when_missing_pair() -> None:
+    assert _extract_share_payload("a\n%%%%\nb\n") is None
+
+
+def test_extract_share_payload_empty_when_wrapped_block_empty() -> None:
+    assert _extract_share_payload("x\n%%%%\n\n%%%%\n") == ""
 
 
 def test_broadcast_recipients_exclude_source_and_paused() -> None:

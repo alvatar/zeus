@@ -9,10 +9,10 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["Ctrl+a / Ctrl+e"] == "Move cursor to line start / end"
     assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
     assert entries["Ctrl+b"] == (
-        "Broadcast block after %%%% to active peers"
+        "Broadcast block between %%%% markers to active peers"
     )
     assert entries["Ctrl+m"] == (
-        "Send block after %%%% to one selected active agent"
+        "Send block between %%%% markers to one selected active agent"
     )
 
     up_down_desc = entries["↑/↓"]
@@ -41,8 +41,8 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
 
     summary_entries = [
-        ("Ctrl+b", "Broadcast block after %%%% to active peers"),
-        ("Ctrl+m", "Send block after %%%% to one selected active agent"),
+        ("Ctrl+b", "Broadcast block between %%%% markers to active peers"),
+        ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
     ]
 
     for entry in summary_entries:

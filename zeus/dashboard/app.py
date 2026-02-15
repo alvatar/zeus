@@ -35,7 +35,7 @@ from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
     spawn_subagent, load_names, save_names, kitty_cmd,
 )
-from ..sessions import find_current_session
+from ..sessions import find_current_session, read_session_text
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -147,21 +147,30 @@ def _linkify_rich_text(text: Text) -> Text:
 
 
 def _extract_share_payload(text: str) -> str | None:
-    """Extract payload after the last share marker line.
+    """Extract payload between the last complete pair of marker lines.
 
-    Returns None if marker is missing.
-    Returns empty string if marker exists but there is no payload after it.
+    Markers are lines that equal ``%%%%`` after stripping whitespace.
+
+    Returns None if no complete marker pair exists.
+    Returns empty string if pair exists but wrapped block is empty.
     """
     lines = text.splitlines()
-    marker_idx: int | None = None
-    for i, line in enumerate(lines):
-        if line.strip() == _SHARE_MARKER:
-            marker_idx = i
-
-    if marker_idx is None:
+    markers = [i for i, line in enumerate(lines) if line.strip() == _SHARE_MARKER]
+    if len(markers) < 2:
         return None
 
-    return "\n".join(lines[marker_idx + 1:]).strip()
+    # If count is odd, ignore the trailing unmatched marker.
+    if len(markers) % 2 == 1:
+        markers = markers[:-1]
+        if len(markers) < 2:
+            return None
+
+    start = markers[-2]
+    end = markers[-1]
+    if end <= start:
+        return None
+
+    return "\n".join(lines[start + 1:end]).strip()
 
 
 class ZeusApp(App):
@@ -1310,9 +1319,29 @@ class ZeusApp(App):
             options.append((agent.name, key))
         return options
 
+    def _source_text_for_share(self, source: AgentWindow) -> str:
+        """Return deep source text for share extraction.
+
+        Combine session transcript + kitty full extent text so we can look far
+        back while still preferring freshest on-screen content.
+        """
+        chunks: list[str] = []
+
+        session_path = find_current_session(source.cwd)
+        if session_path:
+            session_text = read_session_text(session_path)
+            if session_text.strip():
+                chunks.append(session_text)
+
+        screen_text = get_screen_text(source, full=True)
+        if screen_text.strip():
+            chunks.append(screen_text)
+
+        return "\n".join(chunks)
+
     _SHARE_MARKER_REMINDER = (
-        f"No share marker found. Put {_SHARE_MARKER} on a line by itself "
-        "above the block to send."
+        f"No wrapped share marker found. Put {_SHARE_MARKER} on a line by "
+        f"itself both before and after the block to send."
     )
 
     def _dismiss_broadcast_preparing_screen(self) -> None:
@@ -1458,8 +1487,8 @@ class ZeusApp(App):
             )
             return
 
-        full_text = get_screen_text(source, full=True)
-        payload = _extract_share_payload(full_text)
+        source_text = self._source_text_for_share(source)
+        payload = _extract_share_payload(source_text)
         if payload is None:
             self.call_from_thread(
                 self._summary_prepare_failed,
@@ -1473,7 +1502,10 @@ class ZeusApp(App):
             self.call_from_thread(
                 self._summary_prepare_failed,
                 job_id,
-                f"Share marker found, but nothing follows {_SHARE_MARKER}.",
+                (
+                    f"Wrapped {_SHARE_MARKER} markers found, but the enclosed "
+                    "block is empty."
+                ),
                 4,
             )
             return

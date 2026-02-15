@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Iterator
 
 from .config import AGENT_SESSIONS_DIR
 
@@ -22,6 +23,49 @@ def find_current_session(cwd: str) -> str | None:
         [f for f in session_dir.iterdir() if f.suffix == ".jsonl"],
         key=lambda f: f.name, reverse=True)
     return str(files[0]) if files else None
+
+
+def _iter_text_content(node: object) -> Iterator[str]:
+    """Yield text values for content items where ``type == 'text'``."""
+    if isinstance(node, dict):
+        if node.get("type") == "text":
+            text = node.get("text")
+            if isinstance(text, str):
+                yield text
+        for val in node.values():
+            if isinstance(val, (dict, list)):
+                yield from _iter_text_content(val)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            yield from _iter_text_content(item)
+
+
+def read_session_text(session_path: str) -> str:
+    """Read all text content fragments from a pi session JSONL file."""
+    path = Path(session_path)
+    if not path.is_file():
+        return ""
+
+    chunks: list[str] = []
+    try:
+        with open(path) as f:
+            for line in f:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                for text in _iter_text_content(entry):
+                    if text:
+                        chunks.append(text)
+    except OSError:
+        return ""
+
+    return "\n".join(chunks)
 
 
 def fork_session(source_path: str, target_cwd: str) -> str | None:

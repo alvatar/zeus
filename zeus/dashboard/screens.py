@@ -342,7 +342,7 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
                         value=self.selected_target_key,
                         id="broadcast-preparing-target-select",
                     )
-                yield Label("Extracting content after %%%% marker. You can cancel.")
+                yield Label("Extracting content between wrapped %%%% markers. You can cancel.")
                 with Horizontal(id="broadcast-preparing-buttons"):
                     yield Button("Cancel", variant="default", id="broadcast-preparing-cancel-btn")
 
@@ -547,8 +547,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-agent"),
     ("q", "Stop agent (table focus)"),
     ("Ctrl+q", "Stop agent (works from input too)"),
-    ("Ctrl+b", "Broadcast block after %%%% to active peers"),
-    ("Ctrl+m", "Send block after %%%% to one selected active agent"),
+    ("Ctrl+b", "Broadcast block between %%%% markers to active peers"),
+    ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
     ("k", "Kill agent / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename agent / tmux"),
