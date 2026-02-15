@@ -3,6 +3,33 @@
 from zeus.dashboard.app import ZeusApp
 
 
-def test_dashboard_does_not_force_focus_on_app_focus() -> None:
-    """Returning to Zeus should not forcibly move focus to the agent table."""
-    assert "on_app_focus" not in ZeusApp.__dict__
+class _DummyTable:
+    def __init__(self) -> None:
+        self.focused = False
+
+    def focus(self) -> None:
+        self.focused = True
+
+
+def test_dashboard_restores_table_focus_on_app_focus(monkeypatch) -> None:
+    app = ZeusApp()
+    table = _DummyTable()
+
+    monkeypatch.setattr(app, "_has_modal_open", lambda: False)
+    monkeypatch.setattr(app, "query_one", lambda selector, cls=None: table)
+
+    app.on_app_focus()
+
+    assert table.focused is True
+
+
+def test_dashboard_does_not_steal_focus_when_modal_is_open(monkeypatch) -> None:
+    app = ZeusApp()
+    table = _DummyTable()
+
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(app, "query_one", lambda selector, cls=None: table)
+
+    app.on_app_focus()
+
+    assert table.focused is False

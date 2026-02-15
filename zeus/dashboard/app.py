@@ -2365,6 +2365,15 @@ class ZeusApp(App):
             return True
         return False
 
+    def on_app_focus(self, event: events.AppFocus | None = None) -> None:
+        """Restore table focus when the Zeus window regains app focus."""
+        if self._has_modal_open():
+            return
+        try:
+            self.query_one("#agent-table", DataTable).focus()
+        except LookupError:
+            return
+
     def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
         if self._dismiss_splash():
