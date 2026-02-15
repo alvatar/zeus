@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from typing import TYPE_CHECKING, ClassVar, cast
 
@@ -127,12 +129,8 @@ class ZeusTextArea(TextArea):
 
         app.notify(message, timeout=3)
 
-    def _store_kill_text(self, text: str) -> None:
-        """Store deleted text in local kill buffer and system clipboard."""
-        if not text:
-            return
-
-        self._kill_buffer = text
+    def _copy_to_system_clipboard(self, text: str) -> None:
+        """Best-effort system clipboard write; runs off the UI thread."""
         try:
             result = subprocess.run(
                 ["wl-copy"],
@@ -141,14 +139,32 @@ class ZeusTextArea(TextArea):
                 text=True,
                 timeout=2,
             )
-        except FileNotFoundError:
-            self._notify_clipboard_unavailable()
-            return
         except (subprocess.TimeoutExpired, OSError):
             return
 
         if result.returncode != 0:
             return
+
+    def _copy_to_system_clipboard_async(self, text: str) -> None:
+        """Dispatch clipboard write asynchronously to avoid input lag."""
+        thread = threading.Thread(
+            target=self._copy_to_system_clipboard,
+            args=(text,),
+            daemon=True,
+        )
+        thread.start()
+
+    def _store_kill_text(self, text: str) -> None:
+        """Store deleted text in local kill buffer and system clipboard."""
+        if not text:
+            return
+
+        self._kill_buffer = text
+        if shutil.which("wl-copy") is None:
+            self._notify_clipboard_unavailable()
+            return
+
+        self._copy_to_system_clipboard_async(text)
 
     def _yank_from_system_or_local_buffer(self) -> str | None:
         """Return yanked text from system clipboard, else local kill buffer."""
