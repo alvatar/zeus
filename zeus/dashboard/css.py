@@ -252,9 +252,8 @@ NewAgentScreen {{
 
 #invoke-role RadioButton {{
     color: #cccccc;
+    margin: 1 0;
 }}
-
-{_button_row_css("new-agent-buttons", row_margin="1 0 0 0")}
 """
 
 AGENT_TASKS_CSS = f"""

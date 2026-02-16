@@ -67,7 +67,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
                 id="invoke-role",
-                compact=True,
+                compact=False,
             )
             yield Label("Directory:")
             yield Input(
@@ -75,15 +75,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 value="~/code",
                 id="agent-dir",
             )
-            with Horizontal(id="new-agent-buttons"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Invoke", variant="primary", id="launch-btn")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "launch-btn":
-            self._launch()
-        else:
-            self.dismiss()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "agent-name":

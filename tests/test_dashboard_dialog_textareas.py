@@ -81,6 +81,14 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "RadioSet(" in source
     assert "invoke-role-hippeus" in source
     assert "invoke-role-polemarch" in source
+    assert "compact=False" in source
+    assert "new-agent-buttons" not in source
+    assert "launch-btn" not in source
+    assert "cancel-btn" not in source
+
+    submit_source = inspect.getsource(NewAgentScreen.on_input_submitted)
+    assert "event.input.id == \"agent-dir\"" in submit_source
+    assert "self._launch()" in submit_source
 
 
 def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
