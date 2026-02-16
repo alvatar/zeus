@@ -32,6 +32,8 @@ def test_tmux_session_defaults():
     assert s.attached is False
     assert s.owner_id == ""
     assert s.env_agent_id == ""
+    assert s.role == ""
+    assert s.phalanx_id == ""
     assert s.match_source == ""
 
 

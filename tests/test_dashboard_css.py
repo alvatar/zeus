@@ -55,6 +55,12 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         assert "background: transparent;" in block
 
 
+def test_invoke_dialog_css_has_role_selector_layout() -> None:
+    assert "#invoke-role {" in css.NEW_AGENT_CSS
+    assert "#invoke-role RadioButton {" in css.NEW_AGENT_CSS
+    assert "max-height: 22;" in css.NEW_AGENT_CSS
+
+
 def test_dependency_dialog_css_has_expected_spacing() -> None:
     assert "max-height: 24;" in css.DEPENDENCY_SELECT_CSS
     assert "#dependency-select-buttons {" in css.DEPENDENCY_SELECT_CSS

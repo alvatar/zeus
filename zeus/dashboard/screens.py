@@ -15,6 +15,8 @@ from textual.widgets import (
     Button,
     Input,
     Label,
+    RadioButton,
+    RadioSet,
     Select,
 )
 
@@ -57,9 +59,16 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
-            yield Label("Muster Hippeus")
+            yield Label("Invoke")
             yield Label("Name:")
             yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
+            yield Label("Type:")
+            yield RadioSet(
+                RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
+                RadioButton("Polemarch", id="invoke-role-polemarch"),
+                id="invoke-role",
+                compact=True,
+            )
             yield Label("Directory:")
             yield Input(
                 placeholder="e.g. /home/user/projects/backend",
@@ -68,7 +77,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             )
             with Horizontal(id="new-agent-buttons"):
                 yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Launch", variant="primary", id="launch-btn")
+                yield Button("Invoke", variant="primary", id="launch-btn")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "launch-btn":
@@ -82,6 +91,13 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         elif event.input.id == "agent-dir":
             self._launch()
 
+    def _selected_role(self) -> str:
+        role_set = self.query_one("#invoke-role", RadioSet)
+        pressed = role_set.pressed_button
+        if pressed is not None and pressed.id == "invoke-role-polemarch":
+            return "polemarch"
+        return "hippeus"
+
     def _launch(self) -> None:
         name: str = self.query_one("#agent-name", Input).value.strip()
         directory: str = (
@@ -90,18 +106,28 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if not name:
             self.query_one("#agent-name", Input).focus()
             return
+
+        role = self._selected_role()
+        agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
         env: dict[str, str] = os.environ.copy()
         env["AGENTMON_NAME"] = name
-        env["ZEUS_AGENT_ID"] = generate_agent_id()
+        env["ZEUS_AGENT_ID"] = agent_id
+        if role == "polemarch":
+            env["ZEUS_ROLE"] = "polemarch"
+
         subprocess.Popen(
             ["kitty", "--directory", directory, "--hold",
              "bash", "-lc", "pi"],
             env=env, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+        if role == "polemarch":
+            self.zeus.schedule_polemarch_bootstrap(agent_id, name)
+            self.zeus.notify(f"Invoked Polemarch: {name}", timeout=3)
+        else:
+            self.zeus.notify(f"Invoked Hippeus: {name}", timeout=3)
         self.dismiss()
-        self.zeus.notify(f"Launched: {name} (pi)", timeout=3)
         self.zeus.set_timer(1.5, self.zeus.poll_and_update)
 
 
@@ -698,7 +724,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Hippeis Management ───"),
-    ("z", "Muster Hippeus"),
+    ("z", "Invoke Hippeus / Polemarch"),
     ("a", "Bring Hippeus under the Aegis"),
     ("n", "Queue next task for selected Hippeus"),
     ("g", "Send 'go ahead' to selected Hippeus"),

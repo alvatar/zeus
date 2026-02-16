@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 import re
 import subprocess
+import textwrap
 import time
 
 from textual import events, work
@@ -268,7 +269,7 @@ class ZeusApp(App):
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
-        Binding("z", "new_agent", "Muster Hippeus"),
+        Binding("z", "new_agent", "Invoke"),
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("n", "queue_next_task", "Queue Task"),
         Binding("g", "go_ahead", "Go ahead"),
@@ -349,6 +350,7 @@ class ZeusApp(App):
     _prepare_target_selection: dict[int, str] = {}
     _agent_tasks: dict[str, str] = {}
     _agent_message_drafts: dict[str, str] = {}
+    _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
     _aegis_enabled: set[str] = set()
@@ -622,6 +624,7 @@ class ZeusApp(App):
         """Apply gathered data to the UI (runs on the main thread)."""
         old_states = self.prev_states
         self._commit_poll_state(r)
+        self._deliver_pending_polemarch_bootstraps()
 
         state_changed_any = self._any_agent_state_changed(old_states)
         self._update_action_needed(old_states)
@@ -914,7 +917,7 @@ class ZeusApp(App):
         if not self.agents:
             status = self.query_one("#status-line", Static)
             status.update(
-                "  No tracked Hippeis — press [bold]c[/] to create one, "
+                "  No tracked Hippeis — press [bold]z[/] to invoke one, "
                 "or open a terminal with $mod+Return and type a name"
             )
             return False
@@ -1161,17 +1164,15 @@ class ZeusApp(App):
             return c[:40] or "—"
 
         def _add_tmux_rows(a: AgentWindow, indent_level: int = 1) -> None:
-            tmux_prefix = f"{'  ' * indent_level}└ 🔍 "
-            for sess in a.tmux_sessions:
-                age_s: int = (
-                    int(time.time()) - sess.created if sess.created else 0
-                )
+            def _add_tmux_session_row(sess: TmuxSession, *, prefix: str) -> None:
+                age_s: int = int(time.time()) - sess.created if sess.created else 0
                 if age_s >= 3600:
                     age_str = f"{age_s // 3600}h{(age_s % 3600) // 60}m"
                 elif age_s >= 60:
                     age_str = f"{age_s // 60}m"
                 else:
                     age_str = f"{age_s}s"
+
                 tmux_name: str | Text
                 tmux_cmd: str | Text
                 tmux_age: str | Text
@@ -1205,19 +1206,21 @@ class ZeusApp(App):
                         f"↑{fmt_bytes(pm.io_write_bps)}"
                     )
                     net_t = net_str
+
                 if sess.attached:
-                    tmux_name = f"{tmux_prefix}{sess.name}"
+                    tmux_name = f"{prefix}{sess.name}"
                     tmux_cmd = cleaned_cmd
                     tmux_age = f"⏱ {age_str} ●"
                 else:
                     dim: str = "#555555"
-                    tmux_name = Text(f"{tmux_prefix}{sess.name}", style=dim)
+                    tmux_name = Text(f"{prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(f"⏱ {age_str}", style=dim)
                     cpu_t = Text(str(cpu_t), style=dim) if str(cpu_t) else ""
                     ram_t = Text(str(ram_t), style=dim) if str(ram_t) else ""
                     gpu_t = Text(str(gpu_t), style=dim) if str(gpu_t) else ""
                     net_t = Text(str(net_t), style=dim) if str(net_t) else ""
+
                 tmux_key: str = f"tmux:{sess.name}"
                 state_placeholder = Text(" " * state_col_width, style="on #000000")
                 tcells: dict[str, str | Text] = {
@@ -1239,6 +1242,52 @@ class ZeusApp(App):
                 cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
                 row = [tcells.get(c, "") for c in cols]
                 table.add_row(*row, key=tmux_key)
+
+            hoplites = [
+                sess
+                for sess in a.tmux_sessions
+                if self._is_hoplite_session_for(a, sess)
+            ]
+            viewer_sessions = [
+                sess
+                for sess in a.tmux_sessions
+                if not self._is_hoplite_session_for(a, sess)
+            ]
+
+            if hoplites:
+                state_placeholder = Text(" " * state_col_width, style="on #000000")
+                phalanx_key = f"phalanx:{self._agent_key(a)}"
+                phalanx_label = Text(
+                    f"{'  ' * indent_level}└ 🛡 Phalanx ({len(hoplites)})",
+                    style="bold #c7b45a",
+                )
+                phalanx_cells: dict[str, str | Text] = {
+                    "State": state_placeholder,
+                    "P": "",
+                    "◉": "",
+                    "■": "",
+                    "Name": phalanx_label,
+                    "Elapsed": "",
+                    "Model/Cmd": hoplites[0].phalanx_id or "",
+                    "CPU": "",
+                    "RAM": "",
+                    "GPU": "",
+                    "Net": "",
+                    "WS": "",
+                    "CWD": "",
+                    "Tokens": "",
+                }
+                cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
+                header_row = [phalanx_cells.get(c, "") for c in cols]
+                table.add_row(*header_row, key=phalanx_key)
+
+                hoplite_prefix = f"{'  ' * (indent_level + 1)}└ ⚔ "
+                for sess in hoplites:
+                    _add_tmux_session_row(sess, prefix=hoplite_prefix)
+
+            viewer_prefix = f"{'  ' * indent_level}└ 🔍 "
+            for sess in viewer_sessions:
+                _add_tmux_session_row(sess, prefix=viewer_prefix)
 
         rendered_agents: set[str] = set()
 
@@ -1617,6 +1666,15 @@ class ZeusApp(App):
             if sess in a.tmux_sessions:
                 return a
         return None
+
+    @staticmethod
+    def _is_hoplite_session_for(agent: AgentWindow, sess: TmuxSession) -> bool:
+        """Return True only for Polemarch-owned AGENT hoplite sessions."""
+        if (sess.role or "").strip().lower() != "hoplite":
+            return False
+        if not sess.owner_id or not agent.agent_id or sess.owner_id != agent.agent_id:
+            return False
+        return bool((sess.phalanx_id or "").strip())
 
     # ── Actions ───────────────────────────────────────────────────────
 
@@ -2927,6 +2985,65 @@ class ZeusApp(App):
             self.poll_and_update()
 
     # ── New / Sub-agent / Rename ──────────────────────────────────────
+
+    def schedule_polemarch_bootstrap(self, agent_id: str, requested_name: str) -> None:
+        """Queue a one-time bootstrap message for a newly invoked Polemarch."""
+        clean_id = agent_id.strip()
+        if not clean_id:
+            return
+        self._pending_polemarch_bootstraps[clean_id] = requested_name.strip() or clean_id
+
+    def _polemarch_bootstrap_message(self, polemarch_name: str) -> str:
+        return textwrap.dedent(
+            f"""
+            You are {polemarch_name}, the Polemarch of this Phalanx.
+
+            Role:
+            - Analyze the global problem.
+            - Split it into independent parallel work packets.
+            - Instantiate Hoplites for each packet.
+            - Coordinate outputs and synthesize final results.
+
+            Hoplite instantiation contract (use exactly this):
+
+            POLEMARCH_ID="${{ZEUS_AGENT_ID:?missing ZEUS_AGENT_ID}}"
+            PHALANX_ID="phalanx-${{POLEMARCH_ID}}"
+            HOPLITE_ID="$(python - <<'PY'
+            import uuid; print(uuid.uuid4().hex)
+            PY
+            )"
+            SESSION="hoplite-${{HOPLITE_ID:0:8}}"
+            HOPLITE_NAME="hoplite-${{HOPLITE_ID:0:4}}"
+
+            tmux new-session -d -s "$SESSION" -c "$PWD" \
+              "ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite AGENTMON_NAME=$HOPLITE_NAME exec pi"
+
+            tmux set-option -t "$SESSION" @zeus_owner "$POLEMARCH_ID"
+            tmux set-option -t "$SESSION" @zeus_role "hoplite"
+            tmux set-option -t "$SESSION" @zeus_phalanx "$PHALANX_ID"
+
+            Important:
+            - Only AGENT-based tmux sessions initialized with this contract are Hoplites.
+            - Generic tmux viewer sessions are not Hoplites and not part of your Phalanx.
+            """
+        ).strip()
+
+    def _deliver_pending_polemarch_bootstraps(self) -> None:
+        if not self._pending_polemarch_bootstraps:
+            return
+
+        agents_by_id = {a.agent_id: a for a in self.agents if a.agent_id}
+        for agent_id in list(self._pending_polemarch_bootstraps.keys()):
+            polemarch = agents_by_id.get(agent_id)
+            if polemarch is None:
+                continue
+
+            self._send_text_to_agent(
+                polemarch,
+                self._polemarch_bootstrap_message(polemarch.name),
+            )
+            self.notify(f"Polemarch bootstrap sent: {polemarch.name}", timeout=3)
+            self._pending_polemarch_bootstraps.pop(agent_id, None)
 
     def action_new_agent(self) -> None:
         self.push_screen(NewAgentScreen())

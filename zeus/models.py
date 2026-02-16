@@ -20,6 +20,8 @@ class TmuxSession:
     pane_pid: int = 0          # shell PID inside the tmux pane
     owner_id: str = ""        # tmux @zeus_owner (deterministic owner)
     env_agent_id: str = ""    # ZEUS_AGENT_ID from tmux session env
+    role: str = ""            # tmux @zeus_role (e.g. hoplite)
+    phalanx_id: str = ""      # tmux @zeus_phalanx
     match_source: str = ""    # owner-id/env-id/cwd/screen-exact/screen-fallback
     _proc_metrics: Optional['ProcessMetrics'] = None
 

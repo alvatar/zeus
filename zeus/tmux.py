@@ -52,15 +52,30 @@ def _deduplicate_update_environment(entries: set[str]) -> None:
     )
 
 
-def _read_tmux_owner_id(session_name: str) -> str:
-    """Read session option @zeus_owner, if present."""
+def _read_tmux_option(session_name: str, option_name: str) -> str:
+    """Read a tmux session option value, returning empty string when missing."""
     r = _run_tmux(
-        ["tmux", "show-options", "-t", session_name, "-qv", "@zeus_owner"],
+        ["tmux", "show-options", "-t", session_name, "-qv", option_name],
         timeout=2,
     )
     if r is None or r.returncode != 0:
         return ""
     return r.stdout.strip()
+
+
+def _read_tmux_owner_id(session_name: str) -> str:
+    """Read session option @zeus_owner, if present."""
+    return _read_tmux_option(session_name, "@zeus_owner")
+
+
+def _read_tmux_role(session_name: str) -> str:
+    """Read session option @zeus_role, if present."""
+    return _read_tmux_option(session_name, "@zeus_role")
+
+
+def _read_tmux_phalanx(session_name: str) -> str:
+    """Read session option @zeus_phalanx, if present."""
+    return _read_tmux_option(session_name, "@zeus_phalanx")
 
 
 def _read_tmux_env_agent_id(session_name: str) -> str:
@@ -131,6 +146,8 @@ def discover_tmux_sessions() -> list[TmuxSession]:
 
         owner_id = _read_tmux_owner_id(name)
         env_agent_id = _read_tmux_env_agent_id(name)
+        role = _read_tmux_role(name)
+        phalanx_id = _read_tmux_phalanx(name)
 
         sessions.append(
             TmuxSession(
@@ -142,6 +159,8 @@ def discover_tmux_sessions() -> list[TmuxSession]:
                 pane_pid=pane_pid,
                 owner_id=owner_id,
                 env_agent_id=env_agent_id,
+                role=role,
+                phalanx_id=phalanx_id,
             )
         )
     return sessions

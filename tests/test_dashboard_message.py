@@ -8,7 +8,12 @@ from zeus.models import AgentWindow
 from tests.helpers import capture_kitty_cmd, capture_notify
 
 
-def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindow:
+def _agent(
+    name: str,
+    kitty_id: int,
+    socket: str = "/tmp/kitty-1",
+    agent_id: str = "",
+) -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
         socket=socket,
@@ -16,6 +21,7 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
         pid=100 + kitty_id,
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
+        agent_id=agent_id,
     )
 
 
@@ -25,6 +31,7 @@ def _new_app() -> ZeusApp:
     app._agent_priorities = {}
     app._agent_tasks = {}
     app._agent_message_drafts = {}
+    app._pending_polemarch_bootstraps = {}
     return app
 
 
@@ -143,6 +150,39 @@ def test_action_go_ahead_rejects_paused_or_blocked_target(monkeypatch) -> None:
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
     assert sent == []
+
+
+def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -> None:
+    app = _new_app()
+    polemarch = _agent("planner", 1, agent_id="polemarch-1")
+    app.agents = [polemarch]
+
+    sent = capture_kitty_cmd(monkeypatch)
+    notices = capture_notify(app, monkeypatch)
+
+    app.schedule_polemarch_bootstrap("polemarch-1", "planner")
+    app._deliver_pending_polemarch_bootstraps()
+
+    assert sent
+    message = sent[0][1][-1]
+    assert isinstance(message, str)
+    assert "You are planner, the Polemarch of this Phalanx." in message
+    assert "tmux new-session -d -s \"$SESSION\" -c \"$PWD\"" in message
+    assert "@zeus_role \"hoplite\"" in message
+    assert notices[-1] == "Polemarch bootstrap sent: planner"
+    assert app._pending_polemarch_bootstraps == {}
+
+
+def test_pending_polemarch_bootstrap_waits_until_agent_visible(monkeypatch) -> None:
+    app = _new_app()
+
+    sent = capture_kitty_cmd(monkeypatch)
+
+    app.schedule_polemarch_bootstrap("polemarch-1", "planner")
+    app._deliver_pending_polemarch_bootstraps()
+
+    assert sent == []
+    assert app._pending_polemarch_bootstraps == {"polemarch-1": "planner"}
 
 
 def test_enter_on_table_opens_message_dialog_when_input_hidden(monkeypatch) -> None:

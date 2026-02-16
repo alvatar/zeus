@@ -37,7 +37,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Send text between %%%% markers to selected target"
     )
     assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
-    assert entries["z"] == "Muster Hippeus"
+    assert entries["z"] == "Invoke Hippeus / Polemarch"
     assert entries["a"] == "Bring Hippeus under the Aegis"
     assert entries["n"] == "Queue next task for selected Hippeus"
     assert entries["g"] == "Send 'go ahead' to selected Hippeus"
@@ -75,7 +75,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
 
     mgmt_entries = [
-        ("z", "Muster Hippeus"),
+        ("z", "Invoke Hippeus / Polemarch"),
         ("a", "Bring Hippeus under the Aegis"),
         ("n", "Queue next task for selected Hippeus"),
         ("g", "Send 'go ahead' to selected Hippeus"),
