@@ -21,7 +21,8 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Hippeus / Hippeis** — singular/plural term for tracked workers.
 - **Polemarch** — parent/commander term (reserved for future functionality).
 - **Phalanx / Phalanges** — singular/plural term for a Polemarch-led worker group.
-- **Hoplite / Hoplites** — subordinate agents inside a Phalanx; not full Hippeis unless promoted.
+- **Hoplite / Hoplites** — AGENT-based subordinate agents initialized by a Polemarch and associated with that Polemarch’s Phalanx; not full Hippeis unless promoted.
+- **tmux session** — generic viewer row/session; not a Hoplite and not a Phalanx member.
 
 Canonical naming rules live in `docs/specs/terminology.md`.
 
