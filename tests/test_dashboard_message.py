@@ -170,6 +170,7 @@ def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -
     message = sent[0][1][-1]
     assert isinstance(message, str)
     assert "You are planner, the Polemarch of this Phalanx." in message
+    assert "The Oracle (the user) will send your concrete task in the following message." in message
     assert "tmux new-session -d -s \"$SESSION\" -c \"$PWD\"" in message
     assert "@zeus_role \"hoplite\"" in message
     assert notices[-1] == "Polemarch bootstrap sent: planner"

@@ -2998,6 +2998,11 @@ class ZeusApp(App):
             f"""
             You are {polemarch_name}, the Polemarch of this Phalanx.
 
+            Introduction context:
+            - This message is onboarding only.
+            - The Oracle (the user) will send your concrete task in the following message.
+            - Do not execute task work until that Oracle instruction arrives.
+
             Role:
             - Analyze the global problem.
             - Split it into independent parallel work packets.
