@@ -1586,10 +1586,14 @@ class ZeusApp(App):
         for a in top_level:
             groups.append((a, children_of.get(a.name, [])))
 
-        # Render as box cards: top bar + content row per group
+        # Render as box cards. Pack by available width and keep each card's
+        # label directly under its marker row.
         self._minimap_agents = []
-        cards_top: list[str] = []
-        cards_bot: list[str] = []
+        sep = "  "
+        sep_w = len(sep)
+        max_w = max(20, int(getattr(getattr(mini, "size", None), "width", 0) or 0))
+
+        cards: list[tuple[str, str, int]] = []
         for parent, kids in groups:
             pc = _agent_color(parent)
             pri = self._get_priority(parent.name)
@@ -1599,7 +1603,8 @@ class ZeusApp(App):
             self._minimap_agents.append(parent.name)
 
             # Sub-agents inline
-            subs: list[str] = []
+            subs_markup: list[str] = []
+            subs_plain: list[str] = []
             for child in kids:
                 cc = _agent_color(child)
                 cpri = self._get_priority(child.name)
@@ -1607,32 +1612,52 @@ class ZeusApp(App):
                 cn = _compact_name(child.name, SETTINGS.minimap.max_sub_name_length)
                 cidx = len(self._minimap_agents)
                 self._minimap_agents.append(child.name)
-                subs.append(
+                subs_markup.append(
                     f"[#333333]┊[/] [@click=app.select_minimap({cidx})][{cs}]{cn}[/][/]"
                 )
+                subs_plain.append(f"┊ {cn}")
 
-            # Card width: calculate visible content width
-            sub_text = " ".join(subs)
             inner = f"[@click=app.select_minimap({pidx})][{style}]{name}[/][/]"
-            if subs:
-                inner += f" {sub_text}"
+            if subs_markup:
+                inner += f" {' '.join(subs_markup)}"
 
-            # Top bar: colored ▄ blocks
-            bar_len = len(name) + 1
-            for child in kids:
-                bar_len += len(_compact_name(child.name, SETTINGS.minimap.max_sub_name_length)) + 3
-            bar_len = max(bar_len, 8)
+            bottom_plain = f" {name}"
+            if subs_plain:
+                bottom_plain += f" {' '.join(subs_plain)}"
 
-            cards_top.append(f"[{pc}]{'▄' * bar_len}[/]")
-            cards_bot.append(f" {inner}")
+            card_w = max(len(bottom_plain), 8)
+            top_line = f"[{pc}]{'▄' * card_w}[/]"
+            bottom_line = f" {inner}"
+            cards.append((top_line, bottom_line, card_w))
 
-        # Join cards with spacing
-        sep_top = "  "
-        sep_bot = "  "
-        line1 = sep_top.join(cards_top)
-        line2 = sep_bot.join(cards_bot)
+        lines: list[str] = []
+        row_top: list[str] = []
+        row_bot: list[str] = []
+        row_w = 0
 
-        mini.update(f"{line1}\n{line2}")
+        def _flush_row() -> None:
+            nonlocal row_top, row_bot, row_w
+            if not row_top:
+                return
+            lines.append(sep.join(row_top))
+            lines.append(sep.join(row_bot))
+            row_top = []
+            row_bot = []
+            row_w = 0
+
+        for top_line, bottom_line, card_w in cards:
+            next_w = card_w if not row_top else row_w + sep_w + card_w
+            if row_top and next_w > max_w:
+                _flush_row()
+                next_w = card_w
+
+            row_top.append(top_line)
+            row_bot.append(bottom_line)
+            row_w = next_w
+
+        _flush_row()
+
+        mini.update("\n".join(lines))
 
     def _celebration_ready(self, *, now: float | None = None) -> bool:
         started = self._celebration_cooldown_started_at
