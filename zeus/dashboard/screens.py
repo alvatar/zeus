@@ -116,8 +116,16 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-notes-dialog"):
-            yield Label(f"Notes for [bold]{self.agent.name}[/bold]")
-            yield Label("Personal TODO / context")
+            yield Label("Hippeus Tasks")
+            yield Label(f"For [bold]{self.agent.name}[/bold]")
+            yield Label(
+                "Press H in the Hippeis table to queue the next pending task "
+                "and mark it done."
+            )
+            yield Label(
+                "Task format: '- [ ] task'. Multi-line tasks continue until the "
+                "next '- [ ]' or '- [x]' line."
+            )
             yield TextArea(self.note, id="agent-notes-input")
             with Horizontal(id="agent-notes-buttons"):
                 yield Button("Cancel", variant="default", id="agent-notes-cancel-btn")
@@ -639,6 +647,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Hippeis Management ───"),
     ("c", "Muster Hippeus"),
     ("a", "Bring Hippeus under the Aegis"),
+    ("h", "Queue next task from notes for selected Hippeus"),
     ("n", "Edit notes for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
@@ -651,7 +660,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("r", "Rename Hippeus / tmux"),
     ("", "─── Dialogs ───"),
     ("Esc (dialog)", "Close/cancel active dialog"),
-    ("Ctrl+s (notes dialog)", "Save notes in Hippeus Notes dialog"),
+    ("Ctrl+s (notes dialog)", "Save notes in Hippeus Tasks dialog"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),

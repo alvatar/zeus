@@ -122,6 +122,8 @@ def _compact_name(name: str, maxlen: int) -> str:
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
 _SHARE_MARKER = "%%%%"
+_TASK_PENDING_RE = re.compile(r"^(\s*-\s*)\[\s\](\s*)(.*)$")
+_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*")
 
 
 def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
@@ -180,6 +182,57 @@ def _extract_share_payload(text: str) -> str | None:
     return "\n".join(lines[start + 1:end]).strip()
 
 
+def _extract_next_note_task(note: str) -> tuple[str, str] | None:
+    """Extract next task message from notes and return updated notes text.
+
+    Priority:
+    1. First ``- [ ]`` block (continues until next ``- [ ]`` or ``- [x]`` line).
+       The selected task is marked done in-place as ``- [x]``.
+    2. If no checkbox task exists, consume the first non-empty line.
+    """
+    lines = note.splitlines()
+    if not lines:
+        return None
+
+    pending_index: int | None = None
+    pending_match: re.Match[str] | None = None
+    for idx, line in enumerate(lines):
+        match = _TASK_PENDING_RE.match(line)
+        if match is None:
+            continue
+        pending_index = idx
+        pending_match = match
+        break
+
+    if pending_index is not None and pending_match is not None:
+        end = len(lines)
+        for idx in range(pending_index + 1, len(lines)):
+            if _TASK_HEADER_RE.match(lines[idx]):
+                end = idx
+                break
+
+        block = lines[pending_index:end]
+        first_content = pending_match.group(3)
+        message_lines: list[str] = [first_content] if first_content else []
+        message_lines.extend(line.rstrip() for line in block[1:])
+        message = "\n".join(message_lines).strip()
+
+        lines[pending_index] = (
+            f"{pending_match.group(1)}[x]{pending_match.group(2)}{pending_match.group(3)}"
+        )
+        updated_notes = "\n".join(lines).rstrip()
+        return message, updated_notes
+
+    first_non_empty = next((idx for idx, line in enumerate(lines) if line.strip()), None)
+    if first_non_empty is None:
+        return None
+
+    message = lines[first_non_empty].strip()
+    del lines[first_non_empty]
+    updated_notes = "\n".join(lines).rstrip()
+    return message, updated_notes
+
+
 def _with_notes_column(order: tuple[str, ...]) -> tuple[str, ...]:
     """Ensure notes column exists directly after context column."""
     if "■" in order:
@@ -212,6 +265,7 @@ class ZeusApp(App):
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("c", "new_agent", "Muster Hippeus"),
         Binding("a", "toggle_aegis", "Aegis"),
+        Binding("h", "queue_next_note_task", "Queue Task"),
         Binding("n", "agent_notes", "Notes"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
@@ -2667,6 +2721,41 @@ class ZeusApp(App):
             self.notify(f"Cleared notes: {agent.name}", timeout=2)
         self._save_agent_notes()
         self.poll_and_update()
+
+    def action_queue_next_note_task(self) -> None:
+        """H: queue next task from selected Hippeus notes."""
+        if self._should_ignore_table_action():
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to queue next task", timeout=2)
+            return
+
+        key = self._agent_notes_key(agent)
+        note = self._agent_notes.get(key, "")
+        extracted = _extract_next_note_task(note)
+        if extracted is None:
+            self.notify(f"No note task found for {agent.name}", timeout=2)
+            return
+
+        message, updated_notes = extracted
+        if not message.strip():
+            self.notify("Next note task is empty; nothing queued", timeout=2)
+            return
+
+        self._queue_text_to_agent(agent, message)
+
+        if updated_notes.strip():
+            self._agent_notes[key] = updated_notes
+        else:
+            self._agent_notes.pop(key, None)
+
+        self._save_agent_notes()
+        self.notify(f"Queued next task from notes: {agent.name}", timeout=3)
+        self._render_agent_table_and_status()
+        if self._interact_visible:
+            self._refresh_interact_panel()
 
     def action_toggle_aegis(self) -> None:
         """A: toggle Aegis automation for the selected Hippeus row."""

@@ -22,6 +22,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     )
     assert entries["c"] == "Muster Hippeus"
     assert entries["a"] == "Bring Hippeus under the Aegis"
+    assert entries["h"] == "Queue next task from notes for selected Hippeus"
     assert entries["n"] == "Edit notes for selected Hippeus"
     assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected Hippeus"
 
@@ -52,6 +53,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     mgmt_entries = [
         ("c", "Muster Hippeus"),
         ("a", "Bring Hippeus under the Aegis"),
+        ("h", "Queue next task from notes for selected Hippeus"),
         ("n", "Edit notes for selected Hippeus"),
         ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
@@ -75,6 +77,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "Ctrl+o",
         "c",
         "a",
+        "h",
         "n",
         "Ctrl+i",
         "s",
@@ -102,7 +105,7 @@ def test_help_lists_modal_only_bindings() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
 
     assert entries["Esc (dialog)"] == "Close/cancel active dialog"
-    assert entries["Ctrl+s (notes dialog)"] == "Save notes in Hippeus Notes dialog"
+    assert entries["Ctrl+s (notes dialog)"] == "Save notes in Hippeus Tasks dialog"
     assert entries["y / n / Enter (kill confirm)"] == (
         "Confirm or cancel kill confirmation dialogs"
     )
