@@ -8,6 +8,7 @@ from zeus.dashboard.screens import (
     AgentTasksScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
+    NewAgentScreen,
 )
 
 _PLAIN_TEXTAREA_CALL_RE = re.compile(r"(?<!Zeus)TextArea\(")
@@ -68,3 +69,9 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert "agent-message-shortcuts-hint" in source
     assert "(Control-S send | Control-W queue)" in source
     assert "agent-message-title-row" in source
+
+
+def test_new_agent_dialog_defaults_directory_to_home_code() -> None:
+    source = _compose_source(NewAgentScreen)
+    assert 'value="~/code"' in source
+    assert "os.getcwd()" not in source

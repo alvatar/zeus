@@ -63,7 +63,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             yield Label("Directory:")
             yield Input(
                 placeholder="e.g. /home/user/projects/backend",
-                value=os.getcwd(),
+                value="~/code",
                 id="agent-dir",
             )
             with Horizontal(id="new-agent-buttons"):
