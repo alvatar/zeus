@@ -54,7 +54,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
-            yield Label("New Agent")
+            yield Label("New Hippeus")
             yield Label("Name:")
             yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
             yield Label("Directory:")
@@ -207,7 +207,7 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="subagent-dialog"):
             yield Label(
-                f"🧬 Fork sub-agent from [bold]{self.agent.name}[/bold]"
+                f"🧬 Fork sub-Hippeus from [bold]{self.agent.name}[/bold]"
             )
             yield Label(f"CWD: {self.agent.cwd}", classes="dim-label")
             yield Label("Name:")
@@ -250,7 +250,7 @@ class RenameScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rename-dialog"):
-            yield Label(f"Rename agent [bold]{self.agent.name}[/bold]")
+            yield Label(f"Rename Hippeus [bold]{self.agent.name}[/bold]")
             yield Label("New name:")
             yield Input(value=self.agent.name, id="rename-input")
             with Horizontal(id="rename-buttons"):
@@ -338,7 +338,7 @@ class ConfirmKillScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-kill-dialog"):
-            yield Label(f"Kill agent [bold]{self.agent.name}[/bold]?")
+            yield Label(f"Kill Hippeus [bold]{self.agent.name}[/bold]?")
             with Horizontal(id="confirm-kill-buttons"):
                 yield Button("Yes, kill", variant="error", id="yes-btn")
                 yield Button("No", variant="default", id="no-btn")
@@ -427,7 +427,7 @@ class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
                 yield Label(f"Source: {self.source_name}")
                 yield Label(f"Recipients: {self.recipient_count}")
                 if self.target_options:
-                    yield Label("Target agent (choose while preparing):")
+                    yield Label("Target Hippeus (choose while preparing):")
                     yield Select(
                         [(name, key) for name, key in self.target_options],
                         allow_blank=False,
@@ -556,7 +556,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
             yield Label(
                 f"Send marked block from [bold]{self.source_name}[/bold]"
             )
-            yield Label("Target agent:")
+            yield Label("Target Hippeus:")
             yield Select(
                 [(name, key) for name, key in self.target_options],
                 allow_blank=False,
@@ -618,16 +618,16 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
 _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Navigation ───"),
     ("Enter", "Focus interact input"),
-    ("Esc", "Back to agent table"),
+    ("Esc", "Back to Hippeis table"),
     ("Tab", "Toggle focus between table and interact input"),
-    ("Ctrl+Enter", "Teleport to agent / open tmux"),
+    ("Ctrl+Enter", "Teleport to Hippeus / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
     ("", "─── Global ───"),
     ("2", "Toggle mini-map"),
     ("3", "Toggle sparkline charts"),
     ("4", "Toggle interact target band"),
     ("", "─── Interact Panel ───"),
-    ("Ctrl+s", "Send message to agent / tmux"),
+    ("Ctrl+s", "Send message to Hippeus / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
     ("Ctrl+k", "Kill to end-of-line (or delete line if empty)"),
     ("Ctrl+u", "Clear input"),
@@ -636,21 +636,21 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Alt+b / Alt+f", "Move cursor one word left / right"),
     ("Alt+d / Alt+Backspace", "Delete word right / left"),
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),
-    ("", "─── Agent Management ───"),
-    ("c", "New agent"),
-    ("n", "Edit notes for selected agent"),
-    ("Ctrl+i", "Set/remove blocking dependency for selected agent"),
-    ("s", "Spawn sub-agent"),
-    ("q", "Stop agent (table focus)"),
-    ("Ctrl+q", "Stop agent (works from input too)"),
-    ("Ctrl+b", "Broadcast block between %%%% markers to active agents"),
-    ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
-    ("k", "Kill agent / tmux session"),
+    ("", "─── Hippeis Management ───"),
+    ("c", "New Hippeus"),
+    ("n", "Edit notes for selected Hippeus"),
+    ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
+    ("s", "Spawn sub-Hippeus"),
+    ("q", "Stop Hippeus (table focus)"),
+    ("Ctrl+q", "Stop Hippeus (works from input too)"),
+    ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
+    ("Ctrl+m", "Send block between %%%% markers to one selected active Hippeus"),
+    ("k", "Kill Hippeus / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
-    ("r", "Rename agent / tmux"),
+    ("r", "Rename Hippeus / tmux"),
     ("", "─── Dialogs ───"),
     ("Esc (dialog)", "Close/cancel active dialog"),
-    ("Ctrl+s (notes dialog)", "Save notes in Agent Notes dialog"),
+    ("Ctrl+s (notes dialog)", "Save notes in Hippeus Notes dialog"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),

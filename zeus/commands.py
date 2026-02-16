@@ -50,7 +50,7 @@ def cmd_new(args: argparse.Namespace) -> None:
 def cmd_ls(args: argparse.Namespace) -> None:
     agents = discover_agents()
     if not agents:
-        print("No tracked agents. Launch with: zeus new -n 'name'")
+        print("No tracked Hippeis. Launch with: zeus new -n 'name'")
         return
     pid_ws = build_pid_workspace_map()
     for a in agents:

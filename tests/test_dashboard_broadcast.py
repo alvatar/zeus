@@ -140,4 +140,4 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
     ]
     assert sent[4:] == expected_second
 
-    assert notices[-1] == "Broadcast from source queued to 2 agent(s)"
+    assert notices[-1] == "Broadcast from source queued to 2 Hippeis"

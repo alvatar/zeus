@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Zeus — Monitor and manage coding agents running in kitty windows.
+Zeus — Monitor and manage coding Hippeis running in kitty windows.
 
 Usage:
   zeus                              Live dashboard (default)
-  zeus new -n NAME [-d DIR]         Launch a new tracked kitty window
+  zeus new -n NAME [-d DIR]         Launch a new tracked Hippeus kitty window
   zeus ls                           One-shot text listing
-  zeus focus <ID>                   Focus a kitty window (sway)
-  zeus kill <ID>                    Close a kitty window
+  zeus focus <ID>                   Focus a Hippeus kitty window (sway)
+  zeus kill <ID>                    Close a Hippeus kitty window
 """
 
 import sys

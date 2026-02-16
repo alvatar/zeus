@@ -15,14 +15,14 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Yank killed text (system clipboard, fallback local kill buffer)"
     )
     assert entries["Ctrl+b"] == (
-        "Broadcast block between %%%% markers to active agents"
+        "Broadcast block between %%%% markers to active Hippeis"
     )
     assert entries["Ctrl+m"] == (
-        "Send block between %%%% markers to one selected active agent"
+        "Send block between %%%% markers to one selected active Hippeus"
     )
-    assert entries["c"] == "New agent"
-    assert entries["n"] == "Edit notes for selected agent"
-    assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected agent"
+    assert entries["c"] == "New Hippeus"
+    assert entries["n"] == "Edit notes for selected Hippeus"
+    assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected Hippeus"
 
     up_down_desc = entries["↑/↓"]
     assert "visual top/bottom" in up_down_desc
@@ -45,15 +45,15 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
 
 
 def test_help_groups_summary_shortcuts_under_agent_management() -> None:
-    agent_mgmt_idx = _HELP_BINDINGS.index(("", "─── Agent Management ───"))
+    agent_mgmt_idx = _HELP_BINDINGS.index(("", "─── Hippeis Management ───"))
     settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
 
     mgmt_entries = [
-        ("c", "New agent"),
-        ("n", "Edit notes for selected agent"),
-        ("Ctrl+i", "Set/remove blocking dependency for selected agent"),
-        ("Ctrl+b", "Broadcast block between %%%% markers to active agents"),
-        ("Ctrl+m", "Send block between %%%% markers to one selected active agent"),
+        ("c", "New Hippeus"),
+        ("n", "Edit notes for selected Hippeus"),
+        ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
+        ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
+        ("Ctrl+m", "Send block between %%%% markers to one selected active Hippeus"),
     ]
 
     for entry in mgmt_entries:
@@ -99,7 +99,7 @@ def test_help_lists_modal_only_bindings() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
 
     assert entries["Esc (dialog)"] == "Close/cancel active dialog"
-    assert entries["Ctrl+s (notes dialog)"] == "Save notes in Agent Notes dialog"
+    assert entries["Ctrl+s (notes dialog)"] == "Save notes in Hippeus Notes dialog"
     assert entries["y / n / Enter (kill confirm)"] == (
         "Confirm or cancel kill confirmation dialogs"
     )

@@ -204,17 +204,17 @@ class ZeusApp(App):
     TITLE = "Zeus"
     DEFAULT_CSS = APP_CSS
     BINDINGS = [
-        Binding("q", "stop_agent", "Stop Agent"),
-        Binding("ctrl+q", "force_stop_agent", "Stop Agent", show=False, priority=True),
+        Binding("q", "stop_agent", "Stop Hippeus"),
+        Binding("ctrl+q", "force_stop_agent", "Stop Hippeus", show=False, priority=True),
         Binding("f10", "quit", "Quit"),
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
-        Binding("c", "new_agent", "New Agent"),
+        Binding("c", "new_agent", "New Hippeus"),
         Binding("n", "agent_notes", "Notes"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
-        Binding("s", "spawn_subagent", "Sub-Agent"),
-        Binding("k", "kill_agent", "Kill Agent"),
+        Binding("s", "spawn_subagent", "Sub-Hippeus"),
+        Binding("k", "kill_agent", "Kill Hippeus"),
         Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
@@ -669,7 +669,7 @@ class ZeusApp(App):
         if not self.agents:
             status = self.query_one("#status-line", Static)
             status.update(
-                "  No tracked agents — press [bold]c[/] to create one, "
+                "  No tracked Hippeis — press [bold]c[/] to create one, "
                 "or open a terminal with $mod+Return and type a name"
             )
             return False
@@ -1031,7 +1031,7 @@ class ZeusApp(App):
         status = self.query_one("#status-line", Static)
         sort_label: str = self.sort_mode.value
         status.update(
-            f"  {len(self.agents)} agents  │  "
+            f"  {len(self.agents)} Hippeis  │  "
             f"[bold #00d7d7]{n_working} working[/]  "
             f"[bold #d7af00]{n_idle} idle[/]  │  "
             f"Sort: [bold]{sort_label}[/]  │  "
@@ -1642,10 +1642,10 @@ class ZeusApp(App):
 
         source = self._get_selected_agent()
         if not source:
-            self.notify("Broadcast source must be an agent row", timeout=2)
+            self.notify("Broadcast source must be a Hippeus row", timeout=2)
             return
         if self._is_input_blocked(source):
-            self.notify("Selected source is not active; pick another agent", timeout=2)
+            self.notify("Selected source is not active; pick another Hippeus", timeout=2)
             return
 
         source_key = self._agent_key(source)
@@ -1670,10 +1670,10 @@ class ZeusApp(App):
 
         source = self._get_selected_agent()
         if not source:
-            self.notify("Direct-message source must be an agent row", timeout=2)
+            self.notify("Direct-message source must be a Hippeus row", timeout=2)
             return
         if self._is_input_blocked(source):
-            self.notify("Selected source is not active; pick another agent", timeout=2)
+            self.notify("Selected source is not active; pick another Hippeus", timeout=2)
             return
 
         source_key = self._agent_key(source)
@@ -1715,7 +1715,7 @@ class ZeusApp(App):
             self.call_from_thread(
                 self._summary_prepare_failed,
                 job_id,
-                "Source agent is no longer available",
+                "Source Hippeus is no longer available",
                 2,
             )
             return
@@ -1857,7 +1857,7 @@ class ZeusApp(App):
             return
 
         self.notify(
-            f"Broadcast from {source_name} queued to {sent} agent(s)",
+            f"Broadcast from {source_name} queued to {sent} Hippeis",
             timeout=3,
         )
 
@@ -2514,7 +2514,7 @@ class ZeusApp(App):
             return
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("Select an agent row to edit notes", timeout=2)
+            self.notify("Select a Hippeus row to edit notes", timeout=2)
             return
         self.push_screen(AgentNotesScreen(agent, self._note_text_for_agent(agent)))
 
@@ -2537,7 +2537,7 @@ class ZeusApp(App):
 
         blocked_agent = self._get_selected_agent()
         if not blocked_agent:
-            self.notify("Select an agent row to set dependency", timeout=2)
+            self.notify("Select a Hippeus row to set dependency", timeout=2)
             return
 
         blocked_dep_key = self._agent_dependency_key(blocked_agent)
@@ -2559,7 +2559,7 @@ class ZeusApp(App):
             options.append((candidate.name, self._agent_dependency_key(candidate)))
 
         if not options:
-            self.notify("No other agents available as dependency targets", timeout=2)
+            self.notify("No other Hippeis available as dependency targets", timeout=2)
             return
 
         self.push_screen(DependencySelectScreen(blocked_agent, options))
@@ -2572,11 +2572,11 @@ class ZeusApp(App):
         blocked_dep_key = self._agent_dependency_key(blocked_agent)
         live_blocked = self._agent_by_dependency_key(blocked_dep_key)
         if live_blocked is None:
-            self.notify("Selected blocked agent is no longer active", timeout=2)
+            self.notify("Selected blocked Hippeus is no longer active", timeout=2)
             return
 
         if blocker_dep_key == blocked_dep_key:
-            self.notify("An agent cannot depend on itself", timeout=2)
+            self.notify("A Hippeus cannot depend on itself", timeout=2)
             return
 
         blocker = self._agent_by_dependency_key(blocker_dep_key)
@@ -2601,16 +2601,16 @@ class ZeusApp(App):
             return
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("No agent selected", timeout=2)
+            self.notify("No Hippeus selected", timeout=2)
             return
 
         if not agent.session_path:
             same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
             if len(same_cwd) > 1:
                 self.notify(
-                    "Cannot reliably fork this legacy agent: multiple agents "
+                    "Cannot reliably fork this legacy Hippeus: multiple Hippeis "
                     "share the same cwd without pinned sessions. "
-                    "Restart the parent agent and try again.",
+                    "Restart the parent Hippeus and try again.",
                     timeout=4,
                 )
                 return
@@ -2873,9 +2873,9 @@ class ZeusApp(App):
         """Return reason text when interact input must be disabled."""
         def _reason_for(agent: AgentWindow) -> str | None:
             if self._is_blocked(agent):
-                return "Agent is BLOCKED by dependency; input disabled"
+                return "Hippeus is BLOCKED by dependency; input disabled"
             if self._is_paused(agent):
-                return "Agent is PAUSED (priority 4); input disabled"
+                return "Hippeus is PAUSED (priority 4); input disabled"
             return None
 
         if self._interact_agent_key:
@@ -2978,7 +2978,7 @@ class ZeusApp(App):
 
         agent = self._get_agent_by_key(self._interact_agent_key)
         if not agent:
-            self.notify("Agent no longer available", timeout=2)
+            self.notify("Hippeus no longer available", timeout=2)
             return
         self._send_text_to_agent(agent, text)
         ta.clear()
@@ -3007,7 +3007,7 @@ class ZeusApp(App):
 
         agent = self._get_agent_by_key(self._interact_agent_key)
         if not agent:
-            self.notify("Agent no longer available", timeout=2)
+            self.notify("Hippeus no longer available", timeout=2)
             return
         # Keep Ctrl+W semantics on the long-standing queue path.
         self._queue_text_to_agent_interact(agent, text)

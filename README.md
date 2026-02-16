@@ -1,17 +1,27 @@
 # ⚡ Zeus
 
-TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechner/pi-coding-agent) coding agents running in [kitty](https://sw.kovidgoyal.net/kitty/) terminal windows on Linux (sway WM).
+TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechner/pi-coding-agent) coding Hippeis running in [kitty](https://sw.kovidgoyal.net/kitty/) terminal windows on Linux (sway WM).
 
 
 ## Features
 
-- **Live dashboard** — see all tracked agents at a glance: state (working/idle), model, context %, token count, sway workspace, working directory
+- **Live dashboard** — see all tracked Hippeis at a glance: state (working/idle), model, context %, token count, sway workspace, working directory
 - **State detection** — reads kitty terminal content to detect pi's spinner (working) or its absence (idle)
 - **Usage tracking** — shows Anthropic API usage (session/week/extra) with color-coded progress bars
-- **Sway integration** — jump to any agent's workspace with Enter, see which monitor/workspace each agent is on
-- **Notifications** — `notify-send` alert when an agent transitions from working → idle
+- **Sway integration** — jump to any Hippeus workspace with Enter, see which monitor/workspace each Hippeus is on
+- **Notifications** — `notify-send` alert when a Hippeus transitions from working → idle
 - **Deterministic tmux ownership** — sessions are matched by `ZEUS_AGENT_ID` / `@zeus_owner` first, with cwd/screen-text fallback for legacy sessions
-- **Agent launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
+- **Hippeus launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
+
+## Terminology
+
+- **Zeus** — the program itself.
+- **The Oracle** — the human operator and final authority.
+- **Hippeus / Hippeis** — singular/plural term for tracked workers.
+- **Phalanx / Phalanges** — singular/plural term for a Hippeis group.
+- **Polemarch** — reserved term for future commander functionality.
+
+Canonical naming rules live in `docs/specs/terminology.md`.
 
 ## Requirements
 
@@ -69,28 +79,28 @@ Then reload sway (`swaymsg reload`) and restart kitty.
 zeus
 
 # CLI commands
-zeus ls                              # List tracked agents
-zeus new -n "fix-auth" -d ~/project  # Launch a new tracked agent
-zeus focus fix-auth                  # Focus an agent's window
-zeus kill fix-auth                   # Close an agent's window
+zeus ls                              # List tracked Hippeis
+zeus new -n "fix-auth" -d ~/project  # Launch a new tracked Hippeus
+zeus focus fix-auth                  # Focus a Hippeus window
+zeus kill fix-auth                   # Close a Hippeus window
 ```
 
 ### Dashboard keybindings
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Navigate agents |
+| `↑` `↓` | Navigate Hippeis |
 | `Enter` | Focus interact input |
-| `Esc` | Return focus to agent table |
-| `Ctrl+Enter` | Teleport to selected agent / open tmux client |
+| `Esc` | Return focus to Hippeis table |
+| `Ctrl+Enter` | Teleport to selected Hippeus / open tmux client |
 | `Ctrl+S` | Send interact input |
 | `Ctrl+W` | Queue interact input (Alt+Enter in pi) |
 | `Ctrl+Y` | Paste clipboard text; if image, save temp file and insert path |
-| `q` | Stop selected agent (send ESC) |
-| `Ctrl+Q` | Stop selected agent from any focus (including input) |
-| `k` | Kill selected agent / tmux session (with confirmation) |
-| `n` | Launch new tracked agent |
-| `r` | Rename selected agent / tmux session |
+| `q` | Stop selected Hippeus (send ESC) |
+| `Ctrl+Q` | Stop selected Hippeus from any focus (including input) |
+| `k` | Kill selected Hippeus / tmux session (with confirmation) |
+| `n` | Launch new tracked Hippeus |
+| `r` | Rename selected Hippeus / tmux session |
 | `F4` | Toggle sort |
 | `F5` | Force refresh |
 | `F6` | Toggle split layout |
@@ -98,12 +108,12 @@ zeus kill fix-auth                   # Close an agent's window
 | `F8` | Toggle interact panel |
 | `F10` | Quit dashboard |
 
-In the interact input, when the input is empty, `↑` / `↓` browse the last 10 sent/queued messages for the selected agent.
+In the interact input, when the input is empty, `↑` / `↓` browse the last 10 sent/queued messages for the selected Hippeus.
 
 ### Sway launcher (`zeus-launch`)
 
 Bound to `$mod+Return`. Opens a bemenu prompt:
-- **Type a name** → launches a tracked kitty window (visible in the zeus dashboard)
+- **Type a name** → launches a tracked Hippeus kitty window (visible in the zeus dashboard)
 - **Press Enter empty** → launches a normal untracked kitty
 
 ### Independent `pi` windows
@@ -132,13 +142,13 @@ python3 -m pytest tests/ -v  # Tests
 ## How it works
 
 1. **Kitty remote control** — each kitty instance creates a Unix socket at `/tmp/kitty-{pid}`, enabling `kitty @ ls` and `kitty @ get-text` queries
-2. **Agent discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `AGENTMON_NAME` or pi heuristics (cmdline/title)
-3. **Agent identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `/tmp/zeus-agent-ids.json`)
+2. **Hippeus discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `AGENTMON_NAME` or pi heuristics (cmdline/title)
+3. **Hippeus identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `/tmp/zeus-agent-ids.json`)
 4. **tmux ownership** — sessions match by `@zeus_owner` first, then `ZEUS_AGENT_ID` from tmux session env, then cwd/screen heuristics; high-confidence matches are backfilled into `@zeus_owner`
 5. **State detection** — `kitty @ get-text` captures terminal content; pi's braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) indicate WORKING, absence indicates IDLE
 6. **Footer parsing** — extracts model name, context %, and token count from pi's usage-bars extension output
 7. **Usage data** — reads `/tmp/claude-usage-cache.json` (written by pi's usage-bars extension) for session/week/extra API usage
-8. **Sway mapping** — `swaymsg -t get_tree` maps kitty PIDs to workspaces; `swaymsg [pid=N] focus` switches to an agent's window
+8. **Sway mapping** — `swaymsg -t get_tree` maps kitty PIDs to workspaces; `swaymsg [pid=N] focus` switches to a Hippeus window
 
 ## Configuration
 

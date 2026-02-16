@@ -2,7 +2,7 @@
 
 ## Goal
 
-Map tmux sessions to agents without relying primarily on fragile heuristics (cwd/screen text).
+Map tmux sessions to Hippeis without relying primarily on fragile heuristics (cwd/screen text).
 
 ## Ownership model
 
@@ -12,16 +12,16 @@ Zeus uses three layers, in this order:
 2. `ZEUS_AGENT_ID` from tmux session environment (deterministic)
 3. Legacy heuristics (screen text / cwd)
 
-## Agent identity
+## Hippeus identity
 
-- Each tracked agent has an `agent_id` (`ZEUS_AGENT_ID`).
-- Zeus-launched agents are started with `ZEUS_AGENT_ID` in their environment.
-- Independently discovered agents (heuristic pi windows) are assigned a persisted id in:
+- Each tracked Hippeus has an `agent_id` (`ZEUS_AGENT_ID`).
+- Zeus-launched Hippeis are started with `ZEUS_AGENT_ID` in their environment.
+- Independently discovered Hippeis (heuristic pi windows) are assigned a persisted id in:
   - `/tmp/zeus-agent-ids.json` (`"socket:kitty_id" -> "agent_id"`)
 
 ## Backfill stamping
 
-When a tmux session is matched to an agent and `@zeus_owner` is missing, Zeus backfills:
+When a tmux session is matched to a Hippeus and `@zeus_owner` is missing, Zeus backfills:
 
 ```bash
 tmux set-option -t <session> @zeus_owner <agent_id>
