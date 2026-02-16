@@ -6,6 +6,7 @@ from zeus.dashboard.widgets import (
     state_sparkline_markup,
 )
 from zeus.dashboard.app import _compact_name
+from zeus.settings import SETTINGS
 
 
 # ── _compact_name ─────────────────────────────────────────────────────
@@ -101,17 +102,17 @@ def test_braille_sparkline_values_clipped():
 
 def test_state_sparkline_working_green():
     result = state_sparkline_markup(["WORKING", "WORKING"], width=1)
-    assert "#00ff00" in result
+    assert SETTINGS.state_colors.working in result
 
 
 def test_state_sparkline_idle_red():
     result = state_sparkline_markup(["IDLE", "IDLE"], width=1)
-    assert "#ff4444" in result
+    assert SETTINGS.state_colors.idle in result
 
 
-def test_state_sparkline_waiting_yellow():
+def test_state_sparkline_waiting_uses_configured_color():
     result = state_sparkline_markup(["WAITING", "WAITING"], width=1)
-    assert "#ffdd00" in result
+    assert SETTINGS.state_colors.waiting in result
 
 
 def test_state_sparkline_empty_states():
@@ -123,7 +124,7 @@ def test_state_sparkline_empty_states():
 def test_state_sparkline_mixed_pair_uses_urgent_color():
     """When a pair has WAITING + WORKING, WAITING color wins."""
     result = state_sparkline_markup(["WORKING", "WAITING"], width=1)
-    assert "#ffdd00" in result
+    assert SETTINGS.state_colors.waiting in result
 
 
 def test_state_sparkline_stable_pairing():

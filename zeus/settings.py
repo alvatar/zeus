@@ -66,6 +66,13 @@ class SparklineConfig:
 
 
 @dataclass
+class StateColorsConfig:
+    working: str
+    waiting: str
+    idle: str
+
+
+@dataclass
 class Settings:
     poll_interval: float
     summary_model: str
@@ -73,6 +80,7 @@ class Settings:
     columns: ColumnsConfig
     minimap: MinimapConfig
     sparkline: SparklineConfig
+    state_colors: StateColorsConfig
 
     # Raw merged dict kept for potential future use
     _raw: dict = field(default_factory=dict, repr=False)
@@ -123,6 +131,14 @@ def load_settings() -> Settings:
         name_width=int(sp.get("name_width", 12)),
     )
 
+    colors = raw.get("colors", {})
+    state_raw = colors.get("state", {})
+    state_colors = StateColorsConfig(
+        working=str(state_raw.get("working", "#00d700")),
+        waiting=str(state_raw.get("waiting", "#d78700")),
+        idle=str(state_raw.get("idle", "#ff3333")),
+    )
+
     return Settings(
         poll_interval=poll,
         summary_model=summary_model,
@@ -130,6 +146,7 @@ def load_settings() -> Settings:
         columns=columns,
         minimap=minimap,
         sparkline=sparkline,
+        state_colors=state_colors,
         _raw=raw,
     )
 

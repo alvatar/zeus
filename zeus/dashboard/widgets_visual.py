@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from textual.reactive import reactive
 from textual.widgets import Static
 from rich.text import Text
+
+from ..settings import SETTINGS
 
 
 # ── Braille sparkline ─────────────────────────────────────────────────
@@ -62,11 +66,11 @@ def braille_sparkline_markup(
     return "".join(parts)
 
 
-# State → (color, braille height 0–3)
-_STATE_SPARK: dict[str, tuple[str, int]] = {
-    "WORKING": ("#00ff00", 3),
-    "WAITING": ("#ffdd00", 2),
-    "IDLE": ("#ff4444", 1),
+# State → braille height 0–3
+_STATE_SPARK_HEIGHT: dict[str, int] = {
+    "WORKING": 3,
+    "WAITING": 2,
+    "IDLE": 1,
 }
 
 # Lifted fill tables — skip bottom row (row 3), use rows 2,1,0 only
@@ -74,11 +78,23 @@ _LEFT_FILL_UP = (0x00, 0x04, 0x06, 0x07)
 _RIGHT_FILL_UP = (0x00, 0x20, 0x30, 0x38)
 
 
+def _default_state_spark_colors() -> dict[str, str]:
+    """Default sparkline colors mapped from configured state colors."""
+    return {
+        "WORKING": SETTINGS.state_colors.working,
+        "WAITING": SETTINGS.state_colors.waiting,
+        "IDLE": SETTINGS.state_colors.idle,
+    }
+
+
 def state_sparkline_markup(
     states: list[str],
     width: int = 25,
+    colors: Mapping[str, str] | None = None,
 ) -> str:
     """Render state labels as a colored braille sparkline."""
+    palette: Mapping[str, str] = colors or _default_state_spark_colors()
+
     n = width * 2
     real = list(states[-n:]) if len(states) >= n else list(states)
     if len(real) % 2 == 1:
@@ -89,15 +105,17 @@ def state_sparkline_markup(
     parts: list[str] = []
     for i in range(0, len(vals), 2):
         s1, s2 = vals[i], vals[i + 1]
-        c1, h1 = _STATE_SPARK.get(s1, ("#222222", 0))
-        c2, h2 = _STATE_SPARK.get(s2, ("#222222", 0))
+        c1 = palette.get(s1, "#222222")
+        c2 = palette.get(s2, "#222222")
+        h1 = _STATE_SPARK_HEIGHT.get(s1, 0)
+        h2 = _STATE_SPARK_HEIGHT.get(s2, 0)
         code = _BRAILLE_BASE | _LEFT_FILL_UP[h1] | _RIGHT_FILL_UP[h2]
         if s1 == s2:
             color = c1
         elif "WAITING" in (s1, s2):
-            color = "#ffdd00"
+            color = palette.get("WAITING", "#222222")
         elif "WORKING" in (s1, s2):
-            color = "#00ff00"
+            color = palette.get("WORKING", "#222222")
         else:
             color = c1 if s1 else c2
         parts.append(f"[{color}]{chr(code)}[/]")

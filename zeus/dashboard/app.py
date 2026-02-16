@@ -694,6 +694,15 @@ class ZeusApp(App):
         self._cancel_aegis_delay_timer(key)
         self._cancel_aegis_check_timer(key)
 
+    @staticmethod
+    def _state_ui_color(label: str) -> str:
+        palette = {
+            "WORKING": SETTINGS.state_colors.working,
+            "WAITING": SETTINGS.state_colors.waiting,
+            "IDLE": SETTINGS.state_colors.idle,
+        }
+        return palette.get(label, "#666666")
+
     def _aegis_state_bg(self, key: str) -> str:
         if key not in self._aegis_enabled:
             return "#000000"
@@ -1005,17 +1014,17 @@ class ZeusApp(App):
             elif waiting:
                 icon = "⏸"
                 state_label = "WAITING"
-                state_color = "#d7af00"
+                state_color = self._state_ui_color("WAITING")
                 row_style = ""
             elif a.state == State.WORKING:
                 icon = "▶"
                 state_label = "WORKING"
-                state_color = "#00d700"
+                state_color = self._state_ui_color("WORKING")
                 row_style = ""
             else:
                 icon = "⏹"
                 state_label = "IDLE"
-                state_color = "#ff3333"
+                state_color = self._state_ui_color("IDLE")
                 row_style = ""
 
             if indent_level > 0:
@@ -1259,10 +1268,10 @@ class ZeusApp(App):
         mini.remove_class("hidden")
 
         _state_pri_colors: dict[str, tuple[str, str, str, str]] = {
-            #               P1          P2          P3          P4
-            "WORKING": ("#00ff00", "#006600", "#003300", "#1a2a1a"),
-            "WAITING": ("#ffdd00", "#776600", "#333300", "#2a2a1a"),
-            "IDLE":    ("#ff4444", "#771111", "#330a0a", "#2a1a1a"),
+            #               P1                           P2         P3         P4
+            "WORKING": (self._state_ui_color("WORKING"), "#006600", "#003300", "#1a2a1a"),
+            "WAITING": (self._state_ui_color("WAITING"), "#775500", "#332200", "#2a2a1a"),
+            "IDLE":    (self._state_ui_color("IDLE"),    "#771111", "#330a0a", "#2a1a1a"),
             "BLOCKED": ("#888888", "#666666", "#444444", "#1f1f1f"),
             "PAUSED":  ("#777777", "#555555", "#333333", "#1a1a1a"),
         }
