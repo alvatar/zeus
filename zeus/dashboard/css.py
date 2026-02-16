@@ -340,7 +340,7 @@ AgentMessageScreen {{
     "agent-message-buttons",
     align="left middle",
     width="100%",
-    button_margin="0 1 0 0",
+    button_margin="0 2 0 0",
 )}
 """
 

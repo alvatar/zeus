@@ -55,4 +55,4 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "#agent-message-input {" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-buttons {" in css.AGENT_MESSAGE_CSS
     assert "align: left middle;" in css.AGENT_MESSAGE_CSS
-    assert "margin: 0 1 0 0;" in css.AGENT_MESSAGE_CSS
+    assert "margin: 0 2 0 0;" in css.AGENT_MESSAGE_CSS
