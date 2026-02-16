@@ -29,7 +29,7 @@ class SortMode(Enum):
     ALPHA = "alpha"
 
 from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
-from ..notes import load_agent_tasks, save_agent_tasks
+from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
 from ..models import (
@@ -273,6 +273,7 @@ class ZeusApp(App):
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("h", "queue_next_task", "Queue Task"),
         Binding("t", "agent_tasks", "Tasks"),
+        Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("m", "agent_message", "Message"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
@@ -3046,6 +3047,35 @@ class ZeusApp(App):
 
         self._save_agent_tasks()
         self.notify(f"Queued next task: {agent.name}", timeout=3)
+        self._render_agent_table_and_status()
+        if self._interact_visible:
+            self._refresh_interact_panel()
+
+    def action_clear_done_tasks(self) -> None:
+        """Ctrl+T: clear all done tasks for selected Hippeus."""
+        if self._has_modal_open():
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to clear done tasks", timeout=2)
+            return
+
+        key = self._agent_tasks_key(agent)
+        task_text = self._agent_tasks.get(key, "")
+        updated_task_text, removed = clear_done_tasks(task_text)
+        if removed <= 0:
+            self.notify(f"No done tasks to clear for {agent.name}", timeout=2)
+            return
+
+        if updated_task_text.strip():
+            self._agent_tasks[key] = updated_task_text
+        else:
+            self._agent_tasks.pop(key, None)
+
+        self._save_agent_tasks()
+        suffix = "" if removed == 1 else "s"
+        self.notify(f"Cleared {removed} done task{suffix}: {agent.name}", timeout=2)
         self._render_agent_table_and_status()
         if self._interact_visible:
             self._refresh_interact_panel()

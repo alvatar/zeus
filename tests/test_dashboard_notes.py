@@ -122,3 +122,52 @@ def test_action_queue_next_task_notifies_when_no_task(monkeypatch) -> None:
     app.action_queue_next_task()
 
     assert notices[-1] == "No task found for alpha"
+
+
+def test_action_clear_done_tasks_clears_done_entries(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent("alpha", 1, agent_id="agent-1")
+    app._agent_tasks = {
+        "agent-1": "- [x] done one\n- [ ] keep this"
+    }
+
+    notices: list[str] = []
+    saves: list[bool] = []
+    renders: list[bool] = []
+
+    monkeypatch.setattr(app, "_has_modal_open", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    app._interact_visible = False
+
+    app.action_clear_done_tasks()
+
+    assert app._agent_tasks["agent-1"] == "- [ ] keep this"
+    assert notices[-1] == "Cleared 1 done task: alpha"
+    assert saves == [True]
+    assert renders == [True]
+
+
+def test_action_clear_done_tasks_notifies_when_none_found(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent("alpha", 1, agent_id="agent-1")
+    app._agent_tasks = {"agent-1": "- [ ] keep this"}
+
+    notices: list[str] = []
+    saves: list[bool] = []
+
+    monkeypatch.setattr(app, "_has_modal_open", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+
+    app.action_clear_done_tasks()
+
+    assert notices[-1] == "No done tasks to clear for alpha"
+    assert saves == []
