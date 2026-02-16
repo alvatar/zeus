@@ -347,6 +347,7 @@ class ZeusApp(App):
     _broadcast_active_job: int | None = None
     _prepare_target_selection: dict[int, str] = {}
     _agent_tasks: dict[str, str] = {}
+    _agent_message_drafts: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
     _aegis_enabled: set[str] = set()
@@ -1748,6 +1749,22 @@ class ZeusApp(App):
     def _agent_tasks_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
 
+    def _agent_message_draft_key(self, agent: AgentWindow) -> str:
+        return self._agent_identity_key(agent)
+
+    def _message_draft_for_agent(self, agent: AgentWindow) -> str:
+        return self._agent_message_drafts.get(self._agent_message_draft_key(agent), "")
+
+    def do_save_agent_message_draft(self, agent: AgentWindow, draft: str) -> None:
+        key = self._agent_message_draft_key(agent)
+        if draft:
+            self._agent_message_drafts[key] = draft
+        else:
+            self._agent_message_drafts.pop(key, None)
+
+    def do_clear_agent_message_draft(self, agent: AgentWindow) -> None:
+        self._agent_message_drafts.pop(self._agent_message_draft_key(agent), None)
+
     def _agent_dependency_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
 
@@ -2896,7 +2913,7 @@ class ZeusApp(App):
         if not agent:
             self.notify("Select a Hippeus row to message", timeout=2)
             return
-        self.push_screen(AgentMessageScreen(agent))
+        self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
 
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
         if self._is_blocked(agent):
@@ -2933,6 +2950,7 @@ class ZeusApp(App):
 
         live, clean = prepared
         self._send_text_to_agent(live, clean)
+        self.do_clear_agent_message_draft(live)
         return True
 
     def do_queue_agent_message(self, agent: AgentWindow, text: str) -> bool:
@@ -2942,6 +2960,7 @@ class ZeusApp(App):
 
         live, clean = prepared
         self._queue_text_to_agent_interact(live, clean)
+        self.do_clear_agent_message_draft(live)
         return True
 
     @staticmethod
@@ -2968,6 +2987,7 @@ class ZeusApp(App):
 
         self._agent_tasks[key] = updated
         self._save_agent_tasks()
+        self.do_clear_agent_message_draft(agent)
         self.notify(f"Added task: {agent.name}", timeout=2)
         self._render_agent_table_and_status()
         if self._interact_visible:
@@ -2985,6 +3005,7 @@ class ZeusApp(App):
 
         self._agent_tasks[key] = updated
         self._save_agent_tasks()
+        self.do_clear_agent_message_draft(agent)
         self.notify(f"Added task at start: {agent.name}", timeout=2)
         self._render_agent_table_and_status()
         if self._interact_visible:

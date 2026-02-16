@@ -169,14 +169,15 @@ class AgentTasksScreen(_ZeusScreenMixin, ModalScreen):
 class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
     CSS = AGENT_MESSAGE_CSS
     BINDINGS = [
-        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "send", "Send", show=False),
         Binding("ctrl+w", "queue", "Queue", show=False),
     ]
 
-    def __init__(self, agent: AgentWindow) -> None:
+    def __init__(self, agent: AgentWindow, draft: str = "") -> None:
         super().__init__()
         self.agent = agent
+        self.draft = draft
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-message-dialog"):
@@ -187,7 +188,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                     "(Control-S send | Control-W queue)",
                     id="agent-message-shortcuts-hint",
                 )
-            yield ZeusTextArea("", id="agent-message-input")
+            yield ZeusTextArea(self.draft, id="agent-message-input")
             with Horizontal(id="agent-message-buttons"):
                 yield Button(
                     "append as task",
@@ -231,6 +232,11 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_prepend_agent_message_task(self.agent, text):
             self.dismiss()
+
+    def action_cancel(self) -> None:
+        draft = self.query_one("#agent-message-input", ZeusTextArea).text
+        self.zeus.do_save_agent_message_draft(self.agent, draft)
+        self.dismiss()
 
 
 class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):

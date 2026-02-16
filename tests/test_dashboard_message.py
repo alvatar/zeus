@@ -22,6 +22,7 @@ def _new_app() -> ZeusApp:
     app._agent_dependencies = {}
     app._agent_priorities = {}
     app._agent_tasks = {}
+    app._agent_message_drafts = {}
     return app
 
 
@@ -43,10 +44,41 @@ def test_action_agent_message_pushes_message_screen(monkeypatch) -> None:
     assert screen.agent is agent
 
 
+def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+    app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
+
+    pushed: list[object] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_agent_message()
+
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, AgentMessageScreen)
+    assert screen.draft == "draft body"
+
+
+def test_do_save_agent_message_draft_roundtrip() -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    app.do_save_agent_message_draft(agent, "draft body")
+    assert app._message_draft_for_agent(agent) == "draft body"
+
+    app.do_save_agent_message_draft(agent, "")
+    assert app._message_draft_for_agent(agent) == ""
+
+
 def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
     app.agents = [agent]
+    app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     sent = capture_kitty_cmd(monkeypatch)
 
@@ -56,12 +88,14 @@ def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
     assert sent == [
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello\r"))
     ]
+    assert app._agent_message_drafts == {}
 
 
 def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
     app.agents = [agent]
+    app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     sent = capture_kitty_cmd(monkeypatch)
 
@@ -74,6 +108,7 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
     ]
+    assert app._agent_message_drafts == {}
 
 
 def test_message_dialog_send_rejects_paused_or_blocked_target(monkeypatch) -> None:
@@ -105,6 +140,7 @@ def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
     app._agent_tasks[app._agent_tasks_key(agent)] = "existing line"
+    app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     notices = capture_notify(app, monkeypatch)
     saves: list[bool] = []
@@ -126,12 +162,14 @@ def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:
     assert notices[-1] == "Added task: alpha"
     assert saves == [True]
     assert renders == [True]
+    assert app._agent_message_drafts == {}
 
 
 def test_do_prepend_agent_message_task_inserts_before_existing(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
     app._agent_tasks[app._agent_tasks_key(agent)] = "existing line"
+    app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     notices = capture_notify(app, monkeypatch)
     saves: list[bool] = []
@@ -153,6 +191,7 @@ def test_do_prepend_agent_message_task_inserts_before_existing(monkeypatch) -> N
     assert notices[-1] == "Added task at start: alpha"
     assert saves == [True]
     assert renders == [True]
+    assert app._agent_message_drafts == {}
 
 
 def test_do_add_agent_message_task_keeps_multiline_payload(monkeypatch) -> None:
@@ -209,6 +248,11 @@ def test_do_prepend_agent_message_task_rejects_empty_text(monkeypatch) -> None:
 
     assert ok is False
     assert saves == []
+
+
+def test_message_screen_escape_binding_saves_via_cancel_action() -> None:
+    bindings = {binding.key: binding.action for binding in AgentMessageScreen.BINDINGS}
+    assert bindings["escape"] == "cancel"
 
 
 def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:
