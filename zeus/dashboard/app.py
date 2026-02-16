@@ -157,6 +157,157 @@ def _compact_name(name: str, maxlen: int) -> str:
     return f"{first[:prefix_len]}…{last[-suffix_len:]}"
 
 
+def _middle_ellipsis(text: str, maxlen: int) -> str:
+    """Clamp text to maxlen using a centered ellipsis."""
+    if maxlen <= 0:
+        return ""
+    if len(text) <= maxlen:
+        return text
+    if maxlen == 1:
+        return "…"
+    left = (maxlen - 1) // 2
+    right = maxlen - 1 - left
+    return f"{text[:left]}…{text[-right:]}"
+
+
+_MODEL_THINKING_RE = re.compile(r"^(.*?)\s*\(([^()]+)\)\s*$")
+_MODEL_NUMBER_RE = re.compile(r"^\d+(?:\.\d+)?$")
+_MODEL_TOKEN_SHORT: dict[str, str] = {
+    "claude": "",
+    "sonnet": "sn",
+    "opus": "op",
+    "haiku": "hk",
+    "gpt": "g",
+    "gemini": "gm",
+    "deepseek": "ds",
+    "qwen": "qw",
+    "flash": "fl",
+    "turbo": "tb",
+    "mini": "mi",
+    "nano": "na",
+    "preview": "",
+    "latest": "",
+    "experimental": "ex",
+    "exp": "ex",
+}
+_THINKING_SHORT: dict[str, str] = {
+    "xhigh": "xh",
+    "high": "hi",
+    "medium": "md",
+    "med": "md",
+    "low": "lo",
+}
+_MODEL_FAMILY_WITH_VERSION = {"sn", "op", "hk", "g", "gm", "ds", "qw"}
+
+
+def _is_model_number(token: str) -> bool:
+    return bool(_MODEL_NUMBER_RE.fullmatch(token))
+
+
+def _compact_model_label(model: str, maxlen: int) -> str:
+    """Compact model labels to preserve family/version/thinking signal.
+
+    Examples:
+      - "anthropic/claude-sonnet-4-5 (xhigh)" -> "sn4.5 xh"
+      - "gpt-4.1-mini" -> "g4.1-mi"
+    """
+    if maxlen <= 0:
+        return ""
+
+    raw = (model or "").strip()
+    if not raw:
+        return "—"
+
+    thinking = ""
+    base = raw
+    think_match = _MODEL_THINKING_RE.match(raw)
+    if think_match:
+        base = think_match.group(1).strip()
+        thinking = think_match.group(2).strip().lower()
+
+    normalized = base.lower().replace("_", "-").strip()
+    if "/" in normalized:
+        normalized = normalized.rsplit("/", 1)[-1]
+    normalized = normalized.replace("claude-", "")
+    normalized = normalized.removesuffix("-latest")
+    normalized = normalized.removesuffix("-preview")
+    normalized = normalized.strip("-")
+
+    tokens = [t for t in normalized.split("-") if t]
+    mapped_tokens: list[str] = []
+    for token in tokens:
+        mapped = _MODEL_TOKEN_SHORT.get(token, token)
+        if mapped:
+            mapped_tokens.append(mapped)
+
+    # Combine common family+version forms to compact semantic labels.
+    compact_parts: list[str] = []
+    idx = 0
+    while idx < len(mapped_tokens):
+        token = mapped_tokens[idx]
+
+        if (
+            token in {"sn", "op", "hk"}
+            and idx + 2 < len(mapped_tokens)
+            and mapped_tokens[idx + 1].isdigit()
+            and mapped_tokens[idx + 2].isdigit()
+        ):
+            compact_parts.append(
+                f"{token}{mapped_tokens[idx + 1]}.{mapped_tokens[idx + 2]}"
+            )
+            idx += 3
+            continue
+
+        if (
+            _is_model_number(token)
+            and idx + 1 < len(mapped_tokens)
+            and mapped_tokens[idx + 1] in _MODEL_FAMILY_WITH_VERSION
+        ):
+            compact_parts.append(f"{mapped_tokens[idx + 1]}{token}")
+            idx += 2
+            continue
+
+        if (
+            token in _MODEL_FAMILY_WITH_VERSION
+            and idx + 1 < len(mapped_tokens)
+            and _is_model_number(mapped_tokens[idx + 1])
+        ):
+            compact_parts.append(f"{token}{mapped_tokens[idx + 1]}")
+            idx += 2
+            continue
+
+        compact_parts.append(token)
+        idx += 1
+
+    semantic_base = "-".join(compact_parts) if compact_parts else normalized
+
+    thinking_short = _THINKING_SHORT.get(
+        thinking, thinking[:2] if thinking else ""
+    )
+    semantic = (
+        f"{semantic_base} {thinking_short}"
+        if thinking_short
+        else semantic_base
+    )
+
+    if len(semantic) <= maxlen:
+        return semantic
+
+    dense_base = semantic_base.replace("-", "")
+    if thinking_short:
+        base_budget = maxlen - len(thinking_short) - 1
+        if base_budget > 0:
+            candidate = f"{_middle_ellipsis(dense_base, base_budget)} {thinking_short}"
+            if len(candidate) <= maxlen:
+                return candidate
+
+    dense_semantic = semantic.replace("-", "")
+    if len(dense_semantic) <= maxlen:
+        return dense_semantic
+
+    return _middle_ellipsis(semantic, maxlen)
+
+
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
 _SHARE_MARKER = "%%%%"
@@ -1205,9 +1356,9 @@ class ZeusApp(App):
                 ch = "●"
             return Text(ch, style=f"bold {_gradient_color(p)}")
 
-        state_col_width = (
-            self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
-        ).get("State", 10)
+        column_widths = self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
+        state_col_width = column_widths.get("State", 10)
+        model_col_width = column_widths.get("Model/Cmd", 21)
 
         def _add_agent_row(
             a: AgentWindow,
@@ -1348,7 +1499,11 @@ class ZeusApp(App):
                 "■": task_cell,
                 "Name": name_text,
                 "Elapsed": elapsed_text,
-                "Model/Cmd": Text(a.model or "—", style=row_style) if row_style else (a.model or "—"),
+                "Model/Cmd": (
+                    Text(_compact_model_label(a.model or "—", model_col_width), style=row_style)
+                    if row_style
+                    else _compact_model_label(a.model or "—", model_col_width)
+                ),
                 "CPU": cpu_cell,
                 "RAM": ram_cell,
                 "GPU": gpu_cell,
