@@ -1151,8 +1151,18 @@ class ZeusApp(App):
                 st = 1
             else:
                 st = 2  # IDLE
+
             changed_at: float = self.state_changed_at.get(akey, time.time())
-            return (p, st, changed_at, a.name.lower())
+            # For IDLE ties, newer-idle first and longer-idle lower.
+            # This keeps stale idle agents at the bottom of their
+            # priority+state bucket.
+            if st == 2:
+                idle_at = self.idle_since.get(akey, changed_at)
+                time_key = -idle_at
+            else:
+                time_key = changed_at
+
+            return (p, st, time_key, a.name.lower())
 
         def _alpha_sort_key(a: AgentWindow) -> str:
             return a.name.lower()
