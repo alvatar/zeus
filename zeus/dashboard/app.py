@@ -1062,14 +1062,21 @@ class ZeusApp(App):
                 state_color = self._state_ui_color("IDLE")
                 row_style = ""
 
+            hoplite_count = sum(
+                1
+                for sess in a.tmux_sessions
+                if self._is_hoplite_session_for(a, sess)
+            )
+            phalanx_marker = f" 🛡{hoplite_count}" if hoplite_count > 0 else ""
+
             if indent_level > 0:
                 branch_prefix = f"{'  ' * indent_level}└ "
                 if relation_icon:
-                    raw_name = f"{branch_prefix}{relation_icon} {a.name}"
+                    raw_name = f"{branch_prefix}{relation_icon} {a.name}{phalanx_marker}"
                 else:
-                    raw_name = f"{branch_prefix}{a.name}"
+                    raw_name = f"{branch_prefix}{a.name}{phalanx_marker}"
             else:
-                raw_name = a.name
+                raw_name = f"{a.name}{phalanx_marker}"
 
             name_text = Text(raw_name, style=row_style) if row_style else raw_name
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
@@ -1254,36 +1261,9 @@ class ZeusApp(App):
                 if not self._is_hoplite_session_for(a, sess)
             ]
 
-            if hoplites:
-                state_placeholder = Text(" " * state_col_width, style="on #000000")
-                phalanx_key = f"phalanx:{self._agent_key(a)}"
-                phalanx_label = Text(
-                    f"{'  ' * indent_level}└ 🛡 Phalanx ({len(hoplites)})",
-                    style="bold #c7b45a",
-                )
-                phalanx_cells: dict[str, str | Text] = {
-                    "State": state_placeholder,
-                    "P": "",
-                    "◉": "",
-                    "■": "",
-                    "Name": phalanx_label,
-                    "Elapsed": "",
-                    "Model/Cmd": hoplites[0].phalanx_id or "",
-                    "CPU": "",
-                    "RAM": "",
-                    "GPU": "",
-                    "Net": "",
-                    "WS": "",
-                    "CWD": "",
-                    "Tokens": "",
-                }
-                cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
-                header_row = [phalanx_cells.get(c, "") for c in cols]
-                table.add_row(*header_row, key=phalanx_key)
-
-                hoplite_prefix = f"{'  ' * (indent_level + 1)}└ ⚔ "
-                for sess in hoplites:
-                    _add_tmux_session_row(sess, prefix=hoplite_prefix)
+            hoplite_prefix = f"{'  ' * indent_level}└ ⚔ "
+            for sess in hoplites:
+                _add_tmux_session_row(sess, prefix=hoplite_prefix)
 
             viewer_prefix = f"{'  ' * indent_level}└ 🔍 "
             for sess in viewer_sessions:

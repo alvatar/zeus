@@ -60,9 +60,10 @@ def test_is_hoplite_session_for_requires_role_owner_and_phalanx() -> None:
     ) is False
 
 
-def test_render_agent_table_contains_phalanx_group_markup() -> None:
+def test_render_agent_table_marks_polemarch_row_and_lists_hoplites() -> None:
     source = inspect.getsource(ZeusApp._render_agent_table_and_status)
 
-    assert "Phalanx (" in source
+    assert "🛡{hoplite_count}" in source
     assert "└ ⚔" in source
+    assert "Phalanx (" not in source
     assert "self._is_hoplite_session_for" in source
