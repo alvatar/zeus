@@ -17,8 +17,16 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
     )
 
 
-def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
+def _new_app() -> ZeusApp:
     app = ZeusApp()
+    app._agent_dependencies = {}
+    app._agent_priorities = {}
+    app._dependency_missing_polls = {}
+    return app
+
+
+def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
+    app = _new_app()
     target = _agent("target", 2)
     app.agents = [target]
 
@@ -49,7 +57,7 @@ def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
 
 
 def test_do_enqueue_direct_strips_nul_bytes_before_queueing(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     target = _agent("target", 2)
     app.agents = [target]
 
@@ -61,7 +69,7 @@ def test_do_enqueue_direct_strips_nul_bytes_before_queueing(monkeypatch) -> None
 
 
 def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     target = _agent("target", 2)
     app.agents = [target]
 
@@ -78,7 +86,7 @@ def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
 
 
 def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     target = _agent("target", 2)
     app.agents = [target]
     app._agent_priorities = {"target": 4}
@@ -93,7 +101,7 @@ def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
 
 
 def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     source = _agent("source", 1)
     target = _agent("target", 2)
     app.agents = [source, target]
@@ -110,8 +118,100 @@ def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
     assert notices[-1] == "Target is no longer active"
 
 
+def test_direct_recipients_include_only_source_blocked_dependents() -> None:
+    app = _new_app()
+    source = _agent("source", 1)
+    blocked_by_source = _agent("blocked-by-source", 2)
+    blocked_by_other = _agent("blocked-by-other", 3)
+    other_blocker = _agent("other-blocker", 4)
+    active = _agent("active", 5)
+
+    app.agents = [source, blocked_by_source, blocked_by_other, other_blocker, active]
+    app._agent_dependencies = {
+        app._agent_dependency_key(blocked_by_source): app._agent_dependency_key(source),
+        app._agent_dependency_key(blocked_by_other): app._agent_dependency_key(other_blocker),
+    }
+    app._agent_priorities[other_blocker.name] = 4
+
+    recipients = app._direct_recipients(app._agent_key(source))
+
+    assert [agent.name for agent in recipients] == ["blocked-by-source", "active"]
+
+
+def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_dependency(
+    monkeypatch,
+) -> None:
+    app = _new_app()
+    source = _agent("source", 1)
+    target = _agent("target", 2)
+    source_key = app._agent_key(source)
+    target_key = app._agent_key(target)
+    target_dep_key = app._agent_dependency_key(target)
+
+    app.agents = [source, target]
+    app._agent_dependencies[target_dep_key] = app._agent_dependency_key(source)
+
+    sent = capture_kitty_cmd(monkeypatch)
+    notices = capture_notify(app, monkeypatch)
+    saves: list[dict[str, str]] = []
+    renders: list[bool] = []
+
+    monkeypatch.setattr(
+        app,
+        "_save_agent_dependencies",
+        lambda: saves.append(dict(app._agent_dependencies)),
+    )
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    app._interact_visible = False
+
+    app.do_enqueue_direct("source", target_key, "hello", source_key=source_key)
+
+    assert len(sent) == 4
+    assert target_dep_key not in app._agent_dependencies
+    assert saves == [{}]
+    assert renders == [True]
+    assert notices[-1] == "Message from source queued to target; dependency cleared"
+
+
+def test_show_direct_preview_includes_blocked_target_of_source(monkeypatch) -> None:
+    app = _new_app()
+    source = _agent("source", 1)
+    blocked = _agent("blocked", 2)
+    source_key = app._agent_key(source)
+    blocked_key = app._agent_key(blocked)
+
+    app.agents = [source, blocked]
+    app._agent_dependencies = {
+        app._agent_dependency_key(blocked): app._agent_dependency_key(source)
+    }
+
+    job_id = 7
+    app._broadcast_active_job = job_id
+
+    pushed: list[object] = []
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(app, "_dismiss_broadcast_preparing_screen", lambda: None)
+
+    app._show_direct_preview(
+        job_id,
+        "source",
+        [blocked_key],
+        "msg",
+        source_key=source_key,
+    )
+
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, ConfirmDirectMessageScreen)
+    assert screen.target_options == [("blocked", blocked_key)]
+
+
 def test_show_direct_preview_uses_selection_from_preparing_dialog(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     a1 = _agent("alpha", 1)
     a2 = _agent("beta", 2)
     app.agents = [a1, a2]

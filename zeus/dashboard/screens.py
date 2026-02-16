@@ -548,9 +548,11 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
         target_options: list[tuple[str, str]],
         message: str,
         initial_target_key: str | None = None,
+        source_key: str | None = None,
     ) -> None:
         super().__init__()
         self.source_name = source_name
+        self.source_key = source_key
         self.target_options = target_options
         self.message = message
 
@@ -602,6 +604,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
                 self.source_name,
                 target_key,
                 self._current_message(),
+                source_key=self.source_key,
             )
         self.dismiss()
         event.stop()
@@ -615,6 +618,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
             self.source_name,
             target_key,
             self._current_message(),
+            source_key=self.source_key,
         )
         self.dismiss()
 
@@ -655,7 +659,11 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("q", "Stop Hippeus (table focus)"),
     ("Ctrl+q", "Stop Hippeus (works from input too)"),
     ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
-    ("Ctrl+m", "Send block between %%%% markers to one selected active Hippeus"),
+    (
+        "Ctrl+m",
+        "Send block between %%%% markers to one selected target Hippeus "
+        "(active or blocked by source)",
+    ),
     ("k", "Kill Hippeus / tmux session"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("r", "Rename Hippeus / tmux"),

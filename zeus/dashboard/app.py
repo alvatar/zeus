@@ -1742,17 +1742,55 @@ class ZeusApp(App):
             recipients.append(agent)
         return recipients
 
+    def _is_blocked_by_source_key(self, target: AgentWindow, source_key: str) -> bool:
+        """Return True when target currently depends on the source agent."""
+        source = self._get_agent_by_key(source_key)
+        if source is None:
+            return False
+
+        target_dep_key = self._agent_dependency_key(target)
+        source_dep_key = self._agent_dependency_key(source)
+        return self._agent_dependencies.get(target_dep_key) == source_dep_key
+
+    def _direct_recipients(self, source_key: str) -> list[AgentWindow]:
+        """Return direct-send recipients for a source.
+
+        Includes:
+        - active recipients (same as broadcast), and
+        - blocked recipients only when they are blocked by the source.
+        """
+        recipients: list[AgentWindow] = []
+        for agent in self.agents:
+            key = self._agent_key(agent)
+            if key == source_key:
+                continue
+            if (not self._is_input_blocked(agent)) or self._is_blocked_by_source_key(
+                agent, source_key
+            ):
+                recipients.append(agent)
+        return recipients
+
     def _target_options_from_keys(
         self,
         recipient_keys: list[str],
+        *,
+        source_key: str | None = None,
     ) -> list[tuple[str, str]]:
-        """Return active target options as (name, key)."""
+        """Return direct target options as (name, key).
+
+        Active targets are always eligible. Blocked targets are eligible only when
+        they are blocked by ``source_key``.
+        """
         options: list[tuple[str, str]] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is None or self._is_input_blocked(agent):
+            if agent is None:
                 continue
-            options.append((agent.name, key))
+            if not self._is_input_blocked(agent):
+                options.append((agent.name, key))
+                continue
+            if source_key and self._is_blocked_by_source_key(agent, source_key):
+                options.append((agent.name, key))
         return options
 
     def _share_payload_for_source(self, source: AgentWindow) -> str | None:
@@ -1882,15 +1920,24 @@ class ZeusApp(App):
 
         source_key = self._agent_key(source)
         recipient_keys = [
-            self._agent_key(a) for a in self._broadcast_recipients(source_key)
+            self._agent_key(a) for a in self._direct_recipients(source_key)
         ]
         if not recipient_keys:
-            self.notify("No active targets (source excluded)", timeout=2)
+            self.notify(
+                "No eligible targets (active peers or your blocked dependents)",
+                timeout=2,
+            )
             return
 
-        target_options = self._target_options_from_keys(recipient_keys)
+        target_options = self._target_options_from_keys(
+            recipient_keys,
+            source_key=source_key,
+        )
         if not target_options:
-            self.notify("No active targets (source excluded)", timeout=2)
+            self.notify(
+                "No eligible targets (active peers or your blocked dependents)",
+                timeout=2,
+            )
             return
 
         self._start_summary_prepare(
@@ -1954,6 +2001,7 @@ class ZeusApp(App):
                 source_name,
                 recipient_keys,
                 message,
+                source_key,
             )
             return
 
@@ -2016,6 +2064,7 @@ class ZeusApp(App):
         source_name: str,
         recipient_keys: list[str],
         message: str,
+        source_key: str | None = None,
     ) -> None:
         if self._broadcast_active_job != job_id:
             return
@@ -2023,9 +2072,15 @@ class ZeusApp(App):
         preferred_target_key = self._consume_prepare_target_selection(job_id)
         self._dismiss_broadcast_preparing_screen()
 
-        target_options = self._target_options_from_keys(recipient_keys)
+        target_options = self._target_options_from_keys(
+            recipient_keys,
+            source_key=source_key,
+        )
         if not target_options:
-            self.notify("No active targets (source excluded)", timeout=2)
+            self.notify(
+                "No eligible targets (active peers or your blocked dependents)",
+                timeout=2,
+            )
             return
 
         option_keys = {key for _, key in target_options}
@@ -2035,6 +2090,7 @@ class ZeusApp(App):
         self.push_screen(
             ConfirmDirectMessageScreen(
                 source_name=source_name,
+                source_key=source_key,
                 target_options=target_options,
                 message=message,
                 initial_target_key=preferred_target_key,
@@ -2070,14 +2126,42 @@ class ZeusApp(App):
         source_name: str,
         target_key: str,
         message: str,
+        *,
+        source_key: str | None = None,
     ) -> None:
-        """Queue marked message to a single selected active target."""
+        """Queue marked message to a single selected direct target.
+
+        Active targets are always allowed.
+        Blocked targets are allowed only when blocked by the source.
+        """
         target = self._get_agent_by_key(target_key)
-        if target is None or self._is_input_blocked(target):
+        if target is None:
+            self.notify("Target is no longer active", timeout=3)
+            return
+
+        blocked_by_source = bool(
+            source_key and self._is_blocked_by_source_key(target, source_key)
+        )
+        if self._is_input_blocked(target) and not blocked_by_source:
             self.notify("Target is no longer active", timeout=3)
             return
 
         self._queue_text_to_agent(target, message)
+
+        if blocked_by_source:
+            target_dep_key = self._agent_dependency_key(target)
+            self._agent_dependencies.pop(target_dep_key, None)
+            self._dependency_missing_polls.pop(target_dep_key, None)
+            self._save_agent_dependencies()
+            self._render_agent_table_and_status()
+            if self._interact_visible:
+                self._refresh_interact_panel()
+            self.notify(
+                f"Message from {source_name} queued to {target.name}; dependency cleared",
+                timeout=3,
+            )
+            return
+
         self.notify(
             f"Message from {source_name} queued to {target.name}",
             timeout=3,
