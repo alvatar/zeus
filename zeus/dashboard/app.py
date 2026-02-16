@@ -3408,11 +3408,19 @@ class ZeusApp(App):
             self.push_screen(RenameTmuxScreen(tmux))
 
     def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
+        old_name = agent.name
+
         overrides: dict[str, str] = load_names()
         key: str = f"{agent.socket}:{agent.kitty_id}"
         overrides[key] = new_name
         save_names(overrides)
-        self.notify(f"Renamed: {agent.name} → {new_name}", timeout=3)
+
+        if old_name in self._agent_priorities:
+            preserved_priority = self._agent_priorities.pop(old_name)
+            self._agent_priorities[new_name] = preserved_priority
+            self._save_priorities()
+
+        self.notify(f"Renamed: {old_name} → {new_name}", timeout=3)
         self.poll_and_update()
 
     def do_rename_tmux(self, sess: TmuxSession, new_name: str) -> None:
