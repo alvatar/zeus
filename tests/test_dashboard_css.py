@@ -38,3 +38,10 @@ def test_notes_dialog_buttons_include_left_clear_done_layout() -> None:
     assert "width: 1fr;" in css.AGENT_NOTES_CSS
     assert "#agent-notes-buttons {" in css.AGENT_NOTES_CSS
     assert "align: left middle;" in css.AGENT_NOTES_CSS
+
+
+def test_message_dialog_css_matches_notes_shell() -> None:
+    assert "#agent-message-dialog {" in css.AGENT_MESSAGE_CSS
+    assert "width: 110;" in css.AGENT_MESSAGE_CSS
+    assert "max-height: 40;" in css.AGENT_MESSAGE_CSS
+    assert "#agent-message-input {" in css.AGENT_MESSAGE_CSS

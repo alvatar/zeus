@@ -26,7 +26,7 @@ def test_dependency_binding_is_priority() -> None:
     assert bindings["ctrl+i"].priority is True
 
 
-def test_agent_management_keys_include_c_a_h_and_n() -> None:
+def test_agent_management_keys_include_c_a_h_n_and_m() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "c" in bindings
     assert bindings["c"].action == "new_agent"
@@ -36,3 +36,5 @@ def test_agent_management_keys_include_c_a_h_and_n() -> None:
     assert bindings["h"].action == "queue_next_note_task"
     assert "n" in bindings
     assert bindings["n"].action == "agent_notes"
+    assert "m" in bindings
+    assert bindings["m"].action == "agent_message"

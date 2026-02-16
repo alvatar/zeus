@@ -26,6 +26,7 @@ from ..notes import clear_done_note_tasks
 from .css import (
     NEW_AGENT_CSS,
     AGENT_NOTES_CSS,
+    AGENT_MESSAGE_CSS,
     DEPENDENCY_SELECT_CSS,
     SUBAGENT_CSS,
     RENAME_CSS,
@@ -162,6 +163,39 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
 
     def action_save(self) -> None:
         self._save()
+
+
+class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = AGENT_MESSAGE_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("ctrl+s", "send", "Send", show=False),
+        Binding("ctrl+w", "queue", "Queue", show=False),
+    ]
+
+    def __init__(self, agent: AgentWindow) -> None:
+        super().__init__()
+        self.agent = agent
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="agent-message-dialog"):
+            yield Label(f"Message [bold]{self.agent.name}[/bold]")
+            yield ZeusTextArea("", id="agent-message-input")
+
+    def on_mount(self) -> None:
+        ta = self.query_one("#agent-message-input", ZeusTextArea)
+        ta.focus()
+        ta.move_cursor(ta.document.end)
+
+    def action_send(self) -> None:
+        text = self.query_one("#agent-message-input", ZeusTextArea).text
+        if self.zeus.do_send_agent_message(self.agent, text):
+            self.dismiss()
+
+    def action_queue(self) -> None:
+        text = self.query_one("#agent-message-input", ZeusTextArea).text
+        if self.zeus.do_queue_agent_message(self.agent, text):
+            self.dismiss()
 
 
 class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
@@ -665,6 +699,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("a", "Bring Hippeus under the Aegis"),
     ("h", "Queue next task from notes for selected Hippeus"),
     ("n", "Edit notes for selected Hippeus"),
+    ("m", "Open message dialog for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
     ("q", "Stop Hippeus (table focus)"),
@@ -681,6 +716,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Dialogs ───"),
     ("Esc (dialog)", "Close/cancel active dialog"),
     ("Ctrl+s (notes dialog)", "Save notes in Hippeus Tasks dialog"),
+    ("Ctrl+s (message dialog)", "Send message in Hippeus Message dialog"),
+    ("Ctrl+w (message dialog)", "Queue message in Hippeus Message dialog"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),

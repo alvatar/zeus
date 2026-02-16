@@ -67,8 +67,13 @@ from .stream import (
 )
 from .widgets import ZeusDataTable, ZeusTextArea, UsageBar, SplashOverlay
 from .screens import (
-    NewAgentScreen, AgentNotesScreen, DependencySelectScreen, SubAgentScreen,
-    RenameScreen, RenameTmuxScreen,
+    NewAgentScreen,
+    AgentNotesScreen,
+    AgentMessageScreen,
+    DependencySelectScreen,
+    SubAgentScreen,
+    RenameScreen,
+    RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen,
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
@@ -268,6 +273,7 @@ class ZeusApp(App):
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("h", "queue_next_note_task", "Queue Task"),
         Binding("n", "agent_notes", "Notes"),
+        Binding("m", "agent_message", "Message"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
         Binding("k", "kill_agent", "Kill Hippeus"),
@@ -2817,6 +2823,61 @@ class ZeusApp(App):
             self.notify(f"Cleared notes: {agent.name}", timeout=2)
         self._save_agent_notes()
         self.poll_and_update()
+
+    def action_agent_message(self) -> None:
+        if self._should_ignore_table_action():
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to message", timeout=2)
+            return
+        self.push_screen(AgentMessageScreen(agent))
+
+    def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
+        if self._is_blocked(agent):
+            return "Hippeus is BLOCKED by dependency; input disabled"
+        if self._is_paused(agent):
+            return "Hippeus is PAUSED (priority 4); input disabled"
+        return None
+
+    def _prepare_message_dialog_send(
+        self,
+        agent: AgentWindow,
+        text: str,
+    ) -> tuple[AgentWindow, str] | None:
+        clean = text.strip()
+        if not clean:
+            return None
+
+        live = self._get_agent_by_key(self._agent_key(agent))
+        if live is None:
+            self.notify("Target is no longer active", timeout=2)
+            return None
+
+        block_reason = self._message_dialog_block_reason(live)
+        if block_reason:
+            self.notify(block_reason, timeout=2)
+            return None
+
+        return live, clean
+
+    def do_send_agent_message(self, agent: AgentWindow, text: str) -> bool:
+        prepared = self._prepare_message_dialog_send(agent, text)
+        if prepared is None:
+            return False
+
+        live, clean = prepared
+        self._send_text_to_agent(live, clean)
+        return True
+
+    def do_queue_agent_message(self, agent: AgentWindow, text: str) -> bool:
+        prepared = self._prepare_message_dialog_send(agent, text)
+        if prepared is None:
+            return False
+
+        live, clean = prepared
+        self._queue_text_to_agent_interact(live, clean)
+        return True
 
     def action_queue_next_note_task(self) -> None:
         """H: queue next task from selected Hippeus notes."""

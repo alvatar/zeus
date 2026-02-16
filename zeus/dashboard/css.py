@@ -282,6 +282,34 @@ AgentNotesScreen {{
 )}
 """
 
+AGENT_MESSAGE_CSS = """
+AgentMessageScreen {
+    align: center middle;
+}
+
+#agent-message-dialog {
+    width: 110;
+    height: auto;
+    max-height: 40;
+    border: thick #ffaf00;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#agent-message-dialog Label {
+    margin: 0 0 1 0;
+    color: #dddddd;
+}
+
+#agent-message-input {
+    height: 20;
+    margin: 0;
+    border: solid #444444;
+    background: #0a1018;
+    color: #dddddd;
+}
+"""
+
 DEPENDENCY_SELECT_CSS = f"""
 DependencySelectScreen {{
     align: center middle;

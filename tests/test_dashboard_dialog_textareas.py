@@ -4,6 +4,7 @@ import inspect
 import re
 
 from zeus.dashboard.screens import (
+    AgentMessageScreen,
     AgentNotesScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
@@ -38,3 +39,10 @@ def test_direct_dialog_uses_zeus_textarea() -> None:
     source = _compose_source(ConfirmDirectMessageScreen)
     assert "ZeusTextArea(" in source
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
+
+
+def test_agent_message_dialog_uses_zeus_textarea_without_buttons() -> None:
+    source = _compose_source(AgentMessageScreen)
+    assert "ZeusTextArea(" in source
+    assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
+    assert "Button(" not in source
