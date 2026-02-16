@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 
 from .models import AgentWindow, TmuxSession
@@ -78,6 +79,27 @@ def _read_tmux_phalanx(session_name: str) -> str:
     return _read_tmux_option(session_name, "@zeus_phalanx")
 
 
+def _read_tmux_agent_id(session_name: str) -> str:
+    """Read session option @zeus_agent, if present."""
+    return _read_tmux_option(session_name, "@zeus_agent")
+
+
+def _extract_start_command_agent_id(command: str) -> str:
+    """Extract ZEUS_AGENT_ID from pane_start_command when present.
+
+    We prefer this over tmux session environment because update-environment can
+    cause ZEUS_AGENT_ID in tmux env to reflect the creator/owner rather than the
+    process running in the pane.
+    """
+    cmd = command.strip().strip('"').strip("'")
+    if not cmd:
+        return ""
+    match = re.search(r"(?:^|\s)ZEUS_AGENT_ID=([A-Za-z0-9_-]+)(?:\s|$)", cmd)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
 def _read_tmux_env_agent_id(session_name: str) -> str:
     """Read ZEUS_AGENT_ID from a tmux session environment, if present."""
     r = _run_tmux(
@@ -148,6 +170,13 @@ def discover_tmux_sessions() -> list[TmuxSession]:
         env_agent_id = _read_tmux_env_agent_id(name)
         role = _read_tmux_role(name)
         phalanx_id = _read_tmux_phalanx(name)
+        option_agent_id = _read_tmux_agent_id(name)
+        start_cmd_agent_id = _extract_start_command_agent_id(cmd_str)
+        session_agent_id = (
+            option_agent_id.strip()
+            or start_cmd_agent_id.strip()
+            or env_agent_id.strip()
+        )
 
         sessions.append(
             TmuxSession(
@@ -159,6 +188,7 @@ def discover_tmux_sessions() -> list[TmuxSession]:
                 pane_pid=pane_pid,
                 owner_id=owner_id,
                 env_agent_id=env_agent_id,
+                agent_id=session_agent_id,
                 role=role,
                 phalanx_id=phalanx_id,
             )

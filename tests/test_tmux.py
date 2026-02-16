@@ -42,6 +42,18 @@ def _make_tmux(
     )
 
 
+def test_extract_start_command_agent_id_reads_inline_env_assignment() -> None:
+    cmd = (
+        '"ZEUS_AGENT_ID=hoplite-123 ZEUS_PARENT_ID=polemarch-1 '
+        'ZEUS_ROLE=hoplite exec pi"'
+    )
+    assert tmux._extract_start_command_agent_id(cmd) == "hoplite-123"
+
+
+def test_extract_start_command_agent_id_returns_empty_when_missing() -> None:
+    assert tmux._extract_start_command_agent_id("exec pi") == ""
+
+
 def test_owner_id_match_takes_priority():
     owner = _make_agent("owner", "/a", agent_id="agent-1")
     other = _make_agent("other", "/a/b", agent_id="agent-2")

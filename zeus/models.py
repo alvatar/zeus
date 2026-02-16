@@ -19,7 +19,8 @@ class TmuxSession:
     attached: bool = False
     pane_pid: int = 0          # shell PID inside the tmux pane
     owner_id: str = ""        # tmux @zeus_owner (deterministic owner)
-    env_agent_id: str = ""    # ZEUS_AGENT_ID from tmux session env
+    env_agent_id: str = ""    # ZEUS_AGENT_ID from tmux session env (often inherited)
+    agent_id: str = ""        # hoplite/pane agent id (@zeus_agent or startup cmd)
     role: str = ""            # tmux @zeus_role (e.g. hoplite)
     phalanx_id: str = ""      # tmux @zeus_phalanx
     match_source: str = ""    # owner-id/env-id/cwd/screen-exact/screen-fallback

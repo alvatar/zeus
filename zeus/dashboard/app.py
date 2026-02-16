@@ -1248,7 +1248,7 @@ class ZeusApp(App):
             )
             agent_role = (a.role or "").strip().lower()
             is_polemarch_display = agent_role == "polemarch"
-            role_marker = "🛡 " if is_polemarch_display else ""
+            role_marker = "🗡 " if is_polemarch_display else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
             )
@@ -2465,7 +2465,8 @@ class ZeusApp(App):
                     continue
                 if not sess.name.strip():
                     continue
-                if (sess.env_agent_id or "").strip() != hoplite_id:
+                sess_agent_id = (sess.agent_id or sess.env_agent_id or "").strip()
+                if sess_agent_id != hoplite_id:
                     continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
@@ -2493,7 +2494,8 @@ class ZeusApp(App):
                     continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
-                if envelope.source_agent_id and sess.env_agent_id == envelope.source_agent_id:
+                sess_agent_id = (sess.agent_id or "").strip()
+                if envelope.source_agent_id and sess_agent_id == envelope.source_agent_id:
                     continue
                 if not sess.name.strip():
                     continue
@@ -3453,6 +3455,7 @@ class ZeusApp(App):
               "ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite AGENTMON_NAME=$HOPLITE_NAME exec pi"
 
             tmux set-option -t "$SESSION" @zeus_owner "$POLEMARCH_ID"
+            tmux set-option -t "$SESSION" @zeus_agent "$HOPLITE_ID"
             tmux set-option -t "$SESSION" @zeus_role "hoplite"
             tmux set-option -t "$SESSION" @zeus_phalanx "$PHALANX_ID"
 
