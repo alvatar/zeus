@@ -728,8 +728,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
     (
         "Ctrl+m",
-        "Send block between %%%% markers to one selected target Hippeus "
-        "(active or blocked by source)",
+        "Send text between %%%% markers to selected target",
     ),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("k", "Kill Hippeus / tmux session"),

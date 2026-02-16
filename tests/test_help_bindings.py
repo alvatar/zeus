@@ -34,8 +34,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Broadcast block between %%%% markers to active Hippeis"
     )
     assert entries["Ctrl+m"] == (
-        "Send block between %%%% markers to one selected target Hippeus "
-        "(active or blocked by source)"
+        "Send text between %%%% markers to selected target"
     )
     assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
     assert entries["z"] == "Muster Hippeus"
@@ -86,8 +85,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
         (
             "Ctrl+m",
-            "Send block between %%%% markers to one selected target Hippeus "
-            "(active or blocked by source)",
+            "Send text between %%%% markers to selected target",
         ),
         ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ]
