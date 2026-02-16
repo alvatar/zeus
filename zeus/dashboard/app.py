@@ -272,7 +272,7 @@ class ZeusApp(App):
         Binding("c", "new_agent", "Muster Hippeus"),
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("h", "queue_next_task", "Queue Task"),
-        Binding("t", "agent_tasks", "Tasks", key_display="T"),
+        Binding("t", "agent_tasks", "Tasks"),
         Binding("m", "agent_message", "Message"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),

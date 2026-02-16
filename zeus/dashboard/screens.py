@@ -695,7 +695,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("c", "Muster Hippeus"),
     ("a", "Bring Hippeus under the Aegis"),
     ("h", "Queue next task for selected Hippeus"),
-    ("T", "Edit tasks for selected Hippeus"),
+    ("t", "Edit tasks for selected Hippeus"),
     ("m", "Open message dialog for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
