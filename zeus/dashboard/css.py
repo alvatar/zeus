@@ -112,6 +112,7 @@ Screen {
     height: 1fr;
     margin: 1 1;
     background: #000000;
+    scrollbar-size: 0 1;
 }
 
 DataTable {

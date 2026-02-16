@@ -32,6 +32,11 @@ def test_app_css_can_hide_interact_input() -> None:
     assert "display: none;" in css.APP_CSS
 
 
+def test_agent_table_hides_horizontal_scrollbar() -> None:
+    assert "#agent-table {" in css.APP_CSS
+    assert "scrollbar-size: 0 1;" in css.APP_CSS
+
+
 def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
     modal_css_blocks = [
         css.NEW_AGENT_CSS,
