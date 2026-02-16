@@ -21,7 +21,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Send block between %%%% markers to one selected active Hippeus"
     )
     assert entries["c"] == "Muster Hippeus"
-    assert entries["a"] == "Toggle Aegis for selected Hippeus"
+    assert entries["a"] == "Bring Hippeus under the Aegis"
     assert entries["n"] == "Edit notes for selected Hippeus"
     assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected Hippeus"
 
@@ -51,7 +51,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
 
     mgmt_entries = [
         ("c", "Muster Hippeus"),
-        ("a", "Toggle Aegis for selected Hippeus"),
+        ("a", "Bring Hippeus under the Aegis"),
         ("n", "Edit notes for selected Hippeus"),
         ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),

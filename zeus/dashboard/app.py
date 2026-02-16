@@ -891,22 +891,9 @@ class ZeusApp(App):
                 ch = "●"
             return Text(ch, style=f"bold {_gradient_color(p)}")
 
-        def _with_row_bg(cell: str | Text, width: int, bg: str) -> str | Text:
-            if isinstance(cell, Text):
-                styled = cell.copy()
-                styled.stylize(f"on {bg}")
-            else:
-                styled = Text(str(cell), style=f"on {bg}")
-
-            missing = max(0, width - styled.cell_len)
-            if missing:
-                styled.append(" " * missing, style=f"on {bg}")
-            return styled
-
         state_col_width = (
             self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
         ).get("State", 10)
-        col_widths = [column.get_render_width(table) for column in table.ordered_columns]
 
         def _add_agent_row(
             a: AgentWindow,
@@ -922,7 +909,6 @@ class ZeusApp(App):
                 and a.state == State.IDLE
                 and akey in self._action_needed
             )
-            row_bg = self._AEGIS_ROW_BG if akey in self._aegis_enabled else "#000000"
 
             if blocked:
                 icon = "└"
@@ -963,7 +949,7 @@ class ZeusApp(App):
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
                 state_cell,
-                style=f"bold {state_color} on {row_bg}",
+                style=f"bold {state_color} on #000000",
             )
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
@@ -1034,15 +1020,6 @@ class ZeusApp(App):
             }
             cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
             row = [cells.get(c, "") for c in cols]
-            if row_bg != "#000000":
-                row = [
-                    _with_row_bg(
-                        cell,
-                        col_widths[idx] if idx < len(col_widths) else Text(str(cell)).cell_len,
-                        row_bg,
-                    )
-                    for idx, cell in enumerate(row)
-                ]
             table.add_row(*row, key=row_key)
 
         def _clean_tmux_cmd(cmd: str) -> str:
