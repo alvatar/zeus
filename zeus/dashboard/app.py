@@ -3376,6 +3376,15 @@ class ZeusApp(App):
 
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
+        if self._has_modal_open():
+            modal = self.screen
+            if isinstance(modal, AgentMessageScreen):
+                modal.action_send()
+                return
+            if isinstance(modal, AgentNotesScreen):
+                modal.action_save()
+            return
+
         if not self._interact_visible:
             return
         block_reason = self._current_interact_block_reason()
@@ -3405,6 +3414,12 @@ class ZeusApp(App):
 
     def action_queue_interact(self) -> None:
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
+        if self._has_modal_open():
+            modal = self.screen
+            if isinstance(modal, AgentMessageScreen):
+                modal.action_queue()
+            return
+
         if not self._interact_visible:
             return
         block_reason = self._current_interact_block_reason()

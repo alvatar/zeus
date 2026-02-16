@@ -98,3 +98,31 @@ def test_message_dialog_send_rejects_paused_or_blocked_target(monkeypatch) -> No
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
     assert sent == []
+
+
+def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:
+    app = _new_app()
+    modal = AgentMessageScreen(_agent("alpha", 1))
+
+    called: list[bool] = []
+    monkeypatch.setattr(modal, "action_send", lambda: called.append(True))
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: modal))
+
+    app.action_send_interact()
+
+    assert called == [True]
+
+
+def test_app_ctrl_w_routes_to_message_modal_when_open(monkeypatch) -> None:
+    app = _new_app()
+    modal = AgentMessageScreen(_agent("alpha", 1))
+
+    called: list[bool] = []
+    monkeypatch.setattr(modal, "action_queue", lambda: called.append(True))
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: modal))
+
+    app.action_queue_interact()
+
+    assert called == [True]
