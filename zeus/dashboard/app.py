@@ -248,6 +248,7 @@ class ZeusApp(App):
         "name and timestamp and then continue. Do not stop until you have "
         "finalized EVERYTHING that we agreed on."
     )
+    _CELEBRATION_COOLDOWN_S = 3600.0
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
@@ -262,7 +263,7 @@ class ZeusApp(App):
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
     _steady_armed: bool = True
-    _celebration_warmup_started_at: float | None = None
+    _celebration_cooldown_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
     _show_minimap: bool = True
@@ -361,7 +362,7 @@ class ZeusApp(App):
         self._load_agent_notes()
         self._load_agent_dependencies()
         self._load_panel_visibility()
-        self._celebration_warmup_started_at = time.time()
+        self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
         table.cursor_type = "row"
@@ -1290,6 +1291,34 @@ class ZeusApp(App):
 
         mini.update(f"{line1}\n{line2}")
 
+    def _celebration_ready(self, *, now: float | None = None) -> bool:
+        started = self._celebration_cooldown_started_at
+        if started is None:
+            return False
+        current = time.time() if now is None else now
+        return (current - started) >= self._CELEBRATION_COOLDOWN_S
+
+    def _mark_celebration_cooldown(self) -> None:
+        self._celebration_cooldown_started_at = time.time()
+
+    def _maybe_trigger_celebration(self, eff_pct: float) -> None:
+        if eff_pct < 80:
+            self._steady_armed = True
+        if eff_pct < 60:
+            self._dopamine_armed = True
+
+        if not self._celebration_ready():
+            return
+
+        if eff_pct >= 80 and self._steady_armed:
+            if self._show_steady_lad(eff_pct):
+                self._steady_armed = False
+            return
+
+        if eff_pct >= 60 and self._dopamine_armed:
+            if self._show_dopamine_hit(eff_pct):
+                self._dopamine_armed = False
+
     def _update_sparkline(self) -> None:
         """Render state sparkline charts for all agents."""
         from .widgets import state_sparkline_markup, _gradient_color
@@ -1339,34 +1368,7 @@ class ZeusApp(App):
             wait_pct = raw_waiting / total * 100
             idle_pct = (total - raw_working - raw_waiting) / total * 100
 
-            # Celebration triggers require:
-            # - ≥10 minutes since app start, and
-            # - at least 4 active (non-paused/non-blocked) agents.
-            warmup_start = self._celebration_warmup_started_at
-            warmup_done = (
-                warmup_start is not None
-                and (time.time() - warmup_start) >= 600
-            )
-            active_agents = sum(1 for a in self.agents if not self._is_input_blocked(a))
-            trigger_ready = warmup_done and active_agents >= 4
-
-            if trigger_ready:
-                if eff_pct >= 80 and self._steady_armed:
-                    self._steady_armed = False
-                    self._show_steady_lad(eff_pct)
-                elif eff_pct < 80:
-                    self._steady_armed = True
-
-                if eff_pct >= 60 and self._dopamine_armed:
-                    self._dopamine_armed = False
-                    self._show_dopamine_hit(eff_pct)
-                elif eff_pct < 60:
-                    self._dopamine_armed = True
-            else:
-                # Re-arm while prerequisites are not met so the animation can
-                # trigger once conditions become valid again.
-                self._steady_armed = True
-                self._dopamine_armed = True
+            self._maybe_trigger_celebration(eff_pct)
 
             header = (
                 f"[#888888]Efficiency: {eff_pct:.0f}%[/]  │  "
@@ -1414,20 +1416,24 @@ class ZeusApp(App):
                 return True
         return False
 
-    def _show_steady_lad(self, efficiency: float) -> None:
+    def _show_steady_lad(self, efficiency: float) -> bool:
         """Mount the steady lad celebration overlay."""
         from .widgets import SteadyLadOverlay
         if self.query("#steady-lad") or self.query("#dopamine"):
-            return
+            return False
         self.mount(SteadyLadOverlay(efficiency, id="steady-lad"))
+        self._mark_celebration_cooldown()
+        return True
 
-    def _show_dopamine_hit(self, efficiency: float) -> None:
+    def _show_dopamine_hit(self, efficiency: float) -> bool:
         """Mount the dopamine celebration overlay."""
         from .widgets import DopamineOverlay
         # Don't stack multiple
         if self.query("#dopamine") or self.query("#steady-lad"):
-            return
+            return False
         self.mount(DopamineOverlay(efficiency, id="dopamine"))
+        self._mark_celebration_cooldown()
+        return True
 
     def action_select_minimap(self, index: int) -> None:
         """Select an agent by mini-map click index."""
