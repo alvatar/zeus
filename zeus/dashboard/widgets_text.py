@@ -85,7 +85,9 @@ class ZeusTextArea(TextArea):
             if not any(
                 k in b.key
                 for k in (
+                    "ctrl+a",
                     "ctrl+b",
+                    "ctrl+e",
                     "ctrl+f",
                     "ctrl+i",
                     "ctrl+k",
@@ -97,6 +99,8 @@ class ZeusTextArea(TextArea):
             )
         ]
         + [
+            Binding("ctrl+a", "line_start_or_previous_line", "Line start", show=False),
+            Binding("ctrl+e", "line_end_or_next_line", "Line end", show=False),
             Binding("alt+f", "cursor_word_right", "Word right", show=False),
             Binding("alt+b", "cursor_word_left", "Word left", show=False),
             Binding("alt+d", "delete_word_right", "Delete word right", show=False),
@@ -108,6 +112,30 @@ class ZeusTextArea(TextArea):
     )
 
     _kill_buffer: str = ""
+
+    def action_line_start_or_previous_line(self) -> None:
+        """Ctrl+A: go to line start, then previous-line start when already there."""
+        line_start = self.get_cursor_line_start_location()
+        if self.cursor_location == line_start:
+            prev_location = self.get_cursor_up_location()
+            if prev_location != self.cursor_location:
+                self.move_cursor(prev_location)
+                self.move_cursor(self.get_cursor_line_start_location(), record_width=False)
+            return
+
+        self.move_cursor(line_start)
+
+    def action_line_end_or_next_line(self) -> None:
+        """Ctrl+E: go to line end, then next-line end when already there."""
+        line_end = self.get_cursor_line_end_location()
+        if self.cursor_location == line_end:
+            next_location = self.get_cursor_down_location()
+            if next_location != self.cursor_location:
+                self.move_cursor(next_location)
+                self.move_cursor(self.get_cursor_line_end_location(), record_width=False)
+            return
+
+        self.move_cursor(line_end)
 
     def _notify_clipboard_unavailable(self) -> None:
         """Notify that wl-copy is unavailable; kill text stays local."""

@@ -70,12 +70,36 @@ def test_text_area_does_not_keep_global_ctrl_bindings() -> None:
     assert "ctrl+m" not in keys
 
 
-def test_text_area_ctrl_k_u_y_are_custom_bindings() -> None:
+def test_text_area_ctrl_a_e_k_u_y_are_custom_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusTextArea.BINDINGS}
 
+    assert bindings["ctrl+a"].action == "line_start_or_previous_line"
+    assert bindings["ctrl+e"].action == "line_end_or_next_line"
     assert bindings["ctrl+k"].action == "kill_to_end_of_line_or_delete_line"
     assert bindings["ctrl+u"].action == "kill_to_line_start_or_clear_all"
     assert bindings["ctrl+y"].action == "yank_kill_buffer"
+
+
+def test_ctrl_a_moves_to_line_start_then_previous_line_start() -> None:
+    ta = ZeusTextArea("alpha\nbeta\ngamma")
+    ta.move_cursor((1, 2))
+
+    ta.action_line_start_or_previous_line()
+    assert ta.cursor_location == (1, 0)
+
+    ta.action_line_start_or_previous_line()
+    assert ta.cursor_location == (0, 0)
+
+
+def test_ctrl_e_moves_to_line_end_then_next_line_end() -> None:
+    ta = ZeusTextArea("alpha\nbeta\ngamma")
+    ta.move_cursor((0, 2))
+
+    ta.action_line_end_or_next_line()
+    assert ta.cursor_location == (0, 5)
+
+    ta.action_line_end_or_next_line()
+    assert ta.cursor_location == (1, 4)
 
 
 def test_ctrl_u_kills_all_text_and_copies_to_wl_copy(monkeypatch) -> None:
