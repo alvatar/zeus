@@ -19,8 +19,9 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Zeus** — the program itself.
 - **The Oracle** — the human operator and final authority.
 - **Hippeus / Hippeis** — singular/plural term for tracked workers.
-- **Phalanx / Phalanges** — singular/plural term for a Hippeis group.
-- **Polemarch** — reserved term for future commander functionality.
+- **Polemarch** — parent/commander term (reserved for future functionality).
+- **Phalanx / Phalanges** — singular/plural term for a Polemarch-led worker group.
+- **Hoplite / Hoplites** — subordinate agents inside a Phalanx; not full Hippeis unless promoted.
 
 Canonical naming rules live in `docs/specs/terminology.md`.
 
