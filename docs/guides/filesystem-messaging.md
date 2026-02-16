@@ -92,6 +92,12 @@ When preparing cross-agent payloads, Zeus now prefers file pointers:
 
 Accepted file pointers are restricted to configured `message_tmp_dir`.
 
+Important addressing note:
+- the sender does **not** need to know recipient agent IDs.
+- sender only writes a payload file and prints `ZEUS_MSG_FILE=<path>`.
+- recipient selection/routing is performed by Zeus from UI context (`Ctrl+b` broadcast set or `Ctrl+m` selected target).
+- `<path>` can be any valid file path under `message_tmp_dir`; file name token is arbitrary (it is not an agent ID).
+
 ## Operational notes
 
 - Required dependency: `inotifywait` (`inotify-tools` package)

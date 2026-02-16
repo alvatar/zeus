@@ -2103,7 +2103,8 @@ class ZeusApp(App):
         return None
 
     _SHARE_MARKER_REMINDER = (
-        "No payload found. Provide ZEUS_MSG_FILE=/tmp/zeus-msg-<id>.md, "
+        "No payload found. Provide ZEUS_MSG_FILE=/tmp/zeus-msg-<uuid>.md "
+        "(file name is arbitrary), "
         f"or wrap text between {_SHARE_MARKER} marker lines."
     )
 
