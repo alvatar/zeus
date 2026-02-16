@@ -64,7 +64,8 @@ def test_is_hoplite_session_for_requires_role_owner_and_phalanx() -> None:
 def test_render_agent_table_marks_polemarch_row_and_lists_hoplites() -> None:
     source = inspect.getsource(ZeusApp._render_agent_table_and_status)
 
-    assert "role_marker = \"🛡 \" if agent_role == \"polemarch\" else \"\"" in source
+    assert "is_polemarch_display = agent_role == \"polemarch\" or hoplite_count > 0" in source
+    assert "role_marker = \"🛡 \" if is_polemarch_display else \"\"" in source
     assert "[phalanx: {hoplite_count}]" in source
     assert "└ 🗡" in source
     assert "Phalanx (" not in source
