@@ -31,9 +31,15 @@ def test_agent_notes_dialog_includes_clear_done_button() -> None:
 
 def test_agent_notes_dialog_header_uses_single_title_and_format_line() -> None:
     source = _compose_source(AgentNotesScreen)
-    assert "Hippeus Tasks for:" in source
+    assert "Tasks:" in source
     assert "Format: '- [] task' or '- [ ] task'" in source
     assert "Press H" not in source
+
+
+def test_agent_notes_dialog_has_no_cancel_button() -> None:
+    source = _compose_source(AgentNotesScreen)
+    assert "agent-notes-cancel-btn" not in source
+    assert 'Button("Save"' in source
 
 
 def test_broadcast_dialog_uses_zeus_textarea() -> None:

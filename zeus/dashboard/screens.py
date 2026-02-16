@@ -119,7 +119,7 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-notes-dialog"):
-            yield Label(f"Hippeus Tasks for: [bold]{self.agent.name}[/bold]")
+            yield Label(f"Tasks: [bold]{self.agent.name}[/bold]")
             yield Label(
                 "Format: '- [] task' or '- [ ] task' (multiline continues until "
                 "next task header)."
@@ -132,7 +132,6 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
                     id="agent-notes-clear-done-btn",
                 )
                 yield Label("", id="agent-notes-buttons-spacer")
-                yield Button("Cancel", variant="default", id="agent-notes-cancel-btn")
                 yield Button("Save", variant="primary", id="agent-notes-save-btn")
 
     def on_mount(self) -> None:
@@ -161,8 +160,6 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
             self._save()
         elif event.button.id == "agent-notes-clear-done-btn":
             self._clear_done_tasks()
-        else:
-            self.dismiss()
         event.stop()
 
     def action_save(self) -> None:
