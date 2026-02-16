@@ -703,6 +703,34 @@ class ZeusApp(App):
         }
         return palette.get(label, "#666666")
 
+    @staticmethod
+    def _scale_hex_color(hex_color: str, factor: float) -> str:
+        value = hex_color.lstrip("#")
+        if len(value) != 6:
+            return "#666666"
+        try:
+            r = int(value[0:2], 16)
+            g = int(value[2:4], 16)
+            b = int(value[4:6], 16)
+        except ValueError:
+            return "#666666"
+
+        f = max(0.0, min(1.0, factor))
+        rr = max(0, min(255, int(r * f)))
+        gg = max(0, min(255, int(g * f)))
+        bb = max(0, min(255, int(b * f)))
+        return f"#{rr:02x}{gg:02x}{bb:02x}"
+
+    @classmethod
+    def _state_minimap_priority_colors(cls, label: str) -> tuple[str, str, str, str]:
+        base = cls._state_ui_color(label)
+        return (
+            base,
+            cls._scale_hex_color(base, 0.45),
+            cls._scale_hex_color(base, 0.25),
+            cls._scale_hex_color(base, 0.15),
+        )
+
     def _aegis_state_bg(self, key: str) -> str:
         if key not in self._aegis_enabled:
             return "#000000"
@@ -1268,12 +1296,11 @@ class ZeusApp(App):
         mini.remove_class("hidden")
 
         _state_pri_colors: dict[str, tuple[str, str, str, str]] = {
-            #               P1                           P2         P3         P4
-            "WORKING": (self._state_ui_color("WORKING"), "#006600", "#003300", "#1a2a1a"),
-            "WAITING": (self._state_ui_color("WAITING"), "#775500", "#332200", "#2a2a1a"),
-            "IDLE":    (self._state_ui_color("IDLE"),    "#771111", "#330a0a", "#2a1a1a"),
+            "WORKING": self._state_minimap_priority_colors("WORKING"),
+            "WAITING": self._state_minimap_priority_colors("WAITING"),
+            "IDLE": self._state_minimap_priority_colors("IDLE"),
             "BLOCKED": ("#888888", "#666666", "#444444", "#1f1f1f"),
-            "PAUSED":  ("#777777", "#555555", "#333333", "#1a1a1a"),
+            "PAUSED": ("#777777", "#555555", "#333333", "#1a1a1a"),
         }
 
 
