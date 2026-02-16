@@ -59,3 +59,4 @@ def test_agent_management_keys_include_z_a_n_g_t_and_i() -> None:
     assert "m" not in bindings
     assert "h" not in bindings
     assert "c" not in bindings
+    assert "ctrl+q" not in bindings

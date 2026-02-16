@@ -102,7 +102,6 @@ def test_help_lists_all_top_level_app_bindings() -> None:
 
     expected = {
         "q",
-        "Ctrl+q",
         "F10",
         "Tab",
         "Ctrl+Enter",
@@ -135,6 +134,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
     }
 
     assert expected <= keys
+    assert "Ctrl+q" not in keys
 
 
 def test_help_lists_modal_only_bindings() -> None:
