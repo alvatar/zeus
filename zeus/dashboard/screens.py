@@ -348,20 +348,11 @@ class RenameScreen(_ZeusScreenMixin, ModalScreen):
             yield Label(f"Rename Hippeus [bold]{self.agent.name}[/bold]")
             yield Label("New name:")
             yield Input(value=self.agent.name, id="rename-input")
-            with Horizontal(id="rename-buttons"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Rename", variant="primary", id="rename-btn")
 
     def on_mount(self) -> None:
         inp = self.query_one("#rename-input", Input)
         inp.focus()
         inp.action_select_all()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "rename-btn":
-            self._do_rename()
-        else:
-            self.dismiss()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._do_rename()
@@ -390,20 +381,11 @@ class RenameTmuxScreen(_ZeusScreenMixin, ModalScreen):
             )
             yield Label("New name:")
             yield Input(value=self.sess.name, id="rename-input")
-            with Horizontal(id="rename-buttons"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Rename", variant="primary", id="rename-btn")
 
     def on_mount(self) -> None:
         inp = self.query_one("#rename-input", Input)
         inp.focus()
         inp.action_select_all()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "rename-btn":
-            self._do_rename()
-        else:
-            self.dismiss()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._do_rename()

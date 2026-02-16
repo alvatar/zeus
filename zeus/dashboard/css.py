@@ -409,30 +409,28 @@ SubAgentScreen {{
 {_button_row_css("subagent-buttons", row_margin="1 0 0 0")}
 """
 
-RENAME_CSS = f"""
-RenameScreen, RenameTmuxScreen {{
+RENAME_CSS = """
+RenameScreen, RenameTmuxScreen {
     align: center middle;
     background: transparent;
-}}
+}
 
-#rename-dialog {{
+#rename-dialog {
     width: 55;
     height: auto;
     border: solid #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
-}}
+}
 
-#rename-dialog Label {{
+#rename-dialog Label {
     margin: 0;
     color: #00d7d7;
-}}
+}
 
-#rename-dialog Input {{
+#rename-dialog Input {
     margin: 1 0;
-}}
-
-{_button_row_css("rename-buttons")}
+}
 """
 
 

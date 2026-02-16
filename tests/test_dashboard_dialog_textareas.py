@@ -9,6 +9,8 @@ from zeus.dashboard.screens import (
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
     NewAgentScreen,
+    RenameScreen,
+    RenameTmuxScreen,
 )
 
 _PLAIN_TEXTAREA_CALL_RE = re.compile(r"(?<!Zeus)TextArea\(")
@@ -75,3 +77,29 @@ def test_new_agent_dialog_defaults_directory_to_home_code() -> None:
     source = _compose_source(NewAgentScreen)
     assert 'value="~/code"' in source
     assert "os.getcwd()" not in source
+
+
+def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
+    source = _compose_source(RenameScreen)
+    assert "rename-buttons" not in source
+    assert "rename-btn" not in source
+    assert "cancel-btn" not in source
+
+    submit_source = inspect.getsource(RenameScreen.on_input_submitted)
+    assert "self._do_rename()" in submit_source
+
+    bindings = {binding.key: binding.action for binding in RenameScreen.BINDINGS}
+    assert bindings["escape"] == "dismiss"
+
+
+def test_rename_tmux_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
+    source = _compose_source(RenameTmuxScreen)
+    assert "rename-buttons" not in source
+    assert "rename-btn" not in source
+    assert "cancel-btn" not in source
+
+    submit_source = inspect.getsource(RenameTmuxScreen.on_input_submitted)
+    assert "self._do_rename()" in submit_source
+
+    bindings = {binding.key: binding.action for binding in RenameTmuxScreen.BINDINGS}
+    assert bindings["escape"] == "dismiss"
