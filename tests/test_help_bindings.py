@@ -11,7 +11,9 @@ def test_help_places_agent_management_section_first() -> None:
 def test_help_lists_text_area_navigation_commands() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
 
-    assert entries["Ctrl+a / Ctrl+e"] == "Move cursor to line start / end"
+    assert entries["Ctrl+a / Ctrl+e"] == (
+        "Move to line start/end; at edge jump to prev/next line"
+    )
     assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
     assert entries["Alt+d / Alt+Backspace"] == "Delete word right / left"
     assert entries["Ctrl+k"] == "Kill to end-of-line (or delete line if empty)"
@@ -26,13 +28,13 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Send block between %%%% markers to one selected target Hippeus "
         "(active or blocked by source)"
     )
-    assert entries["c"] == "Muster Hippeus"
+    assert entries["z"] == "Muster Hippeus"
     assert entries["a"] == "Bring Hippeus under the Aegis"
-    assert entries["h"] == "Queue next task for selected Hippeus"
+    assert entries["n"] == "Queue next task for selected Hippeus"
     assert entries["t"] == "Edit tasks for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
-    assert entries["m"] == "Open message dialog for selected Hippeus"
-    assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected Hippeus"
+    assert entries["i"] == "Set/remove blocking dependency for selected Hippeus"
+    assert "m" not in entries
     assert entries["1"] == "Toggle interact input area"
 
     up_down_desc = entries["↑/↓"]
@@ -63,13 +65,12 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
 
     mgmt_entries = [
-        ("c", "Muster Hippeus"),
+        ("z", "Muster Hippeus"),
         ("a", "Bring Hippeus under the Aegis"),
-        ("h", "Queue next task for selected Hippeus"),
+        ("n", "Queue next task for selected Hippeus"),
         ("t", "Edit tasks for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
-        ("m", "Open message dialog for selected Hippeus"),
-        ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
+        ("i", "Set/remove blocking dependency for selected Hippeus"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
         (
             "Ctrl+m",
@@ -93,13 +94,12 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "Tab",
         "Ctrl+Enter",
         "Ctrl+o",
-        "c",
+        "z",
         "a",
-        "h",
+        "n",
         "t",
         "Ctrl+t",
-        "m",
-        "Ctrl+i",
+        "i",
         "s",
         "k",
         "p",

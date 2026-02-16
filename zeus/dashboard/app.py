@@ -269,13 +269,12 @@ class ZeusApp(App):
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
-        Binding("c", "new_agent", "Muster Hippeus"),
+        Binding("z", "new_agent", "Muster Hippeus"),
         Binding("a", "toggle_aegis", "Aegis"),
-        Binding("h", "queue_next_task", "Queue Task"),
+        Binding("n", "queue_next_task", "Queue Task"),
         Binding("t", "agent_tasks", "Tasks"),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
-        Binding("m", "agent_message", "Message"),
-        Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
+        Binding("i", "toggle_dependency", "Dependency", show=False),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
         Binding("k", "kill_agent", "Kill Hippeus"),
         Binding("p", "cycle_priority", "Priority"),
@@ -3017,7 +3016,7 @@ class ZeusApp(App):
         return True
 
     def action_queue_next_task(self) -> None:
-        """H: queue next task from selected Hippeus tasks."""
+        """N: queue next task from selected Hippeus tasks."""
         if self._should_ignore_table_action():
             return
 
@@ -3115,7 +3114,7 @@ class ZeusApp(App):
             self._refresh_interact_panel()
 
     def action_toggle_dependency(self) -> None:
-        """Ctrl+I: toggle blocked dependency for selected agent."""
+        """I: toggle blocked dependency for selected agent."""
         if self._has_modal_open():
             return
 
