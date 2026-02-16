@@ -60,4 +60,4 @@ name_width = 12        # max chars for agent name label
 [colors.state]
 working = "#00d7d7"   # vivid bright cyan
 waiting = "#ff7a00"   # vivid bright orange (selected option)
-idle = "#ffffff"
+idle = "#ffe500"
