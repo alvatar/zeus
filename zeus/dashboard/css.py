@@ -443,9 +443,9 @@ HelpScreen {
 }
 
 #help-dialog {
-    width: 90;
+    width: 100;
     height: 90%;
-    max-height: 36;
+    max-height: 40;
     border: solid #00d7d7;
     background: #0a0a0a;
     padding: 1 3;
@@ -459,23 +459,46 @@ HelpScreen {
 }
 
 #help-dialog Label {
-    width: 100%;
     margin: 0;
     color: #cccccc;
 }
 
+#help-bindings-scroll .help-section {
+    width: 100%;
+    margin: 1 0 0 0;
+    color: #888888;
+    text-style: bold;
+}
+
+#help-bindings-scroll .help-row {
+    width: 100%;
+    height: auto;
+    align: left top;
+    margin: 0;
+}
+
+#help-bindings-scroll .help-key {
+    width: 30;
+    margin: 0 1 0 0;
+    color: #00d7d7;
+    text-style: bold;
+}
+
+#help-bindings-scroll .help-desc {
+    width: 1fr;
+    color: #cccccc;
+}
+
 #help-dialog .help-title {
+    width: 100%;
     color: #00d7d7;
     text-style: bold;
     margin: 0 0 1 0;
 }
 
 #help-dialog .help-footer {
+    width: 100%;
     color: #888888;
-}
-
-#help-dialog .help-key {
-    color: #00d7d7;
 }
 """
 

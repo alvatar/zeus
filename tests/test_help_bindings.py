@@ -1,11 +1,20 @@
 """Tests for dashboard help bindings content."""
 
-from zeus.dashboard.screens import _HELP_BINDINGS
+import inspect
+
+from zeus.dashboard.screens import HelpScreen, _HELP_BINDINGS
 
 
 def test_help_places_agent_management_section_first() -> None:
     headers = [desc for key, desc in _HELP_BINDINGS if not key]
     assert headers[0] == "─── Hippeis Management ───"
+
+
+def test_help_compose_uses_two_column_rows_for_bindings() -> None:
+    source = inspect.getsource(HelpScreen.compose)
+    assert 'with Horizontal(classes="help-row")' in source
+    assert 'Label(key, classes="help-key")' in source
+    assert 'Label(desc, classes="help-desc")' in source
 
 
 def test_help_lists_text_area_navigation_commands() -> None:

@@ -782,13 +782,13 @@ class HelpScreen(ModalScreen):
             with VerticalScroll(id="help-bindings-scroll"):
                 for key, desc in _HELP_BINDINGS:
                     if not key:
-                        yield Label(f"  [dim]{desc}[/]")
-                    else:
-                        yield Label(
-                            f"  [bold #00d7d7]{key:<12}[/]  {desc}"
-                        )
+                        yield Label(desc, classes="help-section")
+                        continue
+                    with Horizontal(classes="help-row"):
+                        yield Label(key, classes="help-key")
+                        yield Label(desc, classes="help-desc")
             yield Label(
-                "  [dim]↑/↓ PgUp/PgDn scroll • Esc closes[/]",
+                "↑/↓ PgUp/PgDn scroll • Esc closes",
                 classes="help-footer",
             )
 

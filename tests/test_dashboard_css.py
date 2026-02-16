@@ -76,3 +76,10 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "#agent-message-buttons {" in css.AGENT_MESSAGE_CSS
     assert "align: left middle;" in css.AGENT_MESSAGE_CSS
     assert "margin: 0 2 0 0;" in css.AGENT_MESSAGE_CSS
+
+
+def test_help_css_uses_table_like_rows_without_borders() -> None:
+    assert "#help-bindings-scroll .help-row {" in css.HELP_CSS
+    assert "#help-bindings-scroll .help-key {" in css.HELP_CSS
+    assert "#help-bindings-scroll .help-desc {" in css.HELP_CSS
+    assert "border:" not in css.HELP_CSS.split("#help-bindings-scroll .help-row {")[1]
