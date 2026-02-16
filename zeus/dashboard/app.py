@@ -3079,13 +3079,13 @@ class ZeusApp(App):
         self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
 
     def action_go_ahead(self) -> None:
-        """G: send fixed 'go ahead' message to selected Hippeus."""
+        """G: queue fixed 'go ahead' message for selected Hippeus."""
         if self._should_ignore_table_action():
             return
 
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("Select a Hippeus row to send go ahead", timeout=2)
+            self.notify("Select a Hippeus row to queue go ahead", timeout=2)
             return
 
         prepared = self._prepare_message_dialog_send(agent, "go ahead")
@@ -3093,8 +3093,8 @@ class ZeusApp(App):
             return
 
         live, clean = prepared
-        self._send_text_to_agent(live, clean)
-        self.notify(f"Sent go ahead: {live.name}", timeout=2)
+        self._queue_text_to_agent_interact(live, clean)
+        self.notify(f"Queued go ahead: {live.name}", timeout=2)
 
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
         if self._is_blocked(agent):

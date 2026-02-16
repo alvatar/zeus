@@ -40,7 +40,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["z"] == "Invoke Hippeus / Polemarch"
     assert entries["a"] == "Bring Hippeus under the Aegis"
     assert entries["n"] == "Queue next task for selected Hippeus"
-    assert entries["g"] == "Send 'go ahead' to selected Hippeus"
+    assert entries["g"] == "Queue 'go ahead' for selected Hippeus"
     assert entries["t"] == "Edit tasks for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
     assert entries["i"] == "Set/remove blocking dependency for selected Hippeus"
@@ -78,7 +78,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("z", "Invoke Hippeus / Polemarch"),
         ("a", "Bring Hippeus under the Aegis"),
         ("n", "Queue next task for selected Hippeus"),
-        ("g", "Send 'go ahead' to selected Hippeus"),
+        ("g", "Queue 'go ahead' for selected Hippeus"),
         ("t", "Edit tasks for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
         ("i", "Set/remove blocking dependency for selected Hippeus"),

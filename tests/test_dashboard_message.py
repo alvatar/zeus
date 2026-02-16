@@ -93,7 +93,7 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     assert screen.draft == "draft body"
 
 
-def test_action_go_ahead_sends_fixed_message_to_selected_agent(monkeypatch) -> None:
+def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
     app.agents = [agent]
@@ -107,9 +107,12 @@ def test_action_go_ahead_sends_fixed_message_to_selected_agent(monkeypatch) -> N
     app.action_go_ahead()
 
     assert sent == [
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "go ahead\r"))
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "go ahead")),
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x1b[13;3u")),
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
     ]
-    assert notices[-1] == "Sent go ahead: alpha"
+    assert notices[-1] == "Queued go ahead: alpha"
 
 
 def test_action_go_ahead_requires_selected_agent(monkeypatch) -> None:
@@ -121,7 +124,7 @@ def test_action_go_ahead_requires_selected_agent(monkeypatch) -> None:
 
     app.action_go_ahead()
 
-    assert notices[-1] == "Select a Hippeus row to send go ahead"
+    assert notices[-1] == "Select a Hippeus row to queue go ahead"
 
 
 def test_action_go_ahead_rejects_paused_or_blocked_target(monkeypatch) -> None:
