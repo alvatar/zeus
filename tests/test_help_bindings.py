@@ -27,6 +27,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["n"] == "Edit notes for selected Hippeus"
     assert entries["m"] == "Open message dialog for selected Hippeus"
     assert entries["Ctrl+i"] == "Set/remove blocking dependency for selected Hippeus"
+    assert entries["1"] == "Toggle interact input area"
 
     up_down_desc = entries["↑/↓"]
     assert "visual top/bottom" in up_down_desc
@@ -38,6 +39,7 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
     interact_idx = _HELP_BINDINGS.index(("", "─── Interact Panel ───"))
 
     global_entries = [
+        ("1", "Toggle interact input area"),
         ("2", "Toggle mini-map"),
         ("3", "Toggle sparkline charts"),
         ("4", "Toggle interact target band"),
@@ -97,6 +99,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "Ctrl+w",
         "Ctrl+b",
         "Ctrl+m",
+        "1",
         "2",
         "3",
         "4",

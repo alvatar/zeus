@@ -286,6 +286,7 @@ class ZeusApp(App):
         Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
         Binding("ctrl+m", "direct_summary", "Direct Summary", show=False, priority=True),
 
+        Binding("1", "toggle_interact_input", "Input", show=False, priority=True),
         Binding("2", "toggle_minimap", "Map", show=False, priority=True),
         Binding("3", "toggle_sparklines", "Sparks", show=False, priority=True),
         Binding("4", "toggle_target_band", "Target", show=False, priority=True),
@@ -330,6 +331,7 @@ class ZeusApp(App):
     _celebration_cooldown_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
+    _show_interact_input: bool = True
     _show_minimap: bool = True
     _show_sparklines: bool = True
     _show_target_band: bool = True
@@ -2601,6 +2603,7 @@ class ZeusApp(App):
         if data is None:
             return
 
+        self._show_interact_input = bool(data.get("interact_input", True))
         self._show_minimap = bool(data.get("minimap", True))
         self._show_sparklines = bool(data.get("sparklines", True))
         self._show_target_band = bool(data.get("target_band", True))
@@ -2611,6 +2614,7 @@ class ZeusApp(App):
                 self._write_json_dict(
                     PANEL_VISIBILITY_FILE,
                     {
+                        "interact_input": self._show_interact_input,
                         "minimap": self._show_minimap,
                         "sparklines": self._show_sparklines,
                         "target_band": self._show_target_band,
@@ -2624,6 +2628,7 @@ class ZeusApp(App):
         self._write_json_dict(
             PANEL_VISIBILITY_FILE,
             {
+                "interact_input": self._show_interact_input,
                 "minimap": self._show_minimap,
                 "sparklines": self._show_sparklines,
                 "target_band": self._show_target_band,
@@ -2635,6 +2640,14 @@ class ZeusApp(App):
         mini = self.query_one("#mini-map", Static)
         spark = self.query_one("#sparkline-chart", Static)
         target = self.query_one("#interact-target", Static)
+        interact_input = self.query_one("#interact-input", ZeusTextArea)
+
+        if self._show_interact_input:
+            interact_input.remove_class("hidden")
+        else:
+            interact_input.add_class("hidden")
+            if self.focused is interact_input:
+                self.query_one("#agent-table", DataTable).focus()
 
         if self._show_minimap:
             mini.remove_class("hidden")
@@ -2720,7 +2733,7 @@ class ZeusApp(App):
             event.prevent_default()
             event.stop()
             # Focus the interact input
-            if self._interact_visible:
+            if self._interact_visible and self._show_interact_input:
                 self.query_one("#interact-input", ZeusTextArea).focus()
             return
 
@@ -2760,7 +2773,8 @@ class ZeusApp(App):
         # Click/Enter: immediate refresh + focus input
         if self._interact_visible:
             self._refresh_interact_panel()
-            self.query_one("#interact-input", ZeusTextArea).focus()
+            if self._show_interact_input:
+                self.query_one("#interact-input", ZeusTextArea).focus()
 
     _last_kill_time: float = 0.0
 
@@ -3148,6 +3162,13 @@ class ZeusApp(App):
             return
         self.push_screen(HelpScreen())
 
+    def action_toggle_interact_input(self) -> None:
+        if self._has_modal_open():
+            return
+        self._show_interact_input = not self._show_interact_input
+        self._apply_panel_visibility()
+        self._save_panel_visibility()
+
     def action_toggle_minimap(self) -> None:
         if self._has_modal_open():
             return
@@ -3198,7 +3219,7 @@ class ZeusApp(App):
         if isinstance(self.focused, (ZeusTextArea, TextArea)):
             self.query_one("#agent-table", DataTable).focus()
         else:
-            if self._interact_visible:
+            if self._interact_visible and self._show_interact_input:
                 self.query_one("#interact-input", ZeusTextArea).focus()
 
     def action_toggle_interact_panel(self) -> None:
@@ -3444,7 +3465,7 @@ class ZeusApp(App):
                 modal.action_save()
             return
 
-        if not self._interact_visible:
+        if not self._interact_visible or not self._show_interact_input:
             return
         block_reason = self._current_interact_block_reason()
         if block_reason:
@@ -3479,7 +3500,7 @@ class ZeusApp(App):
                 modal.action_queue()
             return
 
-        if not self._interact_visible:
+        if not self._interact_visible or not self._show_interact_input:
             return
         block_reason = self._current_interact_block_reason()
         if block_reason:

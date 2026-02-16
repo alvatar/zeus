@@ -6,8 +6,7 @@ from zeus.dashboard.app import ZeusApp
 def test_numeric_panel_toggles_are_priority_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
 
-    assert "1" not in bindings
-    for key in ("2", "3", "4"):
+    for key in ("1", "2", "3", "4"):
         assert key in bindings
         assert bindings[key].priority is True
 
@@ -24,6 +23,11 @@ def test_dependency_binding_is_priority() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "ctrl+i" in bindings
     assert bindings["ctrl+i"].priority is True
+
+
+def test_toggle_interact_input_binding_action() -> None:
+    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
+    assert bindings["1"].action == "toggle_interact_input"
 
 
 def test_agent_management_keys_include_c_a_h_n_and_m() -> None:

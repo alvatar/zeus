@@ -27,6 +27,11 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
 
 
+def test_app_css_can_hide_interact_input() -> None:
+    assert "#interact-input.hidden {" in css.APP_CSS
+    assert "display: none;" in css.APP_CSS
+
+
 def test_dependency_dialog_css_has_expected_spacing() -> None:
     assert "max-height: 24;" in css.DEPENDENCY_SELECT_CSS
     assert "#dependency-select-buttons {" in css.DEPENDENCY_SELECT_CSS
