@@ -250,7 +250,7 @@ AgentNotesScreen {{
 #agent-notes-dialog {{
     width: 110;
     height: auto;
-    max-height: 34;
+    max-height: 40;
     border: thick #ffaf00;
     background: #0a0a0a;
     padding: 1 2;
