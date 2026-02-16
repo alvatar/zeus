@@ -26,6 +26,8 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 
 Canonical naming rules live in `docs/specs/terminology.md`.
 
+Filesystem messaging flow and delivery guarantees are documented in `docs/guides/filesystem-messaging.md`.
+
 ## Requirements
 
 - Linux with [sway](https://swaywm.org/) window manager
@@ -33,6 +35,7 @@ Canonical naming rules live in `docs/specs/terminology.md`.
 - Python 3.11+ with [textual](https://textual.textualize.io/) (`pip install textual`)
 - [pi coding agent](https://github.com/mariozechner/pi-coding-agent) with the `usage-bars` extension
 - [bemenu](https://github.com/Cloudef/bemenu) (for the launcher prompt)
+- `inotifywait` from `inotify-tools` (for filesystem message-queue wakeups)
 - `tcp_diag` kernel module (for per-process network I/O tracking)
 
 ### Kernel module setup

@@ -1,6 +1,8 @@
 """Tests for broadcast/direct share helpers."""
 
-from zeus.dashboard.app import ZeusApp, _extract_share_payload
+from pathlib import Path
+
+from zeus.dashboard.app import ZeusApp, _extract_share_file_path, _extract_share_payload
 from zeus.models import AgentWindow
 from tests.helpers import capture_kitty_cmd, capture_notify
 
@@ -48,6 +50,16 @@ def test_extract_share_payload_empty_when_wrapped_block_empty() -> None:
     assert _extract_share_payload("x\n%%%%\n\n%%%%\n") == ""
 
 
+def test_extract_share_file_path_prefers_latest_zeus_msg_file_line() -> None:
+    text = (
+        "line\n"
+        "ZEUS_MSG_FILE=/tmp/old.md\n"
+        "another\n"
+        "ZEUS_MSG_FILE='/tmp/new.md'\n"
+    )
+    assert _extract_share_file_path(text) == "/tmp/new.md"
+
+
 def test_broadcast_recipients_exclude_source_paused_and_blocked() -> None:
     app = ZeusApp()
     source = _agent("source", 1)
@@ -74,6 +86,10 @@ def test_share_payload_prefers_session_transcript(monkeypatch) -> None:
         lambda agent: "/tmp/fake-session.jsonl",
     )
     monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _: "",
+    )
+    monkeypatch.setattr(
         "zeus.dashboard.app.read_session_user_text",
         lambda _: "%%%%\nfrom session line 1\nfrom session line 2\n%%%%\n",
     )
@@ -84,6 +100,64 @@ def test_share_payload_prefers_session_transcript(monkeypatch) -> None:
 
     payload = app._share_payload_for_source(source)
     assert payload == "from session line 1\nfrom session line 2"
+
+
+def test_share_payload_prefers_zeus_msg_file_pointer_in_session(monkeypatch, tmp_path: Path) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    payload_file = tmp_path / "zeus-msg-1.md"
+    payload_file.write_text("from file payload\n")
+
+    monkeypatch.setattr("zeus.dashboard.app.MESSAGE_TMP_DIR", tmp_path)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path",
+        lambda agent: "/tmp/fake-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _: f"note\nZEUS_MSG_FILE={payload_file}\n",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_user_text",
+        lambda _: "%%%%\nfrom markers\n%%%%\n",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.get_screen_text",
+        lambda agent, full=False, ansi=False: "%%%%\nfrom screen\n%%%%\n",
+    )
+
+    payload = app._share_payload_for_source(source)
+    assert payload == "from file payload"
+
+
+def test_share_payload_ignores_file_pointer_outside_message_tmp_dir(monkeypatch, tmp_path: Path) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside")
+
+    monkeypatch.setattr("zeus.dashboard.app.MESSAGE_TMP_DIR", allowed)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path",
+        lambda agent: "/tmp/fake-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _: f"ZEUS_MSG_FILE={outside}\n",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_user_text",
+        lambda _: "%%%%\nfrom markers\n%%%%\n",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.get_screen_text",
+        lambda agent, full=False, ansi=False: "%%%%\nfrom screen\n%%%%\n",
+    )
+
+    payload = app._share_payload_for_source(source)
+    assert payload == "from markers"
 
 
 def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch) -> None:

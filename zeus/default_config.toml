@@ -11,6 +11,14 @@ model = "anthropic/claude-haiku-4-5"
 [dashboard.history]
 max_entries = 10
 
+# ── Storage paths ────────────────────────────────────────────────────
+# state_dir: Zeus state files (ids, priorities, tasks, dependencies, queue)
+# message_tmp_dir: payload file staging directory used by file-based messaging
+
+[storage]
+state_dir = "/tmp"
+message_tmp_dir = "/tmp"
+
 # ── Column layout ────────────────────────────────────────────────────
 # "fixed" = number of left-pinned columns (keep colored on row select)
 

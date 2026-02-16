@@ -9,8 +9,10 @@ from enum import Enum
 from pathlib import Path
 import os
 import re
+import shutil
 import subprocess
 import textwrap
+import threading
 import time
 
 from textual import events, work
@@ -29,7 +31,7 @@ class SortMode(Enum):
     PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
+from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE
 from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
@@ -43,7 +45,19 @@ from ..kitty import (
     resolve_agent_session_path,
     spawn_subagent, load_names, save_names, kitty_cmd,
 )
-from ..sessions import read_session_user_text
+from ..sessions import read_session_text, read_session_user_text
+from ..message_queue import (
+    OutboundEnvelope,
+    ack_envelope,
+    claim_envelope,
+    enqueue_envelope,
+    ensure_queue_dirs,
+    list_new_envelopes,
+    load_envelope,
+    queue_new_dir,
+    reclaim_stale_inflight,
+    requeue_envelope,
+)
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -128,6 +142,11 @@ def _compact_name(name: str, maxlen: int) -> str:
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
 _SHARE_MARKER = "%%%%"
+_SHARE_FILE_LINE_RE = re.compile(r"ZEUS_MSG_FILE\s*=\s*(\S+)")
+_SHARE_FILE_HINT_RE = re.compile(
+    r"message\s+is\s+in\s+file\s+(\S+)",
+    flags=re.IGNORECASE,
+)
 _TASK_PENDING_RE = re.compile(r"^(\s*-\s*)\[(?:\s*)\](\s*)(.*)$")
 _TASK_HEADER_RE = re.compile(r"^\s*-\s*\[(?:\s*|[xX])\]\s*")
 
@@ -186,6 +205,49 @@ def _extract_share_payload(text: str) -> str | None:
         return None
 
     return "\n".join(lines[start + 1:end]).strip()
+
+
+def _normalize_share_file_candidate(candidate: str) -> str:
+    return candidate.strip().strip("\"'").rstrip(".,;:)")
+
+
+def _extract_share_file_path(text: str) -> str | None:
+    """Extract the latest ZEUS_MSG_FILE path from text, if present."""
+    for line in reversed(text.splitlines()):
+        match = _SHARE_FILE_LINE_RE.search(line)
+        if match is not None:
+            return _normalize_share_file_candidate(match.group(1))
+        hint_match = _SHARE_FILE_HINT_RE.search(line)
+        if hint_match is not None:
+            return _normalize_share_file_candidate(hint_match.group(1))
+    return None
+
+
+def _read_share_file_payload(path_text: str) -> str | None:
+    """Read payload from configured temp-message directory path."""
+    if not path_text:
+        return None
+
+    try:
+        path = Path(os.path.expanduser(path_text)).resolve()
+    except OSError:
+        return None
+
+    try:
+        allowed_root = MESSAGE_TMP_DIR.resolve()
+    except OSError:
+        return None
+
+    if path != allowed_root and allowed_root not in path.parents:
+        return None
+
+    if not path.is_file():
+        return None
+
+    try:
+        return path.read_text()
+    except OSError:
+        return None
 
 
 def _extract_next_task(task_text: str) -> tuple[str, str] | None:
@@ -353,6 +415,13 @@ class ZeusApp(App):
     _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
+    _message_queue_draining: bool = False
+    _message_queue_inflight_lease_s: float = 30.0
+    _message_queue_backoff_max_s: float = 30.0
+    _message_queue_watch_thread: threading.Thread | None = None
+    _message_queue_watch_stop: threading.Event | None = None
+    _message_queue_inotify_proc: subprocess.Popen[str] | None = None
+    _message_queue_inotify_enabled: bool = False
     _aegis_enabled: set[str] = set()
     _aegis_modes: dict[str, str] = {}
     _aegis_delay_timers: dict[str, Timer] = {}
@@ -440,10 +509,99 @@ class ZeusApp(App):
         self.query_one("#interact-stream", RichLog).can_focus = False
         self._setup_table_columns()
         self._apply_panel_visibility()
+        ensure_queue_dirs()
+        self._drain_message_queue()
+        self._start_message_queue_watcher()
         self.poll_and_update()
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_interact_stream)
+        self.set_interval(1.0, self._drain_message_queue)
+
+    def on_unmount(self, event: events.Unmount) -> None:
+        self._stop_message_queue_watcher()
+
+    def _start_message_queue_watcher(self) -> None:
+        if self._message_queue_watch_thread and self._message_queue_watch_thread.is_alive():
+            return
+
+        if shutil.which("inotifywait") is None:
+            self._message_queue_inotify_enabled = False
+            return
+
+        stop_event = threading.Event()
+        self._message_queue_watch_stop = stop_event
+        self._message_queue_inotify_enabled = True
+
+        thread = threading.Thread(
+            target=self._message_queue_watch_loop,
+            args=(stop_event,),
+            name="zeus-msg-watch",
+            daemon=True,
+        )
+        self._message_queue_watch_thread = thread
+        thread.start()
+
+    def _stop_message_queue_watcher(self) -> None:
+        if self._message_queue_watch_stop is not None:
+            self._message_queue_watch_stop.set()
+
+        proc = self._message_queue_inotify_proc
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=0.5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+        thread = self._message_queue_watch_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=0.5)
+
+        self._message_queue_watch_thread = None
+        self._message_queue_watch_stop = None
+        self._message_queue_inotify_proc = None
+
+    def _message_queue_watch_loop(self, stop_event: threading.Event) -> None:
+        cmd = [
+            "inotifywait",
+            "-m",
+            "-q",
+            "-e",
+            "create",
+            "-e",
+            "moved_to",
+            "--format",
+            "%w%f",
+            str(queue_new_dir()),
+        ]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except OSError:
+            self._message_queue_inotify_enabled = False
+            return
+
+        self._message_queue_inotify_proc = proc
+        try:
+            out = proc.stdout
+            if out is None:
+                return
+            for _line in out:
+                if stop_event.is_set():
+                    break
+                self.call_from_thread(self._drain_message_queue)
+        finally:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+            self._message_queue_inotify_proc = None
 
     def notify(
         self,
@@ -1909,29 +2067,44 @@ class ZeusApp(App):
         return options
 
     def _share_payload_for_source(self, source: AgentWindow) -> str | None:
-        """Extract share payload preferring deep session transcript.
+        """Extract share payload from file pointer first, then marker fallback.
 
         Order matters:
-        1) session JSONL transcript (better formatting, deeper history)
-        2) kitty full extent text (fallback)
+        1) ZEUS_MSG_FILE pointer in session transcript
+        2) wrapped %%%% marker block in user transcript
+        3) ZEUS_MSG_FILE pointer in full screen text
+        4) wrapped %%%% marker block in full screen text
         """
         session_path = resolve_agent_session_path(source)
         if session_path:
-            session_text = read_session_user_text(session_path)
-            if session_text.strip():
-                payload = _extract_share_payload(session_text)
+            session_all_text = read_session_text(session_path)
+            if session_all_text.strip():
+                pointer = _extract_share_file_path(session_all_text)
+                if pointer:
+                    payload = _read_share_file_payload(pointer)
+                    if payload is not None:
+                        return payload.strip()
+
+            session_user_text = read_session_user_text(session_path)
+            if session_user_text.strip():
+                payload = _extract_share_payload(session_user_text)
                 if payload is not None:
                     return payload
 
         screen_text = get_screen_text(source, full=True)
         if screen_text.strip():
+            pointer = _extract_share_file_path(screen_text)
+            if pointer:
+                payload = _read_share_file_payload(pointer)
+                if payload is not None:
+                    return payload.strip()
             return _extract_share_payload(screen_text)
 
         return None
 
     _SHARE_MARKER_REMINDER = (
-        f"No wrapped share marker found. Put {_SHARE_MARKER} on a line by "
-        f"itself both before and after the block to send."
+        "No payload found. Provide ZEUS_MSG_FILE=/tmp/zeus-msg-<id>.md, "
+        f"or wrap text between {_SHARE_MARKER} marker lines."
     )
 
     def _dismiss_broadcast_preparing_screen(self) -> None:
@@ -2212,6 +2385,91 @@ class ZeusApp(App):
             )
         )
 
+    @staticmethod
+    def _queue_retry_delay_s(attempts: int) -> float:
+        return min(30.0, float(2 ** max(0, min(attempts, 4))))
+
+    def _get_agent_by_id(self, agent_id: str) -> AgentWindow | None:
+        clean = agent_id.strip()
+        if not clean:
+            return None
+        for agent in self.agents:
+            if self._agent_identity_key(agent) == clean:
+                return agent
+        return None
+
+    def _enqueue_outbound_agent_message(
+        self,
+        target: AgentWindow,
+        message: str,
+        *,
+        source_name: str,
+    ) -> bool:
+        target_id = self._agent_identity_key(target).strip()
+        if not target_id:
+            return False
+
+        clean = self._normalize_outgoing_text(message)
+        if not clean.strip():
+            return False
+
+        envelope = OutboundEnvelope.new(
+            source_name=source_name,
+            target_agent_id=target_id,
+            target_name=target.name,
+            message=clean,
+        )
+        enqueue_envelope(envelope)
+        return True
+
+    def _drain_message_queue(self) -> None:
+        if self._message_queue_draining:
+            return
+
+        self._message_queue_draining = True
+        try:
+            now = time.time()
+            reclaim_stale_inflight(self._message_queue_inflight_lease_s, now=now)
+
+            for path in list_new_envelopes():
+                envelope = load_envelope(path)
+                if envelope is None:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+                    continue
+
+                if envelope.next_attempt_at > now:
+                    continue
+
+                target = self._get_agent_by_id(envelope.target_agent_id)
+                if target is None:
+                    continue
+
+                inflight = claim_envelope(path)
+                if inflight is None:
+                    continue
+
+                claimed = load_envelope(inflight)
+                if claimed is None:
+                    ack_envelope(inflight)
+                    continue
+
+                delivered = self._queue_text_to_agent(target, claimed.message)
+                if delivered:
+                    ack_envelope(inflight)
+                    continue
+
+                requeue_envelope(
+                    inflight,
+                    claimed,
+                    now=time.time(),
+                    delay_seconds=self._queue_retry_delay_s(claimed.attempts),
+                )
+        finally:
+            self._message_queue_draining = False
+
     def do_enqueue_broadcast(
         self,
         source_name: str,
@@ -2224,13 +2482,18 @@ class ZeusApp(App):
             agent = self._get_agent_by_key(key)
             if agent is None or self._is_input_blocked(agent):
                 continue
-            self._queue_text_to_agent(agent, message)
-            sent += 1
+            if self._enqueue_outbound_agent_message(
+                agent,
+                message,
+                source_name=source_name,
+            ):
+                sent += 1
 
         if sent == 0:
             self.notify("Broadcast aborted: no active recipients", timeout=3)
             return
 
+        self._drain_message_queue()
         self.notify(
             f"Broadcast from {source_name} queued to {sent} Hippeis",
             timeout=3,
@@ -2261,7 +2524,15 @@ class ZeusApp(App):
             self.notify("Target is no longer active", timeout=3)
             return
 
-        self._queue_text_to_agent(target, message)
+        if not self._enqueue_outbound_agent_message(
+            target,
+            message,
+            source_name=source_name,
+        ):
+            self.notify("Message is empty", timeout=2)
+            return
+
+        self._drain_message_queue()
 
         if blocked_by_source:
             target_dep_key = self._agent_dependency_key(target)
@@ -3665,18 +3936,30 @@ class ZeusApp(App):
         text: str,
         *,
         queue_sequence: tuple[str, ...] | None = None,
-    ) -> None:
+    ) -> bool:
         """Send text to an agent either as plain Enter or queue sequence."""
         clean = self._normalize_outgoing_text(text)
         match = f"id:{agent.kitty_id}"
 
         if queue_sequence is None:
-            kitty_cmd(agent.socket, "send-text", "--match", match, clean + "\r")
-            return
+            return bool(
+                kitty_cmd(
+                    agent.socket,
+                    "send-text",
+                    "--match",
+                    match,
+                    clean + "\r",
+                )
+            )
 
-        kitty_cmd(agent.socket, "send-text", "--match", match, clean)
+        if kitty_cmd(agent.socket, "send-text", "--match", match, clean) is None:
+            return False
+
         for key in queue_sequence:
-            kitty_cmd(agent.socket, "send-text", "--match", match, key)
+            if kitty_cmd(agent.socket, "send-text", "--match", match, key) is None:
+                return False
+
+        return True
 
     def _dispatch_tmux_text(
         self,
@@ -3697,21 +3980,21 @@ class ZeusApp(App):
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
-    def _send_text_to_agent(self, agent: AgentWindow, text: str) -> None:
+    def _send_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
         """Send text to the agent's kitty window followed by Enter."""
-        self._dispatch_agent_text(agent, text)
+        return self._dispatch_agent_text(agent, text)
 
-    def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> None:
+    def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
         """Queue cross-agent text and clear remote editor robustly."""
-        self._dispatch_agent_text(
+        return self._dispatch_agent_text(
             agent,
             text,
             queue_sequence=self._QUEUE_SEQUENCE_DEFAULT,
         )
 
-    def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> None:
+    def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> bool:
         """Queue via Ctrl+W path (kept as legacy known-good behavior)."""
-        self._dispatch_agent_text(
+        return self._dispatch_agent_text(
             agent,
             text,
             queue_sequence=self._QUEUE_SEQUENCE_LEGACY_W,
