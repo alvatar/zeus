@@ -52,6 +52,21 @@ def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None
     assert renders == [True, True]
 
 
+def test_aegis_state_bg_uses_bright_and_dim_variants() -> None:
+    app = ZeusApp()
+    hippeus = _agent("alpha", 1)
+    key = app._agent_key(hippeus)
+
+    assert app._aegis_state_bg(key) == "#000000"
+
+    app._aegis_enabled.add(key)
+    app._aegis_modes[key] = app._AEGIS_MODE_ARMED
+    assert app._aegis_state_bg(key) == app._AEGIS_ROW_BG
+
+    app._aegis_modes[key] = app._AEGIS_MODE_HALTED
+    assert app._aegis_state_bg(key) == app._AEGIS_ROW_BG_DIM
+
+
 def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
     app = ZeusApp()
     hippeus = _agent("alpha", 1)

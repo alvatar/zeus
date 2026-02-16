@@ -242,6 +242,7 @@ class ZeusApp(App):
     _AEGIS_DELAY_S = 5.0
     _AEGIS_CHECK_S = 60.0
     _AEGIS_ROW_BG = "#ff69b4"
+    _AEGIS_ROW_BG_DIM = "#a35c82"
     _AEGIS_PROMPT = (
         "Continue now unless you really need me to make a decision. "
         "If so, save this report in the /reports folder with a descriptive "
@@ -630,6 +631,14 @@ class ZeusApp(App):
         self._cancel_aegis_delay_timer(key)
         self._cancel_aegis_check_timer(key)
 
+    def _aegis_state_bg(self, key: str) -> str:
+        if key not in self._aegis_enabled:
+            return "#000000"
+        mode = self._aegis_modes.get(key, self._AEGIS_MODE_ARMED)
+        if mode == self._AEGIS_MODE_HALTED:
+            return self._AEGIS_ROW_BG_DIM
+        return self._AEGIS_ROW_BG
+
     def _is_aegis_waiting(self, key: str, agent: AgentWindow) -> bool:
         return agent.state == State.IDLE and key in self._action_needed
 
@@ -909,6 +918,7 @@ class ZeusApp(App):
                 and a.state == State.IDLE
                 and akey in self._action_needed
             )
+            state_bg = self._aegis_state_bg(akey)
 
             if blocked:
                 icon = "└"
@@ -949,7 +959,7 @@ class ZeusApp(App):
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
                 state_cell,
-                style=f"bold {state_color} on #000000",
+                style=f"bold {state_color} on {state_bg}",
             )
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
