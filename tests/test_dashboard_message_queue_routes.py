@@ -134,6 +134,42 @@ def test_drain_message_queue_routes_hoplite_by_session_agent_id(
     assert mq.list_inflight_envelopes() == []
 
 
+def test_drain_message_queue_unpauses_paused_agent_targets(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    app = ZeusApp()
+
+    target = _agent("target", 2, agent_id="agent-target")
+    app.agents = [target]
+    app._message_receipts = {}
+    app._agent_priorities = {"target": 4}
+
+    sends: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app,
+        "_queue_text_to_agent",
+        lambda agent, text: sends.append((agent.name, text)) or True,
+    )
+
+    env = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="agent",
+        target_ref="agent-target",
+        target_agent_id="agent-target",
+        message="wake-up",
+    )
+    mq.enqueue_envelope(env)
+    app._drain_message_queue()
+
+    assert sends == [("target", "wake-up")]
+    assert app._agent_priorities.get("target", 3) == 3
+    assert mq.list_new_envelopes() == []
+    assert mq.list_inflight_envelopes() == []
+
+
 def test_drain_message_queue_dedupes_same_message_id_per_recipient(
     monkeypatch,
     tmp_path: Path,

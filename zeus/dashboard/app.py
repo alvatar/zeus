@@ -2673,6 +2673,7 @@ class ZeusApp(App):
 
     def _deliver_queue_target(self, target: QueueDeliveryTarget, message: str) -> bool:
         if target.kind == "agent" and target.agent is not None:
+            self._resume_agent_if_paused(target.agent)
             return self._queue_text_to_agent(target.agent, message)
         if target.kind == "tmux" and target.tmux_session:
             return self._dispatch_tmux_text(target.tmux_session, message, queue=True)
