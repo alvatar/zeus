@@ -702,10 +702,19 @@ class ZeusApp(App):
         return agent.state == State.IDLE or self._is_aegis_waiting(key, agent)
 
     def _reconcile_aegis_agents(self, live_keys: set[str]) -> None:
+        live_agents_by_key = {self._agent_key(agent): agent for agent in self.agents}
         for key in list(self._aegis_enabled):
-            if key in live_keys:
+            if key not in live_keys:
+                self._disable_aegis(key)
                 continue
-            self._disable_aegis(key)
+
+            agent = live_agents_by_key.get(key)
+            if agent is None:
+                self._disable_aegis(key)
+                continue
+
+            if self._is_input_blocked(agent):
+                self._disable_aegis(key)
 
     def _process_aegis_state_transitions(self, old_states: dict[str, State]) -> None:
         live_keys = {self._agent_key(agent) for agent in self.agents}
@@ -2773,10 +2782,21 @@ class ZeusApp(App):
         if key in self._aegis_enabled:
             self._disable_aegis(key)
             self.notify(f"Aegis disabled: {agent.name}", timeout=2)
-        else:
-            self._aegis_enabled.add(key)
-            self._aegis_modes[key] = self._AEGIS_MODE_ARMED
-            self.notify(f"Aegis enabled: {agent.name}", timeout=2)
+            self._render_agent_table_and_status()
+            if self._interact_visible:
+                self._refresh_interact_panel()
+            return
+
+        if self._is_input_blocked(agent):
+            self.notify(
+                f"Aegis unavailable for blocked/paused Hippeus: {agent.name}",
+                timeout=2,
+            )
+            return
+
+        self._aegis_enabled.add(key)
+        self._aegis_modes[key] = self._AEGIS_MODE_ARMED
+        self.notify(f"Aegis enabled: {agent.name}", timeout=2)
 
         self._render_agent_table_and_status()
         if self._interact_visible:

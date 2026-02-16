@@ -23,8 +23,19 @@ def _agent(name: str, kitty_id: int) -> AgentWindow:
     )
 
 
-def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None:
+def _new_app() -> ZeusApp:
     app = ZeusApp()
+    app._agent_dependencies = {}
+    app._agent_priorities = {}
+    app._aegis_enabled = set()
+    app._aegis_modes = {}
+    app._aegis_delay_timers = {}
+    app._aegis_check_timers = {}
+    return app
+
+
+def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None:
+    app = _new_app()
     hippeus = _agent("alpha", 1)
     key = app._agent_key(hippeus)
 
@@ -52,8 +63,81 @@ def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None
     assert renders == [True, True]
 
 
+def test_toggle_aegis_rejects_blocked_or_paused_hippeus(monkeypatch) -> None:
+    app = _new_app()
+    blocker = _agent("blocker", 2)
+    blocked = _agent("blocked", 1)
+    paused = _agent("paused", 3)
+
+    app.agents = [blocked, blocker, paused]
+    app._agent_dependencies[app._agent_dependency_key(blocked)] = app._agent_dependency_key(
+        blocker
+    )
+    app._agent_priorities[paused.name] = 4
+
+    notices: list[str] = []
+    renders: list[bool] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    app._interact_visible = False
+
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: blocked)
+    app.action_toggle_aegis()
+    assert app._agent_key(blocked) not in app._aegis_enabled
+    assert notices[-1] == "Aegis unavailable for blocked/paused Hippeus: blocked"
+
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: paused)
+    app.action_toggle_aegis()
+    assert app._agent_key(paused) not in app._aegis_enabled
+    assert notices[-1] == "Aegis unavailable for blocked/paused Hippeus: paused"
+
+    assert renders == []
+
+
+def test_reconcile_aegis_disables_blocked_and_paused_agents() -> None:
+    app = _new_app()
+    blocker = _agent("blocker", 1)
+    blocked = _agent("blocked", 2)
+    paused = _agent("paused", 3)
+    normal = _agent("normal", 4)
+
+    app.agents = [blocker, blocked, paused, normal]
+    app._agent_dependencies[app._agent_dependency_key(blocked)] = app._agent_dependency_key(
+        blocker
+    )
+    app._agent_priorities[paused.name] = 4
+
+    blocked_key = app._agent_key(blocked)
+    paused_key = app._agent_key(paused)
+    normal_key = app._agent_key(normal)
+
+    app._aegis_enabled.update({blocked_key, paused_key, normal_key})
+    app._aegis_modes[blocked_key] = app._AEGIS_MODE_ARMED
+    app._aegis_modes[paused_key] = app._AEGIS_MODE_ARMED
+    app._aegis_modes[normal_key] = app._AEGIS_MODE_ARMED
+
+    blocked_delay = _FakeTimer()
+    paused_check = _FakeTimer()
+    app._aegis_delay_timers[blocked_key] = blocked_delay
+    app._aegis_check_timers[paused_key] = paused_check
+
+    app._reconcile_aegis_agents({app._agent_key(agent) for agent in app.agents})
+
+    assert blocked_key not in app._aegis_enabled
+    assert paused_key not in app._aegis_enabled
+    assert normal_key in app._aegis_enabled
+    assert blocked_delay.stopped is True
+    assert paused_check.stopped is True
+
+
 def test_aegis_state_bg_uses_bright_and_dim_variants() -> None:
-    app = ZeusApp()
+    app = _new_app()
     hippeus = _agent("alpha", 1)
     key = app._agent_key(hippeus)
 
@@ -68,7 +152,7 @@ def test_aegis_state_bg_uses_bright_and_dim_variants() -> None:
 
 
 def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     hippeus = _agent("alpha", 1)
     hippeus.state = State.IDLE
     app.agents = [hippeus]
@@ -96,7 +180,7 @@ def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
 
 
 def test_aegis_delay_sends_prompt_once_and_starts_post_check(monkeypatch) -> None:
-    app = ZeusApp()
+    app = _new_app()
     hippeus = _agent("alpha", 1)
     hippeus.state = State.IDLE
     app.agents = [hippeus]
@@ -130,7 +214,7 @@ def test_aegis_delay_sends_prompt_once_and_starts_post_check(monkeypatch) -> Non
 
 
 def test_aegis_post_check_rearms_only_if_working_again() -> None:
-    app = ZeusApp()
+    app = _new_app()
     hippeus = _agent("alpha", 1)
     key = app._agent_key(hippeus)
     app.agents = [hippeus]
