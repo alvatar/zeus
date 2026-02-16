@@ -3,6 +3,11 @@
 from zeus.dashboard.screens import _HELP_BINDINGS
 
 
+def test_help_places_agent_management_section_first() -> None:
+    headers = [desc for key, desc in _HELP_BINDINGS if not key]
+    assert headers[0] == "─── Hippeis Management ───"
+
+
 def test_help_lists_text_area_navigation_commands() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
 
