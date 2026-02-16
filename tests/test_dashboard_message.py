@@ -190,7 +190,9 @@ def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -
     assert "A polemarch is a coordinator role in Zeus, not your personal name." in message
     assert "The Oracle (the user) will send your concrete task in the following message." in message
     assert "tmux new-session -d -s \"$SESSION\" -c \"$PWD\"" in message
+    assert "Use ONLY the canonical tool: zeus-msg send." in message
     assert "zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md" in message
+    assert "DO NOT poll /tmp files as a communication protocol." in message
     assert "@zeus_agent \"$HOPLITE_ID\"" in message
     assert "@zeus_role \"hoplite\"" in message
     assert notices[-1] == "Polemarch bootstrap sent: planner"

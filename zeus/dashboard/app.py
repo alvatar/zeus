@@ -3488,14 +3488,18 @@ class ZeusApp(App):
             - Only AGENT-based tmux sessions initialized with this contract are Hoplites.
             - Generic tmux viewer sessions are not Hoplites and not part of your Phalanx.
 
-            Messaging contract (autonomous Polemarch/Hoplite channel):
-            - Use zeus-msg for Phalanx-internal communication (not for Oracle instructions).
-            - Write payload to a file in /tmp, then queue it with zeus-msg:
+            Canonical communication contract (MANDATORY):
+            - Use ONLY the canonical tool: zeus-msg send.
+            - This applies to Polemarch -> Hoplite, Hoplite -> Polemarch,
+              and Hoplite -> Hoplite messages.
+            - Write payload to a /tmp file, then send with exactly one of:
               zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md
-            - Hoplites reply upstream to you with:
               zeus-msg send --to polemarch --file /tmp/zeus-msg-<uuid>.md
-            - Directed send to one Hoplite is:
               zeus-msg send --to hoplite:<ZEUS_AGENT_ID> --file /tmp/zeus-msg-<uuid>.md
+            - DO NOT use any non-canonical transport (tmux send-keys,
+              kitty send-text, manual copy/paste, ad-hoc shared files,
+              or any custom relay script) for agent-to-agent communication.
+            - DO NOT poll /tmp files as a communication protocol.
             - Delivery is at-least-once transport-ack; keep payloads idempotent.
             """
         ).strip()
