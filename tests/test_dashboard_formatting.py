@@ -20,19 +20,18 @@ def test_format_ram_mb_drops_decimal_for_double_digit_gigabytes() -> None:
 
 
 def test_compact_model_label_keeps_family_version_and_thinking() -> None:
-    assert _compact_model_label("anthropic/claude-sonnet-4-5 (xhigh)", 11) == "sn4.5 xh"
+    assert _compact_model_label("anthropic/claude-opus-4-5 (xhigh)", 15) == "op4.5 (xh)"
 
 
-def test_compact_model_label_compacts_gpt_variant() -> None:
-    assert _compact_model_label("gpt-4.1-mini", 11) == "gpt4.1-mi"
+def test_compact_model_label_compacts_gpt_variant_to_family_version_only() -> None:
+    assert _compact_model_label("gpt-5-3-codex", 15) == "gpt5.3"
 
 
-def test_compact_model_label_keeps_gpt5_codex_readable() -> None:
-    assert _compact_model_label("openai/gpt-5-reasoning-codex", 11) == "gpt5-cdx"
-    assert _compact_model_label("openai/gpt-5-reasoning-codex", 15) == "gpt5-rsn-cdx"
+def test_compact_model_label_keeps_thinking_suffix_when_it_fits() -> None:
+    assert _compact_model_label("openai/gpt-5 (high)", 15) == "gpt5 (h)"
 
 
-def test_compact_model_label_unknown_long_name_uses_token_squash() -> None:
+def test_compact_model_label_falls_back_to_family_for_unknown_models() -> None:
     compact = _compact_model_label("this-is-a-very-long-model-name", 11)
-    assert compact == "this-is-nam"
+    assert compact == "this"
     assert len(compact) <= 11

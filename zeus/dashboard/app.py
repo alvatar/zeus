@@ -172,64 +172,34 @@ def _middle_ellipsis(text: str, maxlen: int) -> str:
 
 _MODEL_THINKING_RE = re.compile(r"^(.*?)\s*\(([^()]+)\)\s*$")
 _MODEL_NUMBER_RE = re.compile(r"^\d+(?:\.\d+)?$")
-_MODEL_TOKEN_SHORT: dict[str, str] = {
-    "claude": "",
-    "sonnet": "sn",
+_MODEL_FAMILY_ALIASES: dict[str, str] = {
     "opus": "op",
+    "sonnet": "sn",
     "haiku": "hk",
     "gpt": "gpt",
     "gemini": "gem",
     "deepseek": "ds",
     "qwen": "qw",
-    "flash": "fl",
-    "turbo": "tb",
-    "mini": "mi",
-    "nano": "na",
-    "chat": "ch",
-    "instruct": "ins",
-    "reasoning": "rsn",
-    "reasoner": "rsn",
-    "codex": "cdx",
-    "omni": "om",
-    "preview": "",
-    "latest": "",
-    "experimental": "ex",
-    "exp": "ex",
 }
 _THINKING_SHORT: dict[str, str] = {
     "xhigh": "xh",
-    "high": "hi",
-    "medium": "md",
-    "med": "md",
-    "low": "lo",
+    "high": "h",
+    "medium": "m",
+    "med": "m",
+    "low": "l",
 }
-_MODEL_FAMILY_WITH_VERSION = {"sn", "op", "hk", "gpt", "gem", "ds", "qw"}
 
 
 def _is_model_number(token: str) -> bool:
     return bool(_MODEL_NUMBER_RE.fullmatch(token))
 
 
-def _squash_model_token(token: str, width: int) -> str:
-    """Shorten unknown variant tokens without using ellipsis."""
-    if width <= 0:
-        return ""
-    if len(token) <= width:
-        return token
-
-    consonants = token[0] + "".join(ch for ch in token[1:] if ch not in "aeiou")
-    if len(consonants) >= width:
-        return consonants[:width]
-    return token[:width]
-
-
 def _compact_model_label(model: str, maxlen: int) -> str:
-    """Compact model labels with readable family/version-first semantics.
+    """Compact model labels to <family><version> with optional thinking.
 
     Examples:
-      - "anthropic/claude-sonnet-4-5 (xhigh)" -> "sn4.5 xh"
-      - "gpt-4.1-mini" -> "gpt4.1-mi"
-      - "openai/gpt-5-reasoning-codex" -> "gpt5-rsn-cdx" (or shorter if needed)
+      - "anthropic/claude-opus-4-5 (xhigh)" -> "op4.5 (xh)"
+      - "openai/gpt-5-3-codex" -> "gpt5.3"
     """
     if maxlen <= 0:
         return ""
@@ -254,97 +224,52 @@ def _compact_model_label(model: str, maxlen: int) -> str:
     normalized = normalized.strip("-")
 
     tokens = [t for t in normalized.split("-") if t]
-    mapped_tokens: list[str] = []
-    for token in tokens:
-        mapped = _MODEL_TOKEN_SHORT.get(token, token)
-        if mapped:
-            mapped_tokens.append(mapped)
+    if not tokens:
+        return _middle_ellipsis("—", maxlen)
 
-    # Combine common family+version forms to compact semantic labels.
-    compact_parts: list[str] = []
-    idx = 0
-    while idx < len(mapped_tokens):
-        token = mapped_tokens[idx]
+    family = ""
+    family_idx = -1
+    for idx, token in enumerate(tokens):
+        alias = _MODEL_FAMILY_ALIASES.get(token)
+        if alias:
+            family = alias
+            family_idx = idx
+            break
 
-        if (
-            token in {"sn", "op", "hk"}
-            and idx + 2 < len(mapped_tokens)
-            and mapped_tokens[idx + 1].isdigit()
-            and mapped_tokens[idx + 2].isdigit()
-        ):
-            compact_parts.append(
-                f"{token}{mapped_tokens[idx + 1]}.{mapped_tokens[idx + 2]}"
-            )
-            idx += 3
+    if family_idx < 0:
+        family = tokens[0]
+        family_idx = 0
+
+    version_tokens: list[str] = []
+    for token in tokens[family_idx + 1 :]:
+        if _is_model_number(token):
+            version_tokens.append(token)
             continue
-
-        if (
-            _is_model_number(token)
-            and idx + 1 < len(mapped_tokens)
-            and mapped_tokens[idx + 1] in _MODEL_FAMILY_WITH_VERSION
-        ):
-            compact_parts.append(f"{mapped_tokens[idx + 1]}{token}")
-            idx += 2
+        if token.isdigit():
+            version_tokens.append(token)
             continue
+        # Keep at most one contiguous numeric run.
+        if version_tokens:
+            break
 
-        if (
-            token in _MODEL_FAMILY_WITH_VERSION
-            and idx + 1 < len(mapped_tokens)
-            and _is_model_number(mapped_tokens[idx + 1])
-        ):
-            compact_parts.append(f"{token}{mapped_tokens[idx + 1]}")
-            idx += 2
-            continue
+    version = ""
+    if version_tokens:
+        if len(version_tokens) >= 2 and all(t.isdigit() for t in version_tokens[:2]):
+            version = f"{version_tokens[0]}.{version_tokens[1]}"
+        else:
+            version = version_tokens[0]
 
-        compact_parts.append(token)
-        idx += 1
-
-    if not compact_parts:
-        compact_parts = [normalized or "—"]
-
-    family = compact_parts[0]
-    variants = compact_parts[1:]
-
-    def _base_label(parts: list[str]) -> str:
-        if not parts:
-            return family
-        return f"{family}-{'-'.join(parts)}"
-
-    candidates: list[str] = []
-
-    def _add_candidate(label: str) -> None:
-        if label and label not in candidates:
-            candidates.append(label)
-
-    _add_candidate(_base_label(variants))
-
-    v4 = [_squash_model_token(v, 4) for v in variants]
-    _add_candidate(_base_label(v4))
-
-    v3 = [_squash_model_token(v, 3) for v in variants]
-    _add_candidate(_base_label(v3))
-
-    if len(v3) > 1:
-        _add_candidate(_base_label([v3[0], v3[-1]]))
-        _add_candidate(_base_label([v3[-1]]))
-        _add_candidate(_base_label([v3[0]]))
-
-    _add_candidate(family)
-
+    base_label = f"{family}{version}" if version else family
     thinking_short = _THINKING_SHORT.get(thinking, thinking[:2] if thinking else "")
-
-    # Prefer labels that can include thinking without extra ugliness.
     if thinking_short:
-        for candidate in candidates:
-            with_thinking = f"{candidate} {thinking_short}"
-            if len(with_thinking) <= maxlen:
-                return with_thinking
+        with_thinking = f"{base_label} ({thinking_short})"
+        if len(with_thinking) <= maxlen:
+            return with_thinking
 
-    for candidate in candidates:
-        if len(candidate) <= maxlen:
-            return candidate
+    if len(base_label) <= maxlen:
+        return base_label
 
-    return _middle_ellipsis(candidates[0], maxlen)
+    return _middle_ellipsis(base_label, maxlen)
 
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
