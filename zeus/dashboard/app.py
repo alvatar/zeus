@@ -1247,9 +1247,7 @@ class ZeusApp(App):
                 if self._is_hoplite_session_for(a, sess)
             )
             agent_role = (a.role or "").strip().lower()
-            # Back-compat: legacy Polemarch windows may not carry ZEUS_ROLE.
-            # If they own Hoplites, still render as Polemarch for display.
-            is_polemarch_display = agent_role == "polemarch" or hoplite_count > 0
+            is_polemarch_display = agent_role == "polemarch"
             role_marker = "🛡 " if is_polemarch_display else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
