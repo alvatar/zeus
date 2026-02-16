@@ -272,6 +272,7 @@ class ZeusApp(App):
         Binding("z", "new_agent", "Muster Hippeus"),
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("n", "queue_next_task", "Queue Task"),
+        Binding("g", "go_ahead", "Go ahead"),
         Binding("t", "agent_tasks", "Tasks"),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
@@ -2960,6 +2961,24 @@ class ZeusApp(App):
             self.notify("Select a Hippeus row to message", timeout=2)
             return
         self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
+
+    def action_go_ahead(self) -> None:
+        """G: send fixed 'go ahead' message to selected Hippeus."""
+        if self._should_ignore_table_action():
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to send go ahead", timeout=2)
+            return
+
+        prepared = self._prepare_message_dialog_send(agent, "go ahead")
+        if prepared is None:
+            return
+
+        live, clean = prepared
+        self._send_text_to_agent(live, clean)
+        self.notify(f"Sent go ahead: {live.name}", timeout=2)
 
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
         if self._is_blocked(agent):

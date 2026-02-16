@@ -86,6 +86,65 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     assert screen.draft == "draft body"
 
 
+def test_action_go_ahead_sends_fixed_message_to_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+    app.agents = [agent]
+
+    sent = capture_kitty_cmd(monkeypatch)
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+
+    app.action_go_ahead()
+
+    assert sent == [
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "go ahead\r"))
+    ]
+    assert notices[-1] == "Sent go ahead: alpha"
+
+
+def test_action_go_ahead_requires_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
+
+    app.action_go_ahead()
+
+    assert notices[-1] == "Select a Hippeus row to send go ahead"
+
+
+def test_action_go_ahead_rejects_paused_or_blocked_target(monkeypatch) -> None:
+    app = _new_app()
+    paused = _agent("paused", 1)
+    blocked = _agent("blocked", 2)
+    blocker = _agent("blocker", 3)
+
+    app.agents = [paused, blocked, blocker]
+    app._agent_priorities[paused.name] = 4
+    app._agent_dependencies[app._agent_dependency_key(blocked)] = app._agent_dependency_key(
+        blocker
+    )
+
+    sent = capture_kitty_cmd(monkeypatch)
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: paused)
+    app.action_go_ahead()
+    assert notices[-1] == "Hippeus is PAUSED (priority 4); input disabled"
+
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: blocked)
+    app.action_go_ahead()
+    assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
+
+    assert sent == []
+
+
 def test_enter_on_table_opens_message_dialog_when_input_hidden(monkeypatch) -> None:
     app = _new_app()
     table = DataTable()
