@@ -20,12 +20,25 @@ import uuid
 from .config import MESSAGE_QUEUE_DIR
 
 
+_TARGET_AGENT = "agent"
+_TARGET_HOPLITE = "hoplite"
+_TARGET_PHALANX = "phalanx"
+_VALID_TARGET_KINDS = {_TARGET_AGENT, _TARGET_HOPLITE, _TARGET_PHALANX}
+
+
 @dataclass
 class OutboundEnvelope:
     """Persisted outbound message envelope."""
 
     id: str
     source_name: str
+    source_agent_id: str
+    source_role: str
+    source_parent_id: str
+    source_phalanx_id: str
+    target_kind: str
+    target_ref: str
+    target_owner_id: str
     target_agent_id: str
     target_name: str
     message: str
@@ -39,16 +52,40 @@ class OutboundEnvelope:
         cls,
         *,
         source_name: str,
-        target_agent_id: str,
-        target_name: str,
         message: str,
+        source_agent_id: str = "",
+        source_role: str = "",
+        source_parent_id: str = "",
+        source_phalanx_id: str = "",
+        target_kind: str = _TARGET_AGENT,
+        target_ref: str = "",
+        target_owner_id: str = "",
+        target_agent_id: str = "",
+        target_name: str = "",
     ) -> "OutboundEnvelope":
         now = time.time()
+        kind = target_kind.strip().lower() or _TARGET_AGENT
+        ref = target_ref.strip()
+        agent_id = target_agent_id.strip()
+
+        if kind == _TARGET_AGENT:
+            if not ref:
+                ref = agent_id
+            if not agent_id:
+                agent_id = ref
+
         return cls(
             id=uuid.uuid4().hex,
-            source_name=source_name,
-            target_agent_id=target_agent_id,
-            target_name=target_name,
+            source_name=source_name.strip(),
+            source_agent_id=source_agent_id.strip(),
+            source_role=source_role.strip().lower(),
+            source_parent_id=source_parent_id.strip(),
+            source_phalanx_id=source_phalanx_id.strip(),
+            target_kind=kind,
+            target_ref=ref,
+            target_owner_id=target_owner_id.strip(),
+            target_agent_id=agent_id,
+            target_name=target_name.strip(),
             message=message,
             created_at=now,
             updated_at=now,
@@ -69,12 +106,35 @@ class OutboundEnvelope:
             return 0.0
 
         envelope_id = _s("id")
+        source_name = _s("source_name")
+        source_agent_id = _s("source_agent_id")
+        source_role = _s("source_role").lower()
+        source_parent_id = _s("source_parent_id")
+        source_phalanx_id = _s("source_phalanx_id")
+
+        target_kind = (_s("target_kind") or _TARGET_AGENT).lower()
+        target_ref = _s("target_ref")
+        target_owner_id = _s("target_owner_id")
         target_agent_id = _s("target_agent_id")
+        target_name = _s("target_name")
+
+        if target_kind not in _VALID_TARGET_KINDS:
+            return None
+
+        if target_kind == _TARGET_AGENT:
+            if not target_ref:
+                target_ref = target_agent_id
+            if not target_agent_id:
+                target_agent_id = target_ref
+            if not target_ref:
+                return None
+        else:
+            if not target_ref:
+                return None
+
         message_raw = raw.get("message")
         message = message_raw if isinstance(message_raw, str) else ""
-        source_name = _s("source_name")
-        target_name = _s("target_name")
-        if not (envelope_id and target_agent_id and message):
+        if not (envelope_id and message):
             return None
 
         attempts_raw = raw.get("attempts", 0)
@@ -83,6 +143,13 @@ class OutboundEnvelope:
         return cls(
             id=envelope_id,
             source_name=source_name,
+            source_agent_id=source_agent_id,
+            source_role=source_role,
+            source_parent_id=source_parent_id,
+            source_phalanx_id=source_phalanx_id,
+            target_kind=target_kind,
+            target_ref=target_ref,
+            target_owner_id=target_owner_id,
             target_agent_id=target_agent_id,
             target_name=target_name,
             message=message,
@@ -96,6 +163,13 @@ class OutboundEnvelope:
         return {
             "id": self.id,
             "source_name": self.source_name,
+            "source_agent_id": self.source_agent_id,
+            "source_role": self.source_role,
+            "source_parent_id": self.source_parent_id,
+            "source_phalanx_id": self.source_phalanx_id,
+            "target_kind": self.target_kind,
+            "target_ref": self.target_ref,
+            "target_owner_id": self.target_owner_id,
             "target_agent_id": self.target_agent_id,
             "target_name": self.target_name,
             "message": self.message,

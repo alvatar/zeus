@@ -65,6 +65,7 @@ AGENT_DEPENDENCIES_FILE = STATE_DIR / "zeus-agent-dependencies.json"
 USAGE_CACHE = STATE_DIR / "claude-usage-cache.json"
 OPENAI_USAGE_CACHE = STATE_DIR / "openai-usage-cache.json"
 MESSAGE_QUEUE_DIR = STATE_DIR / "zeus-message-queue"
+MESSAGE_RECEIPTS_FILE = STATE_DIR / "zeus-message-receipts.json"
 
 INPUT_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 MESSAGE_QUEUE_DIR.mkdir(parents=True, exist_ok=True)

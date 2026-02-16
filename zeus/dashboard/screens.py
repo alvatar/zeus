@@ -115,6 +115,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         env["ZEUS_AGENT_ID"] = agent_id
         if role == "polemarch":
             env["ZEUS_ROLE"] = "polemarch"
+            env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
 
         subprocess.Popen(
             ["kitty", "--directory", directory, "--hold",

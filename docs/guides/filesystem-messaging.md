@@ -14,6 +14,7 @@ Design goals:
 
 Current scope:
 - cross-agent summary/direct flows (`Ctrl+b`, `Ctrl+m`) use this queue
+- autonomous Polemarch/Hoplite sends via `zeus-msg send` use the same queue
 
 ## Storage and payload paths
 
@@ -32,6 +33,28 @@ Also supported via env vars:
 Behavior in current implementation:
 - queue envelopes live under: `<state_dir>/zeus-message-queue/`
 - payload files are expected in: `<message_tmp_dir>` (default `/tmp`)
+
+## Agent-side autonomous sends (`zeus-msg`)
+
+`zeus-msg` is a one-shot local CLI that enqueues an outbound envelope from a payload file.
+
+Examples:
+
+```bash
+# hoplite -> polemarch
+zeus-msg send --to polemarch --file /tmp/zeus-msg-<uuid>.md
+
+# polemarch -> all hoplites in phalanx
+zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md
+
+# polemarch/hoplite -> one hoplite by id
+zeus-msg send --to hoplite:<agent_id> --file /tmp/zeus-msg-<uuid>.md
+```
+
+Address resolution notes:
+- sender id is `ZEUS_AGENT_ID`
+- `--to polemarch` resolves via `ZEUS_PARENT_ID`
+- `--to phalanx` resolves via `ZEUS_PHALANX_ID` (or `phalanx-<owner>` fallback)
 
 ## Queue layout
 
@@ -72,6 +95,12 @@ ACK is **transport ACK**:
 - ACK does **not** mean the receiver model understood or executed the task
 
 This is intentional for current stage; app-level ACK can be added later.
+
+Dedupe behavior:
+- Zeus records per-recipient message receipts by envelope `id`.
+- If an envelope with the same id is retried after a successful delivery,
+  Zeus skips duplicate injection and ACKs it.
+- Receipt entries are pruned with a TTL window.
 
 ## Wakeups and catch-up
 

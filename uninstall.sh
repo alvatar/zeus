@@ -9,8 +9,8 @@ PI_ORIG="$BIN_DIR/pi.zeus-orig"
 echo "=== Zeus uninstaller ==="
 
 # Remove binaries
-rm -f "$BIN_DIR/zeus" "$BIN_DIR/zeus-launch"
-echo "✓ Removed zeus and zeus-launch from $BIN_DIR"
+rm -f "$BIN_DIR/zeus" "$BIN_DIR/zeus-msg" "$BIN_DIR/zeus-launch"
+echo "✓ Removed zeus, zeus-msg and zeus-launch from $BIN_DIR"
 
 # Restore pi if Zeus wrapper is present
 if [ -f "$PI_BIN" ] && grep -q "Zeus pi wrapper" "$PI_BIN" 2>/dev/null; then

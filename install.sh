@@ -43,18 +43,21 @@ echo ""
 # 1. Install zeus binary and package
 mkdir -p "$BIN_DIR"
 if $DEV_MODE; then
-    # Symlink entry point — it auto-detects ../zeus/ in repo
+    # Symlink entry points — they auto-detect ../zeus/ in repo
     ln -sf "$SCRIPT_DIR/bin/zeus" "$BIN_DIR/zeus"
+    ln -sf "$SCRIPT_DIR/bin/zeus-msg" "$BIN_DIR/zeus-msg"
     echo "✓ Symlinked $BIN_DIR/zeus → $SCRIPT_DIR/bin/zeus"
+    echo "✓ Symlinked $BIN_DIR/zeus-msg → $SCRIPT_DIR/bin/zeus-msg"
 else
-    # Copy entry point and package
+    # Copy entry points and package
     cp "$SCRIPT_DIR/bin/zeus" "$BIN_DIR/zeus"
-    chmod +x "$BIN_DIR/zeus"
+    cp "$SCRIPT_DIR/bin/zeus-msg" "$BIN_DIR/zeus-msg"
+    chmod +x "$BIN_DIR/zeus" "$BIN_DIR/zeus-msg"
 
     # Copy zeus/ package to ~/.local/lib/zeus/
     rm -rf "$LIB_DIR/zeus"
     cp -r "$SCRIPT_DIR/zeus" "$LIB_DIR/zeus"
-    echo "✓ Copied zeus to $BIN_DIR and package to $LIB_DIR/zeus"
+    echo "✓ Copied zeus/zeus-msg to $BIN_DIR and package to $LIB_DIR/zeus"
 fi
 
 # 2. zeus-launch helper
@@ -159,6 +162,12 @@ if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"
 else
     echo "⚠ zeus not in PATH — make sure $BIN_DIR is in your PATH"
+fi
+
+if command -v zeus-msg &>/dev/null; then
+    echo "✓ zeus-msg is in PATH"
+else
+    echo "⚠ zeus-msg not in PATH"
 fi
 
 if command -v zeus-launch &>/dev/null; then

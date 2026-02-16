@@ -13,6 +13,7 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Aegis automation** — optional per-Hippeus nudge flow (`a`) after `WORKING -> IDLE/WAITING` transitions
 - **Deterministic tmux ownership** — sessions are matched by `ZEUS_AGENT_ID` / `@zeus_owner` first, with cwd/screen-text fallback for legacy sessions
 - **Hippeus launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
+- **Autonomous queue CLI** — `zeus-msg send` lets Polemarch/Hoplite sessions enqueue filesystem-backed messages without Oracle mediation
 
 ## Terminology
 

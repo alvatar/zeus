@@ -58,6 +58,13 @@ from ..message_queue import (
     reclaim_stale_inflight,
     requeue_envelope,
 )
+from ..message_receipts import (
+    has_message_receipt,
+    load_message_receipts,
+    prune_message_receipts,
+    record_message_receipt,
+    save_message_receipts,
+)
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -108,6 +115,17 @@ class PollResult:
     prev_states: dict[str, State] = field(default_factory=dict)
     idle_since: dict[str, float] = field(default_factory=dict)
     idle_notified: set[str] = field(default_factory=set)
+
+
+@dataclass
+class QueueDeliveryTarget:
+    """Resolved queue destination for transport delivery."""
+
+    recipient_key: str
+    label: str
+    kind: str  # "agent" | "tmux"
+    agent: AgentWindow | None = None
+    tmux_session: str = ""
 
 
 def _compact_name(name: str, maxlen: int) -> str:
@@ -418,6 +436,8 @@ class ZeusApp(App):
     _message_queue_draining: bool = False
     _message_queue_inflight_lease_s: float = 30.0
     _message_queue_backoff_max_s: float = 30.0
+    _message_receipts_ttl_s: float = 24 * 3600.0
+    _message_receipts: dict[str, dict[str, float]] = {}
     _message_queue_watch_thread: threading.Thread | None = None
     _message_queue_watch_stop: threading.Event | None = None
     _message_queue_inotify_proc: subprocess.Popen[str] | None = None
@@ -510,6 +530,7 @@ class ZeusApp(App):
         self._setup_table_columns()
         self._apply_panel_visibility()
         ensure_queue_dirs()
+        self._message_receipts = load_message_receipts()
         self._drain_message_queue()
         self._start_message_queue_watcher()
         self.poll_and_update()
@@ -2399,12 +2420,102 @@ class ZeusApp(App):
                 return agent
         return None
 
+    def _iter_all_tmux_sessions(self) -> list[TmuxSession]:
+        sessions: list[TmuxSession] = []
+        for agent in self.agents:
+            sessions.extend(agent.tmux_sessions)
+        return sessions
+
+    def _resolve_queue_targets(self, envelope: OutboundEnvelope) -> list[QueueDeliveryTarget]:
+        kind = (envelope.target_kind or "agent").strip().lower()
+        targets: list[QueueDeliveryTarget] = []
+
+        if kind == "agent":
+            target_id = (envelope.target_ref or envelope.target_agent_id).strip()
+            target = self._get_agent_by_id(target_id)
+            if target is None:
+                return []
+            recipient_key = f"agent:{self._agent_identity_key(target)}"
+            targets.append(
+                QueueDeliveryTarget(
+                    recipient_key=recipient_key,
+                    label=target.name,
+                    kind="agent",
+                    agent=target,
+                )
+            )
+            return targets
+
+        sessions = self._iter_all_tmux_sessions()
+
+        if kind == "hoplite":
+            hoplite_id = envelope.target_ref.strip()
+            for sess in sessions:
+                if (sess.role or "").strip().lower() != "hoplite":
+                    continue
+                if not sess.name.strip():
+                    continue
+                if (sess.env_agent_id or "").strip() != hoplite_id:
+                    continue
+                if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
+                    continue
+                recipient_key = f"tmux:{sess.name}"
+                targets.append(
+                    QueueDeliveryTarget(
+                        recipient_key=recipient_key,
+                        label=sess.name,
+                        kind="tmux",
+                        tmux_session=sess.name,
+                    )
+                )
+                break
+            return targets
+
+        if kind == "phalanx":
+            phalanx_id = envelope.target_ref.strip()
+            if not phalanx_id:
+                return []
+
+            for sess in sessions:
+                if (sess.role or "").strip().lower() != "hoplite":
+                    continue
+                if (sess.phalanx_id or "").strip() != phalanx_id:
+                    continue
+                if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
+                    continue
+                if envelope.source_agent_id and sess.env_agent_id == envelope.source_agent_id:
+                    continue
+                if not sess.name.strip():
+                    continue
+                recipient_key = f"tmux:{sess.name}"
+                targets.append(
+                    QueueDeliveryTarget(
+                        recipient_key=recipient_key,
+                        label=sess.name,
+                        kind="tmux",
+                        tmux_session=sess.name,
+                    )
+                )
+
+            targets.sort(key=lambda t: t.tmux_session)
+            return targets
+
+        return []
+
+    def _deliver_queue_target(self, target: QueueDeliveryTarget, message: str) -> bool:
+        if target.kind == "agent" and target.agent is not None:
+            return self._queue_text_to_agent(target.agent, message)
+        if target.kind == "tmux" and target.tmux_session:
+            return self._dispatch_tmux_text(target.tmux_session, message, queue=True)
+        return False
+
     def _enqueue_outbound_agent_message(
         self,
         target: AgentWindow,
         message: str,
         *,
         source_name: str,
+        source_agent_id: str = "",
     ) -> bool:
         target_id = self._agent_identity_key(target).strip()
         if not target_id:
@@ -2416,6 +2527,9 @@ class ZeusApp(App):
 
         envelope = OutboundEnvelope.new(
             source_name=source_name,
+            source_agent_id=source_agent_id,
+            target_kind="agent",
+            target_ref=target_id,
             target_agent_id=target_id,
             target_name=target.name,
             message=clean,
@@ -2428,9 +2542,15 @@ class ZeusApp(App):
             return
 
         self._message_queue_draining = True
+        receipts_changed = False
         try:
             now = time.time()
             reclaim_stale_inflight(self._message_queue_inflight_lease_s, now=now)
+            receipts_changed |= prune_message_receipts(
+                self._message_receipts,
+                now=now,
+                ttl_seconds=self._message_receipts_ttl_s,
+            )
 
             for path in list_new_envelopes():
                 envelope = load_envelope(path)
@@ -2444,8 +2564,8 @@ class ZeusApp(App):
                 if envelope.next_attempt_at > now:
                     continue
 
-                target = self._get_agent_by_id(envelope.target_agent_id)
-                if target is None:
+                pre_targets = self._resolve_queue_targets(envelope)
+                if not pre_targets:
                     continue
 
                 inflight = claim_envelope(path)
@@ -2457,8 +2577,41 @@ class ZeusApp(App):
                     ack_envelope(inflight)
                     continue
 
-                delivered = self._queue_text_to_agent(target, claimed.message)
-                if delivered:
+                targets = self._resolve_queue_targets(claimed)
+                if not targets:
+                    requeue_envelope(
+                        inflight,
+                        claimed,
+                        now=time.time(),
+                        delay_seconds=1.0,
+                    )
+                    continue
+
+                all_delivered = True
+                for target in targets:
+                    if has_message_receipt(
+                        self._message_receipts,
+                        recipient_key=target.recipient_key,
+                        message_id=claimed.id,
+                        now=time.time(),
+                        ttl_seconds=self._message_receipts_ttl_s,
+                    ):
+                        continue
+
+                    delivered = self._deliver_queue_target(target, claimed.message)
+                    if not delivered:
+                        all_delivered = False
+                        break
+
+                    record_message_receipt(
+                        self._message_receipts,
+                        recipient_key=target.recipient_key,
+                        message_id=claimed.id,
+                        now=time.time(),
+                    )
+                    receipts_changed = True
+
+                if all_delivered:
                     ack_envelope(inflight)
                     continue
 
@@ -2469,6 +2622,8 @@ class ZeusApp(App):
                     delay_seconds=self._queue_retry_delay_s(claimed.attempts),
                 )
         finally:
+            if receipts_changed:
+                save_message_receipts(self._message_receipts)
             self._message_queue_draining = False
 
     def do_enqueue_broadcast(
@@ -2525,10 +2680,17 @@ class ZeusApp(App):
             self.notify("Target is no longer active", timeout=3)
             return
 
+        source_agent_id = ""
+        if source_key:
+            source_agent = self._get_agent_by_key(source_key)
+            if source_agent is not None:
+                source_agent_id = self._agent_identity_key(source_agent)
+
         if not self._enqueue_outbound_agent_message(
             target,
             message,
             source_name=source_name,
+            source_agent_id=source_agent_id,
         ):
             self.notify("Message is empty", timeout=2)
             return
@@ -3282,6 +3444,16 @@ class ZeusApp(App):
             Important:
             - Only AGENT-based tmux sessions initialized with this contract are Hoplites.
             - Generic tmux viewer sessions are not Hoplites and not part of your Phalanx.
+
+            Messaging contract (autonomous Polemarch/Hoplite channel):
+            - Use zeus-msg for Phalanx-internal communication (not for Oracle instructions).
+            - Write payload to a file in /tmp, then queue it with zeus-msg:
+              zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md
+            - Hoplites reply upstream to you with:
+              zeus-msg send --to polemarch --file /tmp/zeus-msg-<uuid>.md
+            - Directed send to one Hoplite is:
+              zeus-msg send --to hoplite:<ZEUS_AGENT_ID> --file /tmp/zeus-msg-<uuid>.md
+            - Delivery is at-least-once transport-ack; keep payloads idempotent.
             """
         ).strip()
 
@@ -3968,18 +4140,19 @@ class ZeusApp(App):
         text: str,
         *,
         queue: bool,
-    ) -> None:
+    ) -> bool:
         """Send text to tmux target as Enter or Alt+Enter queue."""
         wire_text = self._normalize_outgoing_text(text)
         key = "M-Enter" if queue else "Enter"
         try:
-            subprocess.run(
+            r = subprocess.run(
                 ["tmux", "send-keys", "-t", sess_name, wire_text, key],
                 capture_output=True,
                 timeout=3,
             )
+            return r.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+            return False
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
         """Send text to the agent's kitty window followed by Enter."""
