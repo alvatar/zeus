@@ -32,6 +32,24 @@ def test_app_css_can_hide_interact_input() -> None:
     assert "display: none;" in css.APP_CSS
 
 
+def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
+    modal_css_blocks = [
+        css.NEW_AGENT_CSS,
+        css.AGENT_TASKS_CSS,
+        css.AGENT_MESSAGE_CSS,
+        css.DEPENDENCY_SELECT_CSS,
+        css.SUBAGENT_CSS,
+        css.RENAME_CSS,
+        css.HELP_CSS,
+        css.CONFIRM_KILL_CSS,
+        css.BROADCAST_PREPARING_CSS,
+        css.BROADCAST_CONFIRM_CSS,
+        css.DIRECT_MESSAGE_CONFIRM_CSS,
+    ]
+    for block in modal_css_blocks:
+        assert "background: transparent;" in block
+
+
 def test_dependency_dialog_css_has_expected_spacing() -> None:
     assert "max-height: 24;" in css.DEPENDENCY_SELECT_CSS
     assert "#dependency-select-buttons {" in css.DEPENDENCY_SELECT_CSS
@@ -46,6 +64,8 @@ def test_notes_dialog_buttons_include_left_clear_done_layout() -> None:
 
 
 def test_message_dialog_css_matches_notes_shell() -> None:
+    assert "AgentMessageScreen {" in css.AGENT_MESSAGE_CSS
+    assert "background: transparent;" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-dialog {" in css.AGENT_MESSAGE_CSS
     assert "width: 110;" in css.AGENT_MESSAGE_CSS
     assert "max-height: 40;" in css.AGENT_MESSAGE_CSS

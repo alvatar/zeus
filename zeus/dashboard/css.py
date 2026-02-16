@@ -223,6 +223,7 @@ DataTable > .datatable--odd-row {
 NEW_AGENT_CSS = f"""
 NewAgentScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #new-agent-dialog {{
@@ -249,6 +250,7 @@ NewAgentScreen {{
 AGENT_TASKS_CSS = f"""
 AgentTasksScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #agent-tasks-dialog {{
@@ -289,6 +291,7 @@ AgentTasksScreen {{
 AGENT_MESSAGE_CSS = f"""
 AgentMessageScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #agent-message-dialog {{
@@ -347,6 +350,7 @@ AgentMessageScreen {{
 DEPENDENCY_SELECT_CSS = f"""
 DependencySelectScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #dependency-select-dialog {{
@@ -375,6 +379,7 @@ DependencySelectScreen {{
 SUBAGENT_CSS = f"""
 SubAgentScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #subagent-dialog {{
@@ -406,6 +411,7 @@ SubAgentScreen {{
 RENAME_CSS = f"""
 RenameScreen, RenameTmuxScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #rename-dialog {{
@@ -433,6 +439,7 @@ RenameScreen, RenameTmuxScreen {{
 HELP_CSS = """
 HelpScreen {
     align: center middle;
+    background: transparent;
 }
 
 #help-dialog {
@@ -475,6 +482,7 @@ HelpScreen {
 CONFIRM_KILL_CSS = f"""
 ConfirmKillScreen, ConfirmKillTmuxScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #confirm-kill-dialog {{
@@ -499,13 +507,13 @@ ConfirmKillScreen, ConfirmKillTmuxScreen {{
 BROADCAST_PREPARING_CSS = f"""
 BroadcastPreparingScreen {{
     align: center middle;
-    background: #000000;
+    background: transparent;
 }}
 
 #broadcast-preparing {{
     width: 100%;
     height: 100%;
-    background: #000000;
+    background: transparent;
     align: center middle;
 }}
 
@@ -535,6 +543,7 @@ BroadcastPreparingScreen {{
 BROADCAST_CONFIRM_CSS = f"""
 ConfirmBroadcastScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #broadcast-dialog {{
@@ -566,6 +575,7 @@ ConfirmBroadcastScreen {{
 DIRECT_MESSAGE_CONFIRM_CSS = f"""
 ConfirmDirectMessageScreen {{
     align: center middle;
+    background: transparent;
 }}
 
 #direct-dialog {{
