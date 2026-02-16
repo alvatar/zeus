@@ -10,6 +10,7 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Usage tracking** — shows Anthropic API usage (session/week/extra) with color-coded progress bars
 - **Sway integration** — jump to any Hippeus workspace with Enter, see which monitor/workspace each Hippeus is on
 - **Notifications** — `notify-send` alert when a Hippeus transitions from working → idle
+- **Aegis automation** — optional per-Hippeus nudge flow (`a`) after `WORKING -> IDLE/WAITING` transitions
 - **Deterministic tmux ownership** — sessions are matched by `ZEUS_AGENT_ID` / `@zeus_owner` first, with cwd/screen-text fallback for legacy sessions
 - **Hippeus launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
 
@@ -100,6 +101,7 @@ zeus kill fix-auth                   # Close a Hippeus window
 | `Ctrl+Q` | Stop selected Hippeus from any focus (including input) |
 | `k` | Kill selected Hippeus / tmux session (with confirmation) |
 | `n` | Launch new tracked Hippeus |
+| `a` | Toggle Aegis for selected Hippeus |
 | `r` | Rename selected Hippeus / tmux session |
 | `F4` | Toggle sort |
 | `F5` | Force refresh |

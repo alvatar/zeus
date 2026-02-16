@@ -211,6 +211,7 @@ class ZeusApp(App):
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("c", "new_agent", "Muster Hippeus"),
+        Binding("a", "toggle_aegis", "Aegis"),
         Binding("n", "agent_notes", "Notes"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
@@ -233,6 +234,20 @@ class ZeusApp(App):
         Binding("f8", "toggle_interact_panel", "Panel"),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
+
+    _AEGIS_MODE_ARMED = "ARMED"
+    _AEGIS_MODE_PENDING_DELAY = "PENDING_DELAY"
+    _AEGIS_MODE_POST_CHECK = "POST_CHECK"
+    _AEGIS_MODE_HALTED = "HALTED"
+    _AEGIS_DELAY_S = 5.0
+    _AEGIS_CHECK_S = 20.0
+    _AEGIS_ROW_BG = "#4a3340"
+    _AEGIS_PROMPT = (
+        "Continue now unless you really need me to make a decision. "
+        "If so, save this report in the /reports folder with a descriptive "
+        "name and timestamp and then continue. Do not stop until you have "
+        "finalized EVERYTHING that we agreed on."
+    )
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
@@ -267,6 +282,10 @@ class ZeusApp(App):
     _agent_notes: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
+    _aegis_enabled: set[str] = set()
+    _aegis_modes: dict[str, str] = {}
+    _aegis_delay_timers: dict[str, Timer] = {}
+    _aegis_check_timers: dict[str, Timer] = {}
     _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
         "1", "true", "yes", "on",
     }
@@ -537,6 +556,7 @@ class ZeusApp(App):
 
         state_changed_any = self._any_agent_state_changed(old_states)
         self._update_action_needed(old_states)
+        self._process_aegis_state_transitions(old_states)
         self._collect_sparkline_samples()
         self._refresh_interact_if_state_changed(old_states)
         self._update_usage_bars(r.usage, r.openai)
@@ -592,6 +612,108 @@ class ZeusApp(App):
 
         self._action_check_pending &= live_keys
         self._action_needed &= live_keys
+
+    def _cancel_aegis_delay_timer(self, key: str) -> None:
+        timer = self._aegis_delay_timers.pop(key, None)
+        if timer is not None:
+            timer.stop()
+
+    def _cancel_aegis_check_timer(self, key: str) -> None:
+        timer = self._aegis_check_timers.pop(key, None)
+        if timer is not None:
+            timer.stop()
+
+    def _disable_aegis(self, key: str) -> None:
+        self._aegis_enabled.discard(key)
+        self._aegis_modes.pop(key, None)
+        self._cancel_aegis_delay_timer(key)
+        self._cancel_aegis_check_timer(key)
+
+    def _is_aegis_waiting(self, key: str, agent: AgentWindow) -> bool:
+        return agent.state == State.IDLE and key in self._action_needed
+
+    def _is_aegis_idle_or_waiting(self, key: str, agent: AgentWindow) -> bool:
+        return agent.state == State.IDLE or self._is_aegis_waiting(key, agent)
+
+    def _reconcile_aegis_agents(self, live_keys: set[str]) -> None:
+        for key in list(self._aegis_enabled):
+            if key in live_keys:
+                continue
+            self._disable_aegis(key)
+
+    def _process_aegis_state_transitions(self, old_states: dict[str, State]) -> None:
+        live_keys = {self._agent_key(agent) for agent in self.agents}
+        self._reconcile_aegis_agents(live_keys)
+
+        for agent in self.agents:
+            key = self._agent_key(agent)
+            if key not in self._aegis_enabled:
+                continue
+
+            mode = self._aegis_modes.get(key, self._AEGIS_MODE_ARMED)
+            if mode != self._AEGIS_MODE_ARMED:
+                continue
+
+            old_state = old_states.get(key)
+            if old_state != State.WORKING:
+                continue
+            if not self._is_aegis_idle_or_waiting(key, agent):
+                continue
+
+            self._aegis_modes[key] = self._AEGIS_MODE_PENDING_DELAY
+            self._cancel_aegis_delay_timer(key)
+            self._aegis_delay_timers[key] = self.set_timer(
+                self._AEGIS_DELAY_S,
+                lambda key=key: self._on_aegis_delay_elapsed(key),
+            )
+
+    def _on_aegis_delay_elapsed(self, key: str) -> None:
+        self._aegis_delay_timers.pop(key, None)
+
+        if key not in self._aegis_enabled:
+            return
+        if self._aegis_modes.get(key) != self._AEGIS_MODE_PENDING_DELAY:
+            return
+
+        agent = self._get_agent_by_key(key)
+        if agent is None:
+            self._disable_aegis(key)
+            return
+
+        if agent.state == State.WORKING:
+            self._aegis_modes[key] = self._AEGIS_MODE_ARMED
+            return
+
+        if not self._is_aegis_idle_or_waiting(key, agent):
+            self._aegis_modes[key] = self._AEGIS_MODE_HALTED
+            return
+
+        self._send_text_to_agent(agent, self._AEGIS_PROMPT)
+        self._aegis_modes[key] = self._AEGIS_MODE_POST_CHECK
+        self._cancel_aegis_check_timer(key)
+        self._aegis_check_timers[key] = self.set_timer(
+            self._AEGIS_CHECK_S,
+            lambda key=key: self._on_aegis_check_elapsed(key),
+        )
+
+    def _on_aegis_check_elapsed(self, key: str) -> None:
+        self._aegis_check_timers.pop(key, None)
+
+        if key not in self._aegis_enabled:
+            return
+        if self._aegis_modes.get(key) != self._AEGIS_MODE_POST_CHECK:
+            return
+
+        agent = self._get_agent_by_key(key)
+        if agent is None:
+            self._disable_aegis(key)
+            return
+
+        if agent.state == State.WORKING:
+            self._aegis_modes[key] = self._AEGIS_MODE_ARMED
+            return
+
+        self._aegis_modes[key] = self._AEGIS_MODE_HALTED
 
     def _collect_sparkline_samples(self) -> None:
         max_samples = SETTINGS.sparkline.max_samples
@@ -768,6 +890,15 @@ class ZeusApp(App):
                 ch = "●"
             return Text(ch, style=f"bold {_gradient_color(p)}")
 
+        def _with_row_bg(cell: str | Text, bg: str) -> str | Text:
+            if isinstance(cell, Text):
+                styled = cell.copy()
+                styled.stylize(f"on {bg}")
+                return styled
+            if not cell:
+                return Text(" ", style=f"on {bg}")
+            return Text(str(cell), style=f"on {bg}")
+
         state_col_width = (
             self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
         ).get("State", 10)
@@ -786,6 +917,7 @@ class ZeusApp(App):
                 and a.state == State.IDLE
                 and akey in self._action_needed
             )
+            row_bg = self._AEGIS_ROW_BG if akey in self._aegis_enabled else "#000000"
 
             if blocked:
                 icon = "└"
@@ -826,7 +958,7 @@ class ZeusApp(App):
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
                 state_cell,
-                style=f"bold {state_color} on #000000",
+                style=f"bold {state_color} on {row_bg}",
             )
             elapsed: float = time.time() - self.state_changed_at.get(
                 akey, time.time()
@@ -897,6 +1029,8 @@ class ZeusApp(App):
             }
             cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
             row = [cells.get(c, "") for c in cols]
+            if row_bg != "#000000":
+                row = [_with_row_bg(cell, row_bg) for cell in row]
             table.add_row(*row, key=row_key)
 
         def _clean_tmux_cmd(cmd: str) -> str:
@@ -2528,6 +2662,27 @@ class ZeusApp(App):
             self._agent_notes.pop(key, None)
             self.notify(f"Cleared notes: {agent.name}", timeout=2)
         self._save_agent_notes()
+        self.poll_and_update()
+
+    def action_toggle_aegis(self) -> None:
+        """A: toggle Aegis automation for the selected Hippeus row."""
+        if self._should_ignore_table_action():
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to toggle Aegis", timeout=2)
+            return
+
+        key = self._agent_key(agent)
+        if key in self._aegis_enabled:
+            self._disable_aegis(key)
+            self.notify(f"Aegis disabled: {agent.name}", timeout=2)
+        else:
+            self._aegis_enabled.add(key)
+            self._aegis_modes[key] = self._AEGIS_MODE_ARMED
+            self.notify(f"Aegis enabled: {agent.name}", timeout=2)
+
         self.poll_and_update()
 
     def action_toggle_dependency(self) -> None:

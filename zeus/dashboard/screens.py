@@ -638,6 +638,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),
     ("", "─── Hippeis Management ───"),
     ("c", "Muster Hippeus"),
+    ("a", "Toggle Aegis for selected Hippeus"),
     ("n", "Edit notes for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
