@@ -505,10 +505,10 @@ class ZeusApp(App):
     _BLOCKED_ROW_FG = "#f2e6a7"
     _BLOCKED_NON_STATE_FG = "#666666"
     _AEGIS_PROMPT = (
-        "Continue now unless you really need me to make a decision. "
-        "If so, save this report in the /reports folder with a descriptive "
-        "name and timestamp and then continue. Do not stop until you have "
-        "finalized EVERYTHING that we agreed on."
+        "Continue now unless there is a decision here for me to make. "
+        "If you decide to continue, save a report in /reports, with an "
+        "explanation of why you stopped in first place, and why you "
+        "decided to continue without my input on this matter."
     )
     _CELEBRATION_COOLDOWN_S = 3600.0
 
