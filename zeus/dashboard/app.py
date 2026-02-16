@@ -2691,7 +2691,8 @@ class ZeusApp(App):
         else:
             spark.add_class("hidden")
 
-        if self._show_target_band:
+        # Keep target band visually coupled to interact input visibility.
+        if self._show_target_band and self._show_interact_input:
             target.remove_class("hidden")
         else:
             target.add_class("hidden")
