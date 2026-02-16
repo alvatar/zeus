@@ -740,11 +740,6 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Tab", "Toggle focus between table and interact input"),
     ("Ctrl+Enter", "Teleport to Hippeus / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
-    ("", "─── Global ───"),
-    ("1", "Toggle interact input area"),
-    ("2", "Toggle mini-map"),
-    ("3", "Toggle sparkline charts"),
-    ("4", "Toggle interact target band"),
     ("", "─── Interact Panel ───"),
     ("Ctrl+s", "Send message to Hippeus / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
@@ -768,6 +763,11 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("F8", "Toggle interact panel"),
     ("?", "This help"),
     ("F10", "Quit Zeus"),
+    ("", "─── Global ───"),
+    ("1", "Toggle interact input area"),
+    ("2", "Toggle mini-map"),
+    ("3", "Toggle sparkline charts"),
+    ("4", "Toggle interact target band"),
 ]
 
 

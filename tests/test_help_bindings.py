@@ -39,9 +39,8 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert "history" in up_down_desc
 
 
-def test_help_groups_global_shortcuts_before_interact_section() -> None:
+def test_help_groups_global_shortcuts_in_last_section() -> None:
     global_idx = _HELP_BINDINGS.index(("", "─── Global ───"))
-    interact_idx = _HELP_BINDINGS.index(("", "─── Interact Panel ───"))
 
     global_entries = [
         ("1", "Toggle interact input area"),
@@ -50,9 +49,12 @@ def test_help_groups_global_shortcuts_before_interact_section() -> None:
         ("4", "Toggle interact target band"),
     ]
 
+    headers = [idx for idx, (key, _desc) in enumerate(_HELP_BINDINGS) if not key]
+    assert global_idx == headers[-1]
+
     for entry in global_entries:
         idx = _HELP_BINDINGS.index(entry)
-        assert global_idx < idx < interact_idx
+        assert idx > global_idx
 
 
 def test_help_groups_summary_shortcuts_under_agent_management() -> None:
