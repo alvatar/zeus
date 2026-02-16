@@ -241,7 +241,7 @@ class ZeusApp(App):
     _AEGIS_MODE_HALTED = "HALTED"
     _AEGIS_DELAY_S = 5.0
     _AEGIS_CHECK_S = 20.0
-    _AEGIS_ROW_BG = "#4a3340"
+    _AEGIS_ROW_BG = "#ff69b4"
     _AEGIS_PROMPT = (
         "Continue now unless you really need me to make a decision. "
         "If so, save this report in the /reports folder with a descriptive "
@@ -891,18 +891,22 @@ class ZeusApp(App):
                 ch = "●"
             return Text(ch, style=f"bold {_gradient_color(p)}")
 
-        def _with_row_bg(cell: str | Text, bg: str) -> str | Text:
+        def _with_row_bg(cell: str | Text, width: int, bg: str) -> str | Text:
             if isinstance(cell, Text):
                 styled = cell.copy()
                 styled.stylize(f"on {bg}")
-                return styled
-            if not cell:
-                return Text(" ", style=f"on {bg}")
-            return Text(str(cell), style=f"on {bg}")
+            else:
+                styled = Text(str(cell), style=f"on {bg}")
+
+            missing = max(0, width - styled.cell_len)
+            if missing:
+                styled.append(" " * missing, style=f"on {bg}")
+            return styled
 
         state_col_width = (
             self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
         ).get("State", 10)
+        col_widths = [column.get_render_width(table) for column in table.ordered_columns]
 
         def _add_agent_row(
             a: AgentWindow,
@@ -1031,7 +1035,14 @@ class ZeusApp(App):
             cols = self._SPLIT_COLUMNS if self._split_mode else self._FULL_COLUMNS
             row = [cells.get(c, "") for c in cols]
             if row_bg != "#000000":
-                row = [_with_row_bg(cell, row_bg) for cell in row]
+                row = [
+                    _with_row_bg(
+                        cell,
+                        col_widths[idx] if idx < len(col_widths) else Text(str(cell)).cell_len,
+                        row_bg,
+                    )
+                    for idx, cell in enumerate(row)
+                ]
             table.add_row(*row, key=row_key)
 
         def _clean_tmux_cmd(cmd: str) -> str:
@@ -2689,7 +2700,9 @@ class ZeusApp(App):
             self._aegis_modes[key] = self._AEGIS_MODE_ARMED
             self.notify(f"Aegis enabled: {agent.name}", timeout=2)
 
-        self.poll_and_update()
+        self._render_agent_table_and_status()
+        if self._interact_visible:
+            self._refresh_interact_panel()
 
     def action_toggle_dependency(self) -> None:
         """Ctrl+I: toggle blocked dependency for selected agent."""

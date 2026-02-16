@@ -12,6 +12,7 @@ from typing import ClassVar, cast
 
 from textual.binding import Binding
 from textual.widgets import DataTable, TextArea
+from rich.style import Style
 
 
 def _as_binding(spec: Binding | tuple[str, ...]) -> Binding:
@@ -44,7 +45,7 @@ _IMAGE_CLIPBOARD_MIME_TO_EXT: dict[str, str] = {
 
 
 class ZeusDataTable(DataTable):
-    """DataTable subclass that overrides the cursor styling."""
+    """DataTable subclass that overrides cursor styling and row theme hooks."""
 
     DEFAULT_CSS = """
     ZeusDataTable > .datatable--cursor {
@@ -72,6 +73,30 @@ class ZeusDataTable(DataTable):
         text-style: none;
     }
     """
+
+    def _get_row_style(self, row_index: int, base_style: Style) -> Style:
+        """Apply Aegis row background when enabled for a row key."""
+        row_style = super()._get_row_style(row_index, base_style)
+        if row_index < 0:
+            return row_style
+
+        app = getattr(self, "app", None)
+        aegis_enabled = getattr(app, "_aegis_enabled", None)
+        aegis_bg = getattr(app, "_AEGIS_ROW_BG", None)
+        if not isinstance(aegis_enabled, set) or not isinstance(aegis_bg, str):
+            return row_style
+
+        try:
+            row_key_obj = self._row_locations.get_key(row_index)
+        except Exception:
+            return row_style
+
+        if row_key_obj is None:
+            return row_style
+
+        if row_key_obj.value in aegis_enabled:
+            row_style += Style.parse(f"on {aegis_bg}")
+        return row_style
 
 
 class ZeusTextArea(TextArea):

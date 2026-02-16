@@ -29,26 +29,27 @@ def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None
     key = app._agent_key(hippeus)
 
     notices: list[str] = []
-    polls: list[bool] = []
+    renders: list[bool] = []
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: hippeus)
     monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
-    monkeypatch.setattr(app, "poll_and_update", lambda: polls.append(True))
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: renders.append(True) or True)
+    app._interact_visible = False
 
     app.action_toggle_aegis()
 
     assert key in app._aegis_enabled
     assert app._aegis_modes[key] == app._AEGIS_MODE_ARMED
     assert notices[-1] == "Aegis enabled: alpha"
-    assert polls == [True]
+    assert renders == [True]
 
     app.action_toggle_aegis()
 
     assert key not in app._aegis_enabled
     assert key not in app._aegis_modes
     assert notices[-1] == "Aegis disabled: alpha"
-    assert polls == [True, True]
+    assert renders == [True, True]
 
 
 def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
