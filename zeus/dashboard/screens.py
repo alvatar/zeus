@@ -188,6 +188,11 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                     variant="warning",
                     id="agent-message-add-task-btn",
                 )
+                yield Button(
+                    "add it as first task",
+                    variant="warning",
+                    id="agent-message-add-task-first-btn",
+                )
 
     def on_mount(self) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)
@@ -197,6 +202,8 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "agent-message-add-task-btn":
             self.action_add_task()
+        elif event.button.id == "agent-message-add-task-first-btn":
+            self.action_add_task_first()
         event.stop()
 
     def action_send(self) -> None:
@@ -212,6 +219,11 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
     def action_add_task(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_add_agent_message_task(self.agent, text):
+            self.dismiss()
+
+    def action_add_task_first(self) -> None:
+        text = self.query_one("#agent-message-input", ZeusTextArea).text
+        if self.zeus.do_prepend_agent_message_task(self.agent, text):
             self.dismiss()
 
 

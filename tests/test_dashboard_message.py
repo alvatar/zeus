@@ -128,6 +128,33 @@ def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:
     assert renders == [True]
 
 
+def test_do_prepend_agent_message_task_inserts_before_existing(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+    app._agent_tasks[app._agent_tasks_key(agent)] = "existing line"
+
+    notices = capture_notify(app, monkeypatch)
+    saves: list[bool] = []
+    renders: list[bool] = []
+
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    app._interact_visible = False
+
+    ok = app.do_prepend_agent_message_task(agent, "new task")
+
+    assert ok is True
+    key = app._agent_tasks_key(agent)
+    assert app._agent_tasks[key] == "- [ ] new task\nexisting line"
+    assert notices[-1] == "Added task at start: alpha"
+    assert saves == [True]
+    assert renders == [True]
+
+
 def test_do_add_agent_message_task_keeps_multiline_payload(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
@@ -143,6 +170,21 @@ def test_do_add_agent_message_task_keeps_multiline_payload(monkeypatch) -> None:
     assert app._agent_tasks[key] == "- [ ] first line\n  detail line"
 
 
+def test_do_prepend_agent_message_task_keeps_multiline_payload(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: None)
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: True)
+    app._interact_visible = False
+
+    ok = app.do_prepend_agent_message_task(agent, "first line\n  detail line")
+
+    assert ok is True
+    key = app._agent_tasks_key(agent)
+    assert app._agent_tasks[key] == "- [ ] first line\n  detail line"
+
+
 def test_do_add_agent_message_task_rejects_empty_text(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
@@ -151,6 +193,19 @@ def test_do_add_agent_message_task_rejects_empty_text(monkeypatch) -> None:
     monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
 
     ok = app.do_add_agent_message_task(agent, "   \n\n")
+
+    assert ok is False
+    assert saves == []
+
+
+def test_do_prepend_agent_message_task_rejects_empty_text(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    saves: list[bool] = []
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
+
+    ok = app.do_prepend_agent_message_task(agent, "   \n\n")
 
     assert ok is False
     assert saves == []
