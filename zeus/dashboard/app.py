@@ -1087,17 +1087,12 @@ class ZeusApp(App):
             )
 
             pm = a.proc_metrics
-            cpu_cell: str | Text = Text(
-                f"{pm.cpu_pct:.0f}%",
-                style=_gradient_color(pm.cpu_pct),
-            )
+            cpu_cell: str | Text = f"{pm.cpu_pct:.0f}%"
             ram_cell: str | Text = _format_ram_mb(pm.ram_mb)
             gpu_str: str = f"{pm.gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-            gpu_cell: str | Text = Text(
-                gpu_str, style=_gradient_color(pm.gpu_pct),
-            )
+            gpu_cell: str | Text = gpu_str
             net_cell: str | Text = (
                 f"↓{fmt_bytes(pm.io_read_bps)} "
                 f"↑{fmt_bytes(pm.io_write_bps)}"
@@ -1173,17 +1168,12 @@ class ZeusApp(App):
                 net_t: str | Text = ""
                 pm = getattr(sess, '_proc_metrics', None)
                 if pm:
-                    cpu_t = Text(
-                        f"{pm.cpu_pct:.0f}%",
-                        style=_gradient_color(pm.cpu_pct),
-                    )
+                    cpu_t = f"{pm.cpu_pct:.0f}%"
                     ram_t = _format_ram_mb(pm.ram_mb)
                     gpu_str: str = f"{pm.gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-                    gpu_t = Text(
-                        gpu_str, style=_gradient_color(pm.gpu_pct),
-                    )
+                    gpu_t = gpu_str
                     net_str: str = (
                         f"↓{fmt_bytes(pm.io_read_bps)} "
                         f"↑{fmt_bytes(pm.io_write_bps)}"
@@ -1198,9 +1188,10 @@ class ZeusApp(App):
                     tmux_name = Text(f"{tmux_prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(f"⏱ {age_str}", style=dim)
-                    for v in (cpu_t, ram_t, gpu_t, net_t):
-                        if isinstance(v, Text):
-                            v.stylize(dim)
+                    cpu_t = Text(str(cpu_t), style=dim) if str(cpu_t) else ""
+                    ram_t = Text(str(ram_t), style=dim) if str(ram_t) else ""
+                    gpu_t = Text(str(gpu_t), style=dim) if str(gpu_t) else ""
+                    net_t = Text(str(net_t), style=dim) if str(net_t) else ""
                 tmux_key: str = f"tmux:{sess.name}"
                 state_placeholder = Text(" " * state_col_width, style="on #000000")
                 tcells: dict[str, str | Text] = {
