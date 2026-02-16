@@ -54,7 +54,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
-            yield Label("New Hippeus")
+            yield Label("Muster Hippeus")
             yield Label("Name:")
             yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
             yield Label("Directory:")
@@ -637,7 +637,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Alt+d / Alt+Backspace", "Delete word right / left"),
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),
     ("", "─── Hippeis Management ───"),
-    ("c", "New Hippeus"),
+    ("c", "Muster Hippeus"),
     ("n", "Edit notes for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),

@@ -210,7 +210,7 @@ class ZeusApp(App):
         Binding("tab", "toggle_focus", "Switch focus", show=False),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
-        Binding("c", "new_agent", "New Hippeus"),
+        Binding("c", "new_agent", "Muster Hippeus"),
         Binding("n", "agent_notes", "Notes"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
