@@ -8,6 +8,7 @@ from zeus.dashboard.widgets import (
 )
 from zeus.dashboard.app import _compact_name
 from zeus.settings import SETTINGS
+from zeus.dashboard.widgets_visual import _usage_gradient_color
 
 
 # ── _compact_name ─────────────────────────────────────────────────────
@@ -79,6 +80,12 @@ def test_gradient_color_drops_blue_then_green() -> None:
     assert low.startswith("#ffff")  # white -> yellow transition
     assert mid.endswith("00")       # blue gone by yellow/orange zone
     assert high.endswith("00")      # blue remains absent near red
+
+
+def test_usage_gradient_keeps_original_cyan_to_red_ramp() -> None:
+    assert _usage_gradient_color(0) == "#00d7d7"
+    assert _usage_gradient_color(70) == "#d7d700"
+    assert _usage_gradient_color(100) == "#ff3233"
 
 
 # ── braille_sparkline ─────────────────────────────────────────────────

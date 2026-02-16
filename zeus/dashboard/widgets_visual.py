@@ -148,6 +148,22 @@ def _gradient_color(pct: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _usage_gradient_color(pct: float) -> str:
+    """Return the original usage-bar gradient (cyan→yellow→red)."""
+    p = max(0.0, min(100.0, pct)) / 100.0
+    if p < 0.70:
+        t = p / 0.70
+        r = int(0x00 + (0xD7 - 0x00) * t)
+        g = int(0xD7 + (0xD7 - 0xD7) * t)
+        b = int(0xD7 + (0x00 - 0xD7) * t)
+    else:
+        t = (p - 0.70) / 0.30
+        r = int(0xD7 + (0xFF - 0xD7) * t)
+        g = int(0xD7 + (0x33 - 0xD7) * t)
+        b = int(0x00 + (0x33 - 0x00) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 class UsageBar(Static):
     """A labeled progress bar showing a percentage with smooth gradient."""
 
@@ -169,7 +185,7 @@ class UsageBar(Static):
         pct: float = self.pct
         width: int = 12
         filled: int = round((min(100, max(0, pct)) / 100) * width)
-        tip_color = _gradient_color(pct)
+        tip_color = _usage_gradient_color(pct)
         bar_empty: str = "#333333"
 
         pct_str: str = f"{pct:.0f}%"
@@ -182,7 +198,7 @@ class UsageBar(Static):
         t.append(f"{self.label_text} ", style="#447777")
         for i in range(filled):
             cell_pct = ((i + 1) / width) * 100
-            t.append("█", style=_gradient_color(cell_pct))
+            t.append("█", style=_usage_gradient_color(cell_pct))
         t.append("░" * (width - filled), style=bar_empty)
         t.append(f"{pct_field}", style=f"bold {tip_color}")
         t.append(f" {extra}", style="#447777")
