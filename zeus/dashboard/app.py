@@ -1087,12 +1087,24 @@ class ZeusApp(App):
             )
 
             pm = a.proc_metrics
-            cpu_cell: str | Text = f"{pm.cpu_pct:.0f}%"
+            cpu_pct = max(0.0, pm.cpu_pct)
+            cpu_label = f"{cpu_pct:.0f}%"
+            if cpu_pct <= 0:
+                cpu_cell: str | Text = cpu_label
+            else:
+                cpu_cell = Text(cpu_label, style=_gradient_color(cpu_pct))
+
             ram_cell: str | Text = _format_ram_mb(pm.ram_mb)
-            gpu_str: str = f"{pm.gpu_pct:.0f}%"
+
+            gpu_pct = max(0.0, pm.gpu_pct)
+            gpu_str: str = f"{gpu_pct:.0f}%"
             if pm.gpu_mem_mb > 0:
                 gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-            gpu_cell: str | Text = gpu_str
+            if gpu_pct <= 0:
+                gpu_cell: str | Text = gpu_str
+            else:
+                gpu_cell = Text(gpu_str, style=_gradient_color(gpu_pct))
+
             net_cell: str | Text = (
                 f"↓{fmt_bytes(pm.io_read_bps)} "
                 f"↑{fmt_bytes(pm.io_write_bps)}"
@@ -1168,12 +1180,24 @@ class ZeusApp(App):
                 net_t: str | Text = ""
                 pm = getattr(sess, '_proc_metrics', None)
                 if pm:
-                    cpu_t = f"{pm.cpu_pct:.0f}%"
+                    cpu_pct = max(0.0, pm.cpu_pct)
+                    cpu_label = f"{cpu_pct:.0f}%"
+                    if cpu_pct <= 0:
+                        cpu_t = cpu_label
+                    else:
+                        cpu_t = Text(cpu_label, style=_gradient_color(cpu_pct))
+
                     ram_t = _format_ram_mb(pm.ram_mb)
-                    gpu_str: str = f"{pm.gpu_pct:.0f}%"
+
+                    gpu_pct = max(0.0, pm.gpu_pct)
+                    gpu_str: str = f"{gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-                    gpu_t = gpu_str
+                    if gpu_pct <= 0:
+                        gpu_t = gpu_str
+                    else:
+                        gpu_t = Text(gpu_str, style=_gradient_color(gpu_pct))
+
                     net_str: str = (
                         f"↓{fmt_bytes(pm.io_read_bps)} "
                         f"↑{fmt_bytes(pm.io_write_bps)}"
