@@ -58,6 +58,6 @@ name_width = 12        # max chars for agent name label
 # ── State color palette (state text + state sparklines) ─────────────
 
 [colors.state]
-working = "#00d7d7"   # vivid bright cyan
-waiting = "#ff5200"   # vivid orange leaning toward red
+working = "#00f0f0"   # brighter vivid cyan
+waiting = "#ff5f00"   # vivid bright orange
 idle = "#ffaf00"      # same gold used for message-frame accents
