@@ -1,5 +1,7 @@
 """Tests for table-triggered Hippeus message dialog helpers."""
 
+from types import SimpleNamespace
+
 from textual.widgets import DataTable
 
 from zeus.dashboard.app import ZeusApp
@@ -54,6 +56,15 @@ class _DummyInput:
 
     def focus(self) -> None:
         self.focused = True
+
+
+class _DummyInteractInput:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.styles = SimpleNamespace(height=3)
+
+    def clear(self) -> None:
+        self.text = ""
 
 
 def test_action_agent_message_pushes_message_screen(monkeypatch) -> None:
@@ -127,7 +138,7 @@ def test_action_go_ahead_requires_selected_agent(monkeypatch) -> None:
     assert notices[-1] == "Select a Hippeus row to queue go ahead"
 
 
-def test_action_go_ahead_rejects_paused_or_blocked_target(monkeypatch) -> None:
+def test_action_go_ahead_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
     app = _new_app()
     paused = _agent("paused", 1)
     blocked = _agent("blocked", 2)
@@ -146,13 +157,19 @@ def test_action_go_ahead_rejects_paused_or_blocked_target(monkeypatch) -> None:
 
     monkeypatch.setattr(app, "_get_selected_agent", lambda: paused)
     app.action_go_ahead()
-    assert notices[-1] == "Hippeus is PAUSED (priority 4); input disabled"
+    assert notices[-1] == "Queued go ahead: paused"
+    assert app._agent_priorities.get(paused.name, 3) == 3
 
     monkeypatch.setattr(app, "_get_selected_agent", lambda: blocked)
     app.action_go_ahead()
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
-    assert sent == []
+    assert sent[:4] == [
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "go ahead")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x1b[13;3u")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x15")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x15")),
+    ]
 
 
 def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -> None:
@@ -285,7 +302,30 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
     assert app._agent_message_drafts == {}
 
 
-def test_message_dialog_send_rejects_paused_or_blocked_target(monkeypatch) -> None:
+def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
+    app = _new_app()
+    paused = _agent("paused", 1)
+    app.agents = [paused]
+    app._agent_priorities[paused.name] = 4
+    app._interact_visible = True
+    app._show_interact_input = True
+    app._interact_agent_key = app._agent_key(paused)
+
+    ta = _DummyInteractInput("hello")
+    monkeypatch.setattr(app, "query_one", lambda selector, cls=None: ta)
+    monkeypatch.setattr(app, "_append_interact_history", lambda _text: None)
+
+    sent = capture_kitty_cmd(monkeypatch)
+
+    app.action_send_interact()
+
+    assert app._agent_priorities.get(paused.name, 3) == 3
+    assert sent == [
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
+    ]
+
+
+def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
     app = _new_app()
     source = _agent("source", 1)
     paused = _agent("paused", 2)
@@ -301,13 +341,15 @@ def test_message_dialog_send_rejects_paused_or_blocked_target(monkeypatch) -> No
     sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
 
-    assert app.do_send_agent_message(paused, "hello") is False
-    assert notices[-1] == "Hippeus is PAUSED (priority 4); input disabled"
+    assert app.do_send_agent_message(paused, "hello") is True
+    assert app._agent_priorities.get(paused.name, 3) == 3
 
     assert app.do_queue_agent_message(blocked, "hello") is False
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
-    assert sent == []
+    assert sent == [
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
+    ]
 
 
 def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:

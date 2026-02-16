@@ -2845,7 +2845,7 @@ class ZeusApp(App):
             self._set_interact_target_name(tmux.name)
             parent = self._find_agent_for_tmux(tmux)
             self._set_interact_editable(
-                not (parent is not None and self._is_input_blocked(parent))
+                not (parent is not None and self._is_blocked(parent))
             )
             target_changed = (
                 old_agent_key is not None
@@ -2866,7 +2866,7 @@ class ZeusApp(App):
             self._set_interact_editable(True)
             return
         self._set_interact_target_name(agent.name)
-        self._set_interact_editable(not self._is_input_blocked(agent))
+        self._set_interact_editable(not self._is_blocked(agent))
         key = f"{agent.socket}:{agent.kitty_id}"
         target_changed = (
             old_agent_key != key
@@ -3568,11 +3568,17 @@ class ZeusApp(App):
         self._queue_text_to_agent_interact(live, clean)
         self.notify(f"Queued go ahead: {live.name}", timeout=2)
 
+    def _resume_agent_if_paused(self, agent: AgentWindow) -> bool:
+        """Set paused agents back to default priority (3)."""
+        if not self._is_paused(agent):
+            return False
+        self._agent_priorities.pop(agent.name, None)
+        self._save_priorities()
+        return True
+
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
         if self._is_blocked(agent):
             return "Hippeus is BLOCKED by dependency; input disabled"
-        if self._is_paused(agent):
-            return "Hippeus is PAUSED (priority 4); input disabled"
         return None
 
     def _prepare_message_dialog_send(
@@ -3594,6 +3600,7 @@ class ZeusApp(App):
             self.notify(block_reason, timeout=2)
             return None
 
+        self._resume_agent_if_paused(live)
         return live, clean
 
     def do_send_agent_message(self, agent: AgentWindow, text: str) -> bool:
@@ -3821,6 +3828,7 @@ class ZeusApp(App):
             self.notify("Dependency rejected: would create cycle", timeout=3)
             return
 
+        self._resume_agent_if_paused(live_blocked)
         self._agent_dependencies[blocked_dep_key] = blocker_dep_key
         self._dependency_missing_polls.pop(blocked_dep_key, None)
         self._save_agent_dependencies()
@@ -4117,25 +4125,22 @@ class ZeusApp(App):
         stream.clear()
         stream.write(_linkify_rich_text(Text.from_ansi(raw)))
 
-    def _current_interact_block_reason(self) -> str | None:
-        """Return reason text when interact input must be disabled."""
-        def _reason_for(agent: AgentWindow) -> str | None:
-            if self._is_blocked(agent):
-                return "Hippeus is BLOCKED by dependency; input disabled"
-            if self._is_paused(agent):
-                return "Hippeus is PAUSED (priority 4); input disabled"
-            return None
-
+    def _interact_target_agent(self) -> AgentWindow | None:
+        """Resolve the agent that owns the current interact target."""
         if self._interact_agent_key:
-            agent = self._get_agent_by_key(self._interact_agent_key)
-            if not agent:
-                return None
-            return _reason_for(agent)
+            return self._get_agent_by_key(self._interact_agent_key)
 
         if self._interact_tmux_name:
             for agent in self.agents:
                 if any(s.name == self._interact_tmux_name for s in agent.tmux_sessions):
-                    return _reason_for(agent)
+                    return agent
+        return None
+
+    def _current_interact_block_reason(self) -> str | None:
+        """Return reason text when interact input must be disabled."""
+        agent = self._interact_target_agent()
+        if agent and self._is_blocked(agent):
+            return "Hippeus is BLOCKED by dependency; input disabled"
         return None
 
     @staticmethod
@@ -4239,6 +4244,10 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
+        target_agent = self._interact_target_agent()
+        if target_agent is not None:
+            self._resume_agent_if_paused(target_agent)
+
         if self._interact_tmux_name:
             self._dispatch_tmux_text(self._interact_tmux_name, text, queue=False)
             ta.clear()
@@ -4274,6 +4283,10 @@ class ZeusApp(App):
         if not text:
             return
         self._append_interact_history(text)
+        target_agent = self._interact_target_agent()
+        if target_agent is not None:
+            self._resume_agent_if_paused(target_agent)
+
         if self._interact_tmux_name:
             self._dispatch_tmux_text(self._interact_tmux_name, text, queue=True)
             ta.clear()
