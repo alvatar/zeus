@@ -21,6 +21,7 @@ def _new_app() -> ZeusApp:
     app = ZeusApp()
     app._agent_dependencies = {}
     app._agent_priorities = {}
+    app._agent_notes = {}
     return app
 
 
@@ -98,6 +99,61 @@ def test_message_dialog_send_rejects_paused_or_blocked_target(monkeypatch) -> No
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
     assert sent == []
+
+
+def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+    app._agent_notes[app._agent_notes_key(agent)] = "existing line"
+
+    notices = capture_notify(app, monkeypatch)
+    saves: list[bool] = []
+    renders: list[bool] = []
+
+    monkeypatch.setattr(app, "_save_agent_notes", lambda: saves.append(True))
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    app._interact_visible = False
+
+    ok = app.do_add_agent_message_task(agent, "new task")
+
+    assert ok is True
+    key = app._agent_notes_key(agent)
+    assert app._agent_notes[key] == "existing line\n- [ ] new task"
+    assert notices[-1] == "Added task: alpha"
+    assert saves == [True]
+    assert renders == [True]
+
+
+def test_do_add_agent_message_task_keeps_multiline_payload(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    monkeypatch.setattr(app, "_save_agent_notes", lambda: None)
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: True)
+    app._interact_visible = False
+
+    ok = app.do_add_agent_message_task(agent, "first line\n  detail line")
+
+    assert ok is True
+    key = app._agent_notes_key(agent)
+    assert app._agent_notes[key] == "- [ ] first line\n  detail line"
+
+
+def test_do_add_agent_message_task_rejects_empty_text(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    saves: list[bool] = []
+    monkeypatch.setattr(app, "_save_agent_notes", lambda: saves.append(True))
+
+    ok = app.do_add_agent_message_task(agent, "   \n\n")
+
+    assert ok is False
+    assert saves == []
 
 
 def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:

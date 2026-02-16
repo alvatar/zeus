@@ -2879,6 +2879,29 @@ class ZeusApp(App):
         self._queue_text_to_agent_interact(live, clean)
         return True
 
+    def do_add_agent_message_task(self, agent: AgentWindow, text: str) -> bool:
+        clean = text.strip()
+        if not clean:
+            return False
+
+        lines = clean.splitlines()
+        first = lines[0].strip()
+        task_entry = f"- [ ] {first}"
+        if len(lines) > 1:
+            task_entry += "\n" + "\n".join(lines[1:])
+
+        key = self._agent_notes_key(agent)
+        existing = self._agent_notes.get(key, "").rstrip()
+        updated = f"{existing}\n{task_entry}" if existing else task_entry
+
+        self._agent_notes[key] = updated
+        self._save_agent_notes()
+        self.notify(f"Added task: {agent.name}", timeout=2)
+        self._render_agent_table_and_status()
+        if self._interact_visible:
+            self._refresh_interact_panel()
+        return True
+
     def action_queue_next_note_task(self) -> None:
         """H: queue next task from selected Hippeus notes."""
         if self._should_ignore_table_action():

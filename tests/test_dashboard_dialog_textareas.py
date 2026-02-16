@@ -41,8 +41,9 @@ def test_direct_dialog_uses_zeus_textarea() -> None:
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
 
 
-def test_agent_message_dialog_uses_zeus_textarea_without_buttons() -> None:
+def test_agent_message_dialog_uses_zeus_textarea_with_add_task_button() -> None:
     source = _compose_source(AgentMessageScreen)
     assert "ZeusTextArea(" in source
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
-    assert "Button(" not in source
+    assert "agent-message-add-task-btn" in source
+    assert "add it as a task" in source
