@@ -122,8 +122,8 @@ def _compact_name(name: str, maxlen: int) -> str:
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
 _URL_TRAILING = ".,;:!?)]}"
 _SHARE_MARKER = "%%%%"
-_TASK_PENDING_RE = re.compile(r"^(\s*-\s*)\[\s\](\s*)(.*)$")
-_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*")
+_TASK_PENDING_RE = re.compile(r"^(\s*-\s*)\[(?:\s*)\](\s*)(.*)$")
+_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[(?:\s*|[xX])\]\s*")
 
 
 def _iter_url_ranges(text: str) -> list[tuple[int, int, str]]:
@@ -186,8 +186,9 @@ def _extract_next_note_task(note: str) -> tuple[str, str] | None:
     """Extract next task message from notes and return updated notes text.
 
     Priority:
-    1. First ``- [ ]`` block (continues until next ``- [ ]`` or ``- [x]`` line).
-       The selected task is marked done in-place as ``- [x]``.
+    1. First unchecked task block (``- []`` or ``- [ ]``), continuing until the
+       next task header (unchecked or checked). The selected task is marked
+       done in-place as ``- [x]``.
     2. If no checkbox task exists, consume the first non-empty line.
     """
     lines = note.splitlines()

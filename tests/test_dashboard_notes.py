@@ -46,6 +46,22 @@ def test_extract_next_note_task_consumes_first_pending_block() -> None:
     assert updated.splitlines()[2] == "- [ ] second line"
 
 
+def test_extract_next_note_task_accepts_brackets_without_inner_space() -> None:
+    note = (
+        "- [] first line\n"
+        "  detail line\n"
+        "- [] second line\n"
+    )
+
+    extracted = _extract_next_note_task(note)
+    assert extracted is not None
+    message, updated = extracted
+
+    assert message == "first line\n  detail line"
+    assert updated.splitlines()[0] == "- [x] first line"
+    assert updated.splitlines()[2] == "- [] second line"
+
+
 def test_extract_next_note_task_falls_back_to_first_non_empty_line() -> None:
     note = "\nplain next step\n- [x] done item\n"
 

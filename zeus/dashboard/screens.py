@@ -123,8 +123,8 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
                 "and mark it done."
             )
             yield Label(
-                "Task format: '- [ ] task'. Multi-line tasks continue until the "
-                "next '- [ ]' or '- [x]' line."
+                "Task format: '- [] task' or '- [ ] task'. Multi-line tasks "
+                "continue until the next task header ('- []', '- [ ]', '- [x]')."
             )
             yield TextArea(self.note, id="agent-notes-input")
             with Horizontal(id="agent-notes-buttons"):
