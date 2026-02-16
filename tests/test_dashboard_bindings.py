@@ -37,6 +37,11 @@ def test_clear_done_tasks_binding_action() -> None:
     assert bindings["ctrl+t"].action == "clear_done_tasks"
 
 
+def test_kill_tmux_session_binding_action() -> None:
+    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
+    assert bindings["ctrl+k"].action == "kill_tmux_session"
+
+
 def test_agent_management_keys_include_z_a_n_t_and_i() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "z" in bindings

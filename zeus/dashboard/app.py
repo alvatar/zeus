@@ -274,6 +274,7 @@ class ZeusApp(App):
         Binding("n", "queue_next_task", "Queue Task"),
         Binding("t", "agent_tasks", "Tasks"),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
+        Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
         Binding("i", "toggle_dependency", "Dependency", show=False),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
         Binding("k", "kill_agent", "Kill Hippeus"),
@@ -2854,6 +2855,16 @@ class ZeusApp(App):
         if tmux:
             self.push_screen(ConfirmKillTmuxScreen(tmux))
 
+    def action_kill_tmux_session(self) -> None:
+        """Ctrl+K: hard-kill selected tmux session process."""
+        if self._should_ignore_table_action():
+            return
+        tmux = self._get_selected_tmux()
+        if not tmux:
+            self.notify("Select a tmux row to kill session", timeout=2)
+            return
+        self.do_kill_tmux_session(tmux)
+
     def do_kill_agent(self, agent: AgentWindow) -> None:
         close_window(agent)
         self.notify(f"Killed: {agent.name}", timeout=2)
@@ -2882,6 +2893,38 @@ class ZeusApp(App):
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             self.notify(f"Detach failed: {e}", timeout=3)
         self.poll_and_update()
+
+    def do_kill_tmux_session(self, sess: TmuxSession) -> None:
+        """Kill tmux session process and close the kitty client when possible."""
+        self._last_kill_time = time.time()
+        kitty_pid: int | None = None
+        client_pid = self._get_tmux_client_pid(sess.name)
+        if client_pid is not None:
+            kitty_pid = find_ancestor_pid_by_comm(client_pid, "kitty")
+
+        try:
+            result = subprocess.run(
+                ["tmux", "kill-session", "-t", sess.name],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "").strip()
+                if detail:
+                    self.notify(f"Kill tmux failed: {detail}", timeout=3)
+                else:
+                    self.notify(f"Kill tmux failed: {sess.name}", timeout=3)
+                return
+
+            if kitty_pid:
+                kill_pid(kitty_pid)
+
+            self.notify(f"Killed tmux: {sess.name}", timeout=2)
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            self.notify(f"Kill tmux failed: {e}", timeout=3)
+        finally:
+            self.poll_and_update()
 
     # ── New / Sub-agent / Rename ──────────────────────────────────────
 

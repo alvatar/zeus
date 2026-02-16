@@ -28,6 +28,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Send block between %%%% markers to one selected target Hippeus "
         "(active or blocked by source)"
     )
+    assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
     assert entries["z"] == "Muster Hippeus"
     assert entries["a"] == "Bring Hippeus under the Aegis"
     assert entries["n"] == "Queue next task for selected Hippeus"
@@ -77,6 +78,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
             "Send block between %%%% markers to one selected target Hippeus "
             "(active or blocked by source)",
         ),
+        ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ]
 
     for entry in mgmt_entries:
@@ -109,6 +111,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "Ctrl+w",
         "Ctrl+b",
         "Ctrl+m",
+        "Ctrl+k (tmux row)",
         "1",
         "2",
         "3",
