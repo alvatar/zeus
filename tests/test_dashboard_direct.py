@@ -85,7 +85,7 @@ def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
     )
 
 
-def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
+def test_do_enqueue_direct_unpauses_paused_target(monkeypatch) -> None:
     app = _new_app()
     target = _agent("target", 2)
     app.agents = [target]
@@ -96,8 +96,9 @@ def test_do_enqueue_direct_skips_paused_target(monkeypatch) -> None:
 
     app.do_enqueue_direct("source", app._agent_key(target), "hello")
 
-    assert sent == []
-    assert notices[-1] == "Target is no longer active"
+    assert len(sent) == 4
+    assert app._agent_priorities.get(target.name, 3) == 3
+    assert notices[-1] == "Message from source queued to target"
 
 
 def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
@@ -118,7 +119,7 @@ def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
     assert notices[-1] == "Target is no longer active"
 
 
-def test_direct_recipients_include_only_source_blocked_dependents() -> None:
+def test_direct_recipients_include_paused_and_source_blocked_dependents() -> None:
     app = _new_app()
     source = _agent("source", 1)
     blocked_by_source = _agent("blocked-by-source", 2)
@@ -135,7 +136,11 @@ def test_direct_recipients_include_only_source_blocked_dependents() -> None:
 
     recipients = app._direct_recipients(app._agent_key(source))
 
-    assert [agent.name for agent in recipients] == ["blocked-by-source", "active"]
+    assert [agent.name for agent in recipients] == [
+        "blocked-by-source",
+        "other-blocker",
+        "active",
+    ]
 
 
 def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_dependency(

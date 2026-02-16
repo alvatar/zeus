@@ -2070,13 +2070,16 @@ class ZeusApp(App):
         return False
 
     def _broadcast_recipients(self, source_key: str) -> list[AgentWindow]:
-        """Return active (non-paused/non-blocked) recipients excluding source."""
+        """Return recipients excluding source and dependency-blocked agents.
+
+        Paused agents are eligible; they are auto-resumed to priority 3 on send.
+        """
         recipients: list[AgentWindow] = []
         for agent in self.agents:
             key = self._agent_key(agent)
             if key == source_key:
                 continue
-            if self._is_input_blocked(agent):
+            if self._is_blocked(agent):
                 continue
             recipients.append(agent)
         return recipients
@@ -2095,7 +2098,7 @@ class ZeusApp(App):
         """Return direct-send recipients for a source.
 
         Includes:
-        - active recipients (same as broadcast), and
+        - non-blocked recipients (active or paused), and
         - blocked recipients only when they are blocked by the source.
         """
         recipients: list[AgentWindow] = []
@@ -2103,7 +2106,7 @@ class ZeusApp(App):
             key = self._agent_key(agent)
             if key == source_key:
                 continue
-            if (not self._is_input_blocked(agent)) or self._is_blocked_by_source_key(
+            if (not self._is_blocked(agent)) or self._is_blocked_by_source_key(
                 agent, source_key
             ):
                 recipients.append(agent)
@@ -2117,15 +2120,15 @@ class ZeusApp(App):
     ) -> list[tuple[str, str]]:
         """Return direct target options as (name, key).
 
-        Active targets are always eligible. Blocked targets are eligible only when
-        they are blocked by ``source_key``.
+        Non-blocked targets (active or paused) are always eligible.
+        Blocked targets are eligible only when they are blocked by ``source_key``.
         """
         options: list[tuple[str, str]] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
             if agent is None:
                 continue
-            if not self._is_input_blocked(agent):
+            if not self._is_blocked(agent):
                 options.append((agent.name, key))
                 continue
             if source_key and self._is_blocked_by_source_key(agent, source_key):
@@ -2250,7 +2253,7 @@ class ZeusApp(App):
             self._agent_key(a) for a in self._broadcast_recipients(source_key)
         ]
         if not recipient_keys:
-            self.notify("No active recipients (source excluded)", timeout=2)
+            self.notify("No eligible recipients (source excluded)", timeout=2)
             return
 
         self._start_summary_prepare(
@@ -2279,7 +2282,7 @@ class ZeusApp(App):
         ]
         if not recipient_keys:
             self.notify(
-                "No eligible targets (active peers or your blocked dependents)",
+                "No eligible targets (non-blocked peers or your blocked dependents)",
                 timeout=2,
             )
             return
@@ -2290,7 +2293,7 @@ class ZeusApp(App):
         )
         if not target_options:
             self.notify(
-                "No eligible targets (active peers or your blocked dependents)",
+                "No eligible targets (non-blocked peers or your blocked dependents)",
                 timeout=2,
             )
             return
@@ -2397,11 +2400,11 @@ class ZeusApp(App):
         recipient_names: list[str] = []
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is not None and not self._is_input_blocked(agent):
+            if agent is not None and not self._is_blocked(agent):
                 recipient_names.append(agent.name)
 
         if not recipient_names:
-            self.notify("No active recipients (source excluded)", timeout=2)
+            self.notify("No eligible recipients (source excluded)", timeout=2)
             return
 
         self.push_screen(
@@ -2433,7 +2436,7 @@ class ZeusApp(App):
         )
         if not target_options:
             self.notify(
-                "No eligible targets (active peers or your blocked dependents)",
+                "No eligible targets (non-blocked peers or your blocked dependents)",
                 timeout=2,
             )
             return
@@ -2683,8 +2686,9 @@ class ZeusApp(App):
         sent = 0
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
-            if agent is None or self._is_input_blocked(agent):
+            if agent is None or self._is_blocked(agent):
                 continue
+            self._resume_agent_if_paused(agent)
             if self._enqueue_outbound_agent_message(
                 agent,
                 message,
@@ -2693,7 +2697,7 @@ class ZeusApp(App):
                 sent += 1
 
         if sent == 0:
-            self.notify("Broadcast aborted: no active recipients", timeout=3)
+            self.notify("Broadcast aborted: no eligible recipients", timeout=3)
             return
 
         self._drain_message_queue()
@@ -2712,7 +2716,7 @@ class ZeusApp(App):
     ) -> None:
         """Queue marked message to a single selected direct target.
 
-        Active targets are always allowed.
+        Non-blocked targets (active or paused) are always allowed.
         Blocked targets are allowed only when blocked by the source.
         """
         target = self._get_agent_by_key(target_key)
@@ -2723,9 +2727,11 @@ class ZeusApp(App):
         blocked_by_source = bool(
             source_key and self._is_blocked_by_source_key(target, source_key)
         )
-        if self._is_input_blocked(target) and not blocked_by_source:
+        if self._is_blocked(target) and not blocked_by_source:
             self.notify("Target is no longer active", timeout=3)
             return
+
+        self._resume_agent_if_paused(target)
 
         source_agent_id = ""
         if source_key:

@@ -91,6 +91,28 @@ def test_do_set_dependency_unpauses_paused_agent(monkeypatch) -> None:
     assert notices[-1] == "paused blocked by blocker"
 
 
+def test_action_toggle_dependency_allows_paused_selected_agent(monkeypatch) -> None:
+    app = ZeusApp()
+    paused = _agent("paused", 1, agent_id="paused-id")
+    blocker = _agent("blocker", 2, agent_id="blocker-id")
+    app.agents = [paused, blocker]
+    app._agent_priorities = {"paused": 4}
+    app._agent_dependencies = {}
+    app._dependency_missing_polls = {}
+
+    pushed: list[object] = []
+    monkeypatch.setattr(app, "_has_modal_open", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: paused)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_toggle_dependency()
+
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, DependencySelectScreen)
+    assert screen.blocked_agent is paused
+
+
 def test_dependency_screen_confirm_dispatches_dependency(monkeypatch) -> None:
     blocked = _agent("blocked", 1, agent_id="blocked-id")
     screen = DependencySelectScreen(blocked, [("target", "target-id")])

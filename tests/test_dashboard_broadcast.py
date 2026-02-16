@@ -60,7 +60,7 @@ def test_extract_share_file_path_prefers_latest_zeus_msg_file_line() -> None:
     assert _extract_share_file_path(text) == "/tmp/new.md"
 
 
-def test_broadcast_recipients_exclude_source_paused_and_blocked() -> None:
+def test_broadcast_recipients_include_paused_and_exclude_blocked() -> None:
     app = ZeusApp()
     source = _agent("source", 1)
     active = _agent("active", 2)
@@ -74,7 +74,7 @@ def test_broadcast_recipients_exclude_source_paused_and_blocked() -> None:
     }
 
     recipients = app._broadcast_recipients(app._agent_key(source))
-    assert [a.name for a in recipients] == ["active"]
+    assert [a.name for a in recipients] == ["active", "paused"]
 
 
 def test_share_payload_prefers_session_transcript(monkeypatch) -> None:
@@ -181,7 +181,7 @@ def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch
     assert payload == "from screen"
 
 
-def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
+def test_do_enqueue_broadcast_queues_active_and_paused_recipients(monkeypatch) -> None:
     app = ZeusApp()
     source = _agent("source", 1)
     a1 = _agent("alpha", 2)
@@ -196,7 +196,7 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
     recipients = [app._agent_key(a1), app._agent_key(a2), app._agent_key(paused)]
     app.do_enqueue_broadcast("source", recipients, "payload")
 
-    assert len(sent) == 8
+    assert len(sent) == 12
 
     expected_first = [
         (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "payload")),
@@ -212,6 +212,15 @@ def test_do_enqueue_broadcast_queues_each_active_recipient(monkeypatch) -> None:
         (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x03")),
         (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
     ]
-    assert sent[4:] == expected_second
+    assert sent[4:8] == expected_second
 
-    assert notices[-1] == "Broadcast from source queued to 2 Hippeis"
+    expected_third = [
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "payload")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x1b[13;3u")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x03")),
+        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x15")),
+    ]
+    assert sent[8:] == expected_third
+
+    assert app._agent_priorities.get(paused.name, 3) == 3
+    assert notices[-1] == "Broadcast from source queued to 3 Hippeis"
