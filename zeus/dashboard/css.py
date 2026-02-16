@@ -305,6 +305,29 @@ AgentMessageScreen {{
     color: #dddddd;
 }}
 
+#agent-message-title-row {{
+    width: 100%;
+    height: 1;
+    align: left middle;
+    margin: 0 0 1 0;
+}}
+
+#agent-message-title,
+#agent-message-title-spacer,
+#agent-message-shortcuts-hint {{
+    margin: 0;
+    height: 1;
+}}
+
+#agent-message-title-spacer {{
+    width: 1fr;
+}}
+
+#agent-message-shortcuts-hint {{
+    color: #888888;
+    content-align: right middle;
+}}
+
 #agent-message-input {{
     height: 20;
     margin: 0 0 1 0;
@@ -313,18 +336,11 @@ AgentMessageScreen {{
     color: #dddddd;
 }}
 
-#agent-message-shortcuts-hint {{
-    margin: 0 0 0 1;
-    color: #888888;
-    height: 1;
-    content-align: left middle;
-}}
-
 {_button_row_css(
     "agent-message-buttons",
     align="left middle",
     width="100%",
-    button_margin="0",
+    button_margin="0 1 0 0",
 )}
 """
 

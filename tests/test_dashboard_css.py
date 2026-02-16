@@ -49,7 +49,10 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "#agent-message-dialog {" in css.AGENT_MESSAGE_CSS
     assert "width: 110;" in css.AGENT_MESSAGE_CSS
     assert "max-height: 40;" in css.AGENT_MESSAGE_CSS
-    assert "#agent-message-input {" in css.AGENT_MESSAGE_CSS
+    assert "#agent-message-title-row {" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-shortcuts-hint {" in css.AGENT_MESSAGE_CSS
+    assert "content-align: right middle;" in css.AGENT_MESSAGE_CSS
+    assert "#agent-message-input {" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-buttons {" in css.AGENT_MESSAGE_CSS
     assert "align: left middle;" in css.AGENT_MESSAGE_CSS
+    assert "margin: 0 1 0 0;" in css.AGENT_MESSAGE_CSS

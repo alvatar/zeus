@@ -180,22 +180,24 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-message-dialog"):
-            yield Label(f"Message [bold]{self.agent.name}[/bold]")
+            with Horizontal(id="agent-message-title-row"):
+                yield Label(f"Message [bold]{self.agent.name}[/bold]", id="agent-message-title")
+                yield Label("", id="agent-message-title-spacer")
+                yield Label(
+                    "(Control-S send | Control-W queue)",
+                    id="agent-message-shortcuts-hint",
+                )
             yield ZeusTextArea("", id="agent-message-input")
             with Horizontal(id="agent-message-buttons"):
                 yield Button(
-                    "add it as a task",
+                    "append as task",
                     variant="warning",
                     id="agent-message-add-task-btn",
                 )
                 yield Button(
-                    "add it as first task",
+                    "prepend as task",
                     variant="warning",
                     id="agent-message-add-task-first-btn",
-                )
-                yield Label(
-                    "Control-S send | Control-W queue",
-                    id="agent-message-shortcuts-hint",
                 )
 
     def on_mount(self) -> None:
