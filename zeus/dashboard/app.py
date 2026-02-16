@@ -298,6 +298,7 @@ class ZeusApp(App):
     _AEGIS_CHECK_S = 60.0
     _AEGIS_ROW_BG = "#ff69b4"
     _AEGIS_ROW_BG_DIM = "#a35c82"
+    _BLOCKED_ROW_FG = "#f2e6a7"
     _AEGIS_PROMPT = (
         "Continue now unless you really need me to make a decision. "
         "If so, save this report in the /reports folder with a descriptive "
@@ -978,8 +979,8 @@ class ZeusApp(App):
             if blocked:
                 icon = "└"
                 state_label = "BLOCKED"
-                state_color = "#888888"
-                row_style = "#666666"
+                state_color = self._BLOCKED_ROW_FG
+                row_style = self._BLOCKED_ROW_FG
             elif paused:
                 icon = "⏸"
                 state_label = "PAUSED"
@@ -1058,7 +1059,7 @@ class ZeusApp(App):
                 note_cell = Text(str(note_cell), style=row_style)
 
             if blocked:
-                pri_cell: str | Text = Text("-", style="bold #666666")
+                pri_cell: str | Text = Text("-", style=f"bold {self._BLOCKED_ROW_FG}")
             else:
                 pri_val = self._get_priority(a.name)
                 _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
