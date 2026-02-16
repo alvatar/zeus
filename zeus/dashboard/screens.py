@@ -119,7 +119,11 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-notes-dialog"):
-            yield Label(f"Hippeus Tasks [bold]{self.agent.name}[/bold]")
+            yield Label(f"Hippeus Tasks for: [bold]{self.agent.name}[/bold]")
+            yield Label(
+                "Format: '- [] task' or '- [ ] task' (multiline continues until "
+                "next task header)."
+            )
             yield ZeusTextArea(self.note, id="agent-notes-input")
             with Horizontal(id="agent-notes-buttons"):
                 yield Button(
