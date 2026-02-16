@@ -67,6 +67,7 @@ def test_render_agent_table_marks_polemarch_row_and_lists_hoplites() -> None:
     assert "is_polemarch_display = agent_role == \"polemarch\" or hoplite_count > 0" in source
     assert "role_marker = \"🛡 \" if is_polemarch_display else \"\"" in source
     assert "[phalanx: {hoplite_count}]" in source
+    assert "name_text = Text(raw_name, style=row_style or \"\")" in source
     assert "└ 🗡" in source
     assert "Phalanx (" not in source
     assert "self._is_hoplite_session_for" in source

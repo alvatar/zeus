@@ -1267,7 +1267,9 @@ class ZeusApp(App):
             else:
                 raw_name = f"{role_marker}{a.name}{phalanx_marker}"
 
-            name_text = Text(raw_name, style=row_style) if row_style else raw_name
+            # Always use Text so bracketed labels like "[phalanx: N]" render
+            # literally and are not parsed as Rich markup tags.
+            name_text = Text(raw_name, style=row_style or "")
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
             state_text = Text(
                 state_cell,
