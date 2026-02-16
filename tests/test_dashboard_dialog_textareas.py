@@ -22,6 +22,12 @@ def test_agent_notes_dialog_uses_zeus_textarea() -> None:
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
 
 
+def test_agent_notes_dialog_includes_clear_done_button() -> None:
+    source = _compose_source(AgentNotesScreen)
+    assert "agent-notes-clear-done-btn" in source
+    assert "Clear done [x]" in source
+
+
 def test_broadcast_dialog_uses_zeus_textarea() -> None:
     source = _compose_source(ConfirmBroadcastScreen)
     assert "ZeusTextArea(" in source

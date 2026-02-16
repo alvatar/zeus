@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from .config import AGENT_NOTES_FILE
 
@@ -32,3 +33,38 @@ def save_agent_notes(notes: dict[str, str]) -> None:
         if isinstance(key, str) and isinstance(value, str) and value.strip()
     }
     AGENT_NOTES_FILE.write_text(json.dumps(filtered))
+
+
+_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[(?:\s*|[xX])\]\s*")
+_DONE_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[[xX]\]\s*")
+
+
+def clear_done_note_tasks(note: str) -> tuple[str, int]:
+    """Remove all done ``- [x]`` task blocks from note text.
+
+    Returns ``(updated_note, removed_count)``.
+    Done task blocks include the ``- [x]`` header line and all following lines
+    up to the next task header.
+    """
+    lines = note.splitlines()
+    if not lines:
+        return "", 0
+
+    out: list[str] = []
+    removed = 0
+    i = 0
+    total = len(lines)
+
+    while i < total:
+        line = lines[i]
+        if not _DONE_TASK_HEADER_RE.match(line):
+            out.append(line)
+            i += 1
+            continue
+
+        removed += 1
+        i += 1
+        while i < total and not _TASK_HEADER_RE.match(lines[i]):
+            i += 1
+
+    return "\n".join(out).rstrip(), removed

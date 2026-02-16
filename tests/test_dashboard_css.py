@@ -31,3 +31,10 @@ def test_dependency_dialog_css_has_expected_spacing() -> None:
     assert "max-height: 24;" in css.DEPENDENCY_SELECT_CSS
     assert "#dependency-select-buttons {" in css.DEPENDENCY_SELECT_CSS
     assert "margin: 1 0 0 0;" in css.DEPENDENCY_SELECT_CSS
+
+
+def test_notes_dialog_buttons_include_left_clear_done_layout() -> None:
+    assert "#agent-notes-buttons-spacer {" in css.AGENT_NOTES_CSS
+    assert "width: 1fr;" in css.AGENT_NOTES_CSS
+    assert "#agent-notes-buttons {" in css.AGENT_NOTES_CSS
+    assert "align: left middle;" in css.AGENT_NOTES_CSS

@@ -269,7 +269,17 @@ AgentNotesScreen {{
     color: #dddddd;
 }}
 
-{_button_row_css("agent-notes-buttons")}
+#agent-notes-buttons-spacer {{
+    width: 1fr;
+    height: 1;
+}}
+
+{_button_row_css(
+    "agent-notes-buttons",
+    align="left middle",
+    width="100%",
+    button_margin="0 1 0 0",
+)}
 """
 
 DEPENDENCY_SELECT_CSS = f"""

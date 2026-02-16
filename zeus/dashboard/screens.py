@@ -22,6 +22,7 @@ from .widgets import ZeusTextArea
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
+from ..notes import clear_done_note_tasks
 from .css import (
     NEW_AGENT_CSS,
     AGENT_NOTES_CSS,
@@ -129,6 +130,12 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
             )
             yield ZeusTextArea(self.note, id="agent-notes-input")
             with Horizontal(id="agent-notes-buttons"):
+                yield Button(
+                    "Clear done [x]",
+                    variant="warning",
+                    id="agent-notes-clear-done-btn",
+                )
+                yield Label("", id="agent-notes-buttons-spacer")
                 yield Button("Cancel", variant="default", id="agent-notes-cancel-btn")
                 yield Button("Save", variant="primary", id="agent-notes-save-btn")
 
@@ -142,9 +149,22 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
         self.zeus.do_save_agent_notes(self.agent, note)
 
+    def _clear_done_tasks(self) -> None:
+        ta = self.query_one("#agent-notes-input", ZeusTextArea)
+        updated, removed = clear_done_note_tasks(ta.text)
+        ta.load_text(updated)
+        ta.move_cursor(ta.document.end)
+        if removed:
+            suffix = "" if removed == 1 else "s"
+            self.zeus.notify(f"Cleared {removed} done task{suffix}", timeout=2)
+        else:
+            self.zeus.notify("No done tasks to clear", timeout=2)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "agent-notes-save-btn":
             self._save()
+        elif event.button.id == "agent-notes-clear-done-btn":
+            self._clear_done_tasks()
         else:
             self.dismiss()
         event.stop()
