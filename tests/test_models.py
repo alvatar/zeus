@@ -20,6 +20,7 @@ def test_agent_window_defaults():
     assert a.agent_id == ""
     assert a.state == State.IDLE
     assert a.model == ""
+    assert a.role == ""
     assert a.session_path == ""
     assert a.tmux_sessions == []
     assert a.proc_metrics.cpu_pct == 0.0

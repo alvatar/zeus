@@ -52,6 +52,7 @@ class AgentWindow:
     tokens_out: str = ""
     workspace: str = ""
     parent_name: str = ""
+    role: str = ""  # ZEUS_ROLE for agent-level role (e.g. polemarch)
     session_path: str = ""
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)

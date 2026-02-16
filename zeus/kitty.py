@@ -169,6 +169,7 @@ def discover_agents() -> list[AgentWindow]:
                         cwd=win.get("cwd", ""),
                         agent_id=agent_id,
                         parent_name=env.get("ZEUS_PARENT", ""),
+                        role=(env.get("ZEUS_ROLE") or "").strip().lower(),
                         session_path=env.get("ZEUS_SESSION_PATH", ""),
                     ))
 

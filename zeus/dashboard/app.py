@@ -1246,16 +1246,23 @@ class ZeusApp(App):
                 for sess in a.tmux_sessions
                 if self._is_hoplite_session_for(a, sess)
             )
-            phalanx_marker = f" 🛡{hoplite_count}" if hoplite_count > 0 else ""
+            agent_role = (a.role or "").strip().lower()
+            role_marker = "🛡 " if agent_role == "polemarch" else ""
+            phalanx_marker = (
+                f" [phalanx: {hoplite_count}]" if agent_role == "polemarch" else ""
+            )
 
             if indent_level > 0:
                 branch_prefix = f"{'  ' * indent_level}└ "
                 if relation_icon:
-                    raw_name = f"{branch_prefix}{relation_icon} {a.name}{phalanx_marker}"
+                    raw_name = (
+                        f"{branch_prefix}{relation_icon} "
+                        f"{role_marker}{a.name}{phalanx_marker}"
+                    )
                 else:
-                    raw_name = f"{branch_prefix}{a.name}{phalanx_marker}"
+                    raw_name = f"{branch_prefix}{role_marker}{a.name}{phalanx_marker}"
             else:
-                raw_name = f"{a.name}{phalanx_marker}"
+                raw_name = f"{role_marker}{a.name}{phalanx_marker}"
 
             name_text = Text(raw_name, style=row_style) if row_style else raw_name
             state_cell = f"{icon} {state_label}".ljust(state_col_width)
@@ -1440,7 +1447,7 @@ class ZeusApp(App):
                 if not self._is_hoplite_session_for(a, sess)
             ]
 
-            hoplite_prefix = f"{'  ' * indent_level}└ ⚔ "
+            hoplite_prefix = f"{'  ' * indent_level}└ 🗡 "
             for sess in hoplites:
                 _add_tmux_session_row(sess, prefix=hoplite_prefix)
 

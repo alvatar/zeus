@@ -6,7 +6,7 @@ from zeus.dashboard.app import ZeusApp
 from zeus.models import AgentWindow, TmuxSession
 
 
-def _agent(agent_id: str = "agent-1") -> AgentWindow:
+def _agent(agent_id: str = "agent-1", role: str = "") -> AgentWindow:
     return AgentWindow(
         kitty_id=1,
         socket="/tmp/kitty-1",
@@ -15,6 +15,7 @@ def _agent(agent_id: str = "agent-1") -> AgentWindow:
         kitty_pid=201,
         cwd="/tmp/project",
         agent_id=agent_id,
+        role=role,
     )
 
 
@@ -63,7 +64,8 @@ def test_is_hoplite_session_for_requires_role_owner_and_phalanx() -> None:
 def test_render_agent_table_marks_polemarch_row_and_lists_hoplites() -> None:
     source = inspect.getsource(ZeusApp._render_agent_table_and_status)
 
-    assert "🛡{hoplite_count}" in source
-    assert "└ ⚔" in source
+    assert "role_marker = \"🛡 \" if agent_role == \"polemarch\" else \"\"" in source
+    assert "[phalanx: {hoplite_count}]" in source
+    assert "└ 🗡" in source
     assert "Phalanx (" not in source
     assert "self._is_hoplite_session_for" in source
