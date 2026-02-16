@@ -1,4 +1,4 @@
-"""Persistent per-agent notes storage."""
+"""Persistent per-agent tasks storage."""
 
 from __future__ import annotations
 
@@ -35,6 +35,16 @@ def save_agent_notes(notes: dict[str, str]) -> None:
     AGENT_NOTES_FILE.write_text(json.dumps(filtered))
 
 
+def load_agent_tasks() -> dict[str, str]:
+    """Load tasks map keyed by stable agent key."""
+    return load_agent_notes()
+
+
+def save_agent_tasks(tasks: dict[str, str]) -> None:
+    """Persist tasks map keyed by stable agent key."""
+    save_agent_notes(tasks)
+
+
 _TASK_HEADER_RE = re.compile(r"^\s*-\s*\[(?:\s*|[xX])\]\s*")
 _DONE_TASK_HEADER_RE = re.compile(r"^\s*-\s*\[[xX]\]\s*")
 
@@ -68,3 +78,8 @@ def clear_done_note_tasks(note: str) -> tuple[str, int]:
             i += 1
 
     return "\n".join(out).rstrip(), removed
+
+
+def clear_done_tasks(task_text: str) -> tuple[str, int]:
+    """Remove all done task blocks from task text."""
+    return clear_done_note_tasks(task_text)

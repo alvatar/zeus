@@ -246,12 +246,12 @@ NewAgentScreen {{
 {_button_row_css("new-agent-buttons", row_margin="1 0 0 0")}
 """
 
-AGENT_NOTES_CSS = f"""
-AgentNotesScreen {{
+AGENT_TASKS_CSS = f"""
+AgentTasksScreen {{
     align: center middle;
 }}
 
-#agent-notes-dialog {{
+#agent-tasks-dialog {{
     width: 110;
     height: auto;
     max-height: 40;
@@ -260,12 +260,12 @@ AgentNotesScreen {{
     padding: 1 2;
 }}
 
-#agent-notes-dialog Label {{
+#agent-tasks-dialog Label {{
     margin: 0 0 1 0;
     color: #dddddd;
 }}
 
-#agent-notes-input {{
+#agent-tasks-input {{
     height: 20;
     margin: 0 0 1 0;
     border: solid #444444;
@@ -273,13 +273,13 @@ AgentNotesScreen {{
     color: #dddddd;
 }}
 
-#agent-notes-buttons-spacer {{
+#agent-tasks-buttons-spacer {{
     width: 1fr;
     height: 1;
 }}
 
 {_button_row_css(
-    "agent-notes-buttons",
+    "agent-tasks-buttons",
     align="left middle",
     width="100%",
     button_margin="0 1 0 0",

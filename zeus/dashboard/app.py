@@ -29,7 +29,7 @@ class SortMode(Enum):
     ALPHA = "alpha"
 
 from ..config import PRIORITIES_FILE, PANEL_VISIBILITY_FILE
-from ..notes import load_agent_notes, save_agent_notes
+from ..notes import load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
 from ..models import (
@@ -68,7 +68,7 @@ from .stream import (
 from .widgets import ZeusDataTable, ZeusTextArea, UsageBar, SplashOverlay
 from .screens import (
     NewAgentScreen,
-    AgentNotesScreen,
+    AgentTasksScreen,
     AgentMessageScreen,
     DependencySelectScreen,
     SubAgentScreen,
@@ -187,8 +187,8 @@ def _extract_share_payload(text: str) -> str | None:
     return "\n".join(lines[start + 1:end]).strip()
 
 
-def _extract_next_note_task(note: str) -> tuple[str, str] | None:
-    """Extract next task message from notes and return updated notes text.
+def _extract_next_task(task_text: str) -> tuple[str, str] | None:
+    """Extract next task message from task text and return updated task text.
 
     Priority:
     1. First unchecked task block (``- []`` or ``- [ ]``), continuing until the
@@ -196,7 +196,7 @@ def _extract_next_note_task(note: str) -> tuple[str, str] | None:
        done in-place as ``- [x]``.
     2. If no checkbox task exists, consume the first non-empty line.
     """
-    lines = note.splitlines()
+    lines = task_text.splitlines()
     if not lines:
         return None
 
@@ -226,8 +226,8 @@ def _extract_next_note_task(note: str) -> tuple[str, str] | None:
         lines[pending_index] = (
             f"{pending_match.group(1)}[x]{pending_match.group(2)}{pending_match.group(3)}"
         )
-        updated_notes = "\n".join(lines).rstrip()
-        return message, updated_notes
+        updated_task_text = "\n".join(lines).rstrip()
+        return message, updated_task_text
 
     first_non_empty = next((idx for idx, line in enumerate(lines) if line.strip()), None)
     if first_non_empty is None:
@@ -235,12 +235,12 @@ def _extract_next_note_task(note: str) -> tuple[str, str] | None:
 
     message = lines[first_non_empty].strip()
     del lines[first_non_empty]
-    updated_notes = "\n".join(lines).rstrip()
-    return message, updated_notes
+    updated_task_text = "\n".join(lines).rstrip()
+    return message, updated_task_text
 
 
-def _with_notes_column(order: tuple[str, ...]) -> tuple[str, ...]:
-    """Ensure notes column exists directly after context column."""
+def _with_tasks_column(order: tuple[str, ...]) -> tuple[str, ...]:
+    """Ensure tasks indicator column exists directly after context column."""
     if "■" in order:
         return order
     if "◉" in order:
@@ -271,8 +271,8 @@ class ZeusApp(App):
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("c", "new_agent", "Muster Hippeus"),
         Binding("a", "toggle_aegis", "Aegis"),
-        Binding("h", "queue_next_note_task", "Queue Task"),
-        Binding("n", "agent_notes", "Notes"),
+        Binding("h", "queue_next_task", "Queue Task"),
+        Binding("t", "agent_tasks", "Tasks", key_display="T"),
         Binding("m", "agent_message", "Message"),
         Binding("ctrl+i", "toggle_dependency", "Dependency", show=False, priority=True),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
@@ -346,7 +346,7 @@ class ZeusApp(App):
     _broadcast_job_seq: int = 0
     _broadcast_active_job: int | None = None
     _prepare_target_selection: dict[int, str] = {}
-    _agent_notes: dict[str, str] = {}
+    _agent_tasks: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
     _aegis_enabled: set[str] = set()
@@ -401,8 +401,8 @@ class ZeusApp(App):
         yield Static("", id="status-line")
         yield SplashOverlay(id="splash")
 
-    _FULL_COLUMNS = _with_notes_column(SETTINGS.columns.wide.order)
-    _SPLIT_COLUMNS = _with_notes_column(SETTINGS.columns.split.order)
+    _FULL_COLUMNS = _with_tasks_column(SETTINGS.columns.wide.order)
+    _SPLIT_COLUMNS = _with_tasks_column(SETTINGS.columns.split.order)
     _COL_WIDTHS: dict[str, int] = dict(SETTINGS.columns.wide.widths)
     _COL_WIDTHS.setdefault("■", 1)
     _COL_WIDTHS.setdefault("RAM", 4)
@@ -425,7 +425,7 @@ class ZeusApp(App):
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
         self._load_priorities()
-        self._load_agent_notes()
+        self._load_agent_tasks()
         self._load_agent_dependencies()
         self._load_panel_visibility()
         self._celebration_cooldown_started_at = time.time()
@@ -1080,9 +1080,9 @@ class ZeusApp(App):
             tok_cell: str | Text = (
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
             )
-            note_cell: str | Text = (
+            task_cell: str | Text = (
                 Text("■", style="bold #ffaf00")
-                if self._has_note_for_agent(a)
+                if self._has_task_for_agent(a)
                 else Text("□", style="#555555")
             )
 
@@ -1111,7 +1111,7 @@ class ZeusApp(App):
                 gpu_cell = Text(str(gpu_cell), style=row_style)
                 net_cell = Text(str(net_cell), style=row_style)
                 tok_cell = Text(str(tok_cell), style=row_style)
-                note_cell = Text(str(note_cell), style=row_style)
+                task_cell = Text(str(task_cell), style=row_style)
 
             if blocked:
                 pri_cell: str | Text = Text("-", style=f"bold {self._BLOCKED_NON_STATE_FG}")
@@ -1127,7 +1127,7 @@ class ZeusApp(App):
                 "State": state_text,
                 "P": pri_cell,
                 "◉": ctx_cell,
-                "■": note_cell,
+                "■": task_cell,
                 "Name": name_text,
                 "Elapsed": elapsed_text,
                 "Model/Cmd": Text(a.model or "—", style=row_style) if row_style else (a.model or "—"),
@@ -1730,7 +1730,7 @@ class ZeusApp(App):
     def _agent_identity_key(agent: AgentWindow) -> str:
         return agent.agent_id or f"{agent.socket}:{agent.kitty_id}"
 
-    def _agent_notes_key(self, agent: AgentWindow) -> str:
+    def _agent_tasks_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
 
     def _agent_dependency_key(self, agent: AgentWindow) -> str:
@@ -1742,11 +1742,11 @@ class ZeusApp(App):
                 return agent
         return None
 
-    def _note_text_for_agent(self, agent: AgentWindow) -> str:
-        return self._agent_notes.get(self._agent_notes_key(agent), "")
+    def _task_text_for_agent(self, agent: AgentWindow) -> str:
+        return self._agent_tasks.get(self._agent_tasks_key(agent), "")
 
-    def _has_note_for_agent(self, agent: AgentWindow) -> bool:
-        return bool(self._note_text_for_agent(agent).strip())
+    def _has_task_for_agent(self, agent: AgentWindow) -> bool:
+        return bool(self._task_text_for_agent(agent).strip())
 
     def _is_blocked(self, agent: AgentWindow) -> bool:
         return self._agent_dependency_key(agent) in self._agent_dependencies
@@ -2501,13 +2501,13 @@ class ZeusApp(App):
         live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
         prune_histories(live_targets)
 
-    # ── Agent priorities / notes / dependencies ───────────────────
+    # ── Agent priorities / tasks / dependencies ───────────────────
 
-    def _load_agent_notes(self) -> None:
-        self._agent_notes = load_agent_notes()
+    def _load_agent_tasks(self) -> None:
+        self._agent_tasks = load_agent_tasks()
 
-    def _save_agent_notes(self) -> None:
-        save_agent_notes(self._agent_notes)
+    def _save_agent_tasks(self) -> None:
+        save_agent_tasks(self._agent_tasks)
 
     def _load_agent_dependencies(self) -> None:
         self._agent_dependencies = load_agent_dependencies()
@@ -2853,25 +2853,25 @@ class ZeusApp(App):
     def action_new_agent(self) -> None:
         self.push_screen(NewAgentScreen())
 
-    def action_agent_notes(self) -> None:
+    def action_agent_tasks(self) -> None:
         if self._has_modal_open():
             return
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("Select a Hippeus row to edit notes", timeout=2)
+            self.notify("Select a Hippeus row to edit tasks", timeout=2)
             return
-        self.push_screen(AgentNotesScreen(agent, self._note_text_for_agent(agent)))
+        self.push_screen(AgentTasksScreen(agent, self._task_text_for_agent(agent)))
 
-    def do_save_agent_notes(self, agent: AgentWindow, note: str) -> None:
-        key = self._agent_notes_key(agent)
-        clean = note.rstrip()
+    def do_save_agent_tasks(self, agent: AgentWindow, task_text: str) -> None:
+        key = self._agent_tasks_key(agent)
+        clean = task_text.rstrip()
         if clean.strip():
-            self._agent_notes[key] = clean
-            self.notify(f"Saved notes: {agent.name}", timeout=2)
+            self._agent_tasks[key] = clean
+            self.notify(f"Saved tasks: {agent.name}", timeout=2)
         else:
-            self._agent_notes.pop(key, None)
-            self.notify(f"Cleared notes: {agent.name}", timeout=2)
-        self._save_agent_notes()
+            self._agent_tasks.pop(key, None)
+            self.notify(f"Cleared tasks: {agent.name}", timeout=2)
+        self._save_agent_tasks()
         self.poll_and_update()
 
     def action_agent_message(self) -> None:
@@ -2940,20 +2940,20 @@ class ZeusApp(App):
         if len(lines) > 1:
             task_entry += "\n" + "\n".join(lines[1:])
 
-        key = self._agent_notes_key(agent)
-        existing = self._agent_notes.get(key, "").rstrip()
+        key = self._agent_tasks_key(agent)
+        existing = self._agent_tasks.get(key, "").rstrip()
         updated = f"{existing}\n{task_entry}" if existing else task_entry
 
-        self._agent_notes[key] = updated
-        self._save_agent_notes()
+        self._agent_tasks[key] = updated
+        self._save_agent_tasks()
         self.notify(f"Added task: {agent.name}", timeout=2)
         self._render_agent_table_and_status()
         if self._interact_visible:
             self._refresh_interact_panel()
         return True
 
-    def action_queue_next_note_task(self) -> None:
-        """H: queue next task from selected Hippeus notes."""
+    def action_queue_next_task(self) -> None:
+        """H: queue next task from selected Hippeus tasks."""
         if self._should_ignore_table_action():
             return
 
@@ -2962,27 +2962,27 @@ class ZeusApp(App):
             self.notify("Select a Hippeus row to queue next task", timeout=2)
             return
 
-        key = self._agent_notes_key(agent)
-        note = self._agent_notes.get(key, "")
-        extracted = _extract_next_note_task(note)
+        key = self._agent_tasks_key(agent)
+        task_text = self._agent_tasks.get(key, "")
+        extracted = _extract_next_task(task_text)
         if extracted is None:
-            self.notify(f"No note task found for {agent.name}", timeout=2)
+            self.notify(f"No task found for {agent.name}", timeout=2)
             return
 
-        message, updated_notes = extracted
+        message, updated_task_text = extracted
         if not message.strip():
-            self.notify("Next note task is empty; nothing queued", timeout=2)
+            self.notify("Next task is empty; nothing queued", timeout=2)
             return
 
         self._queue_text_to_agent(agent, message)
 
-        if updated_notes.strip():
-            self._agent_notes[key] = updated_notes
+        if updated_task_text.strip():
+            self._agent_tasks[key] = updated_task_text
         else:
-            self._agent_notes.pop(key, None)
+            self._agent_tasks.pop(key, None)
 
-        self._save_agent_notes()
-        self.notify(f"Queued next task from notes: {agent.name}", timeout=3)
+        self._save_agent_tasks()
+        self.notify(f"Queued next task: {agent.name}", timeout=3)
         self._render_agent_table_and_status()
         if self._interact_visible:
             self._refresh_interact_panel()
@@ -3461,7 +3461,7 @@ class ZeusApp(App):
             if isinstance(modal, AgentMessageScreen):
                 modal.action_send()
                 return
-            if isinstance(modal, AgentNotesScreen):
+            if isinstance(modal, AgentTasksScreen):
                 modal.action_save()
             return
 

@@ -22,10 +22,10 @@ from .widgets import ZeusTextArea
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
-from ..notes import clear_done_note_tasks
+from ..notes import clear_done_tasks
 from .css import (
     NEW_AGENT_CSS,
-    AGENT_NOTES_CSS,
+    AGENT_TASKS_CSS,
     AGENT_MESSAGE_CSS,
     DEPENDENCY_SELECT_CSS,
     SUBAGENT_CSS,
@@ -105,48 +105,48 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self.zeus.set_timer(1.5, self.zeus.poll_and_update)
 
 
-class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
-    CSS = AGENT_NOTES_CSS
+class AgentTasksScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = AGENT_TASKS_CSS
     BINDINGS = [
         Binding("escape", "dismiss", "Cancel", show=False),
         Binding("ctrl+s", "save", "Save", show=False),
     ]
 
-    def __init__(self, agent: AgentWindow, note: str) -> None:
+    def __init__(self, agent: AgentWindow, task_text: str) -> None:
         super().__init__()
         self.agent = agent
-        self.note = note
+        self.task_text = task_text
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="agent-notes-dialog"):
+        with Vertical(id="agent-tasks-dialog"):
             yield Label(f"Tasks: [bold]{self.agent.name}[/bold]")
             yield Label(
                 "Format: '- [] task' or '- [ ] task' (multiline continues until "
                 "next task header)."
             )
-            yield ZeusTextArea(self.note, id="agent-notes-input")
-            with Horizontal(id="agent-notes-buttons"):
+            yield ZeusTextArea(self.task_text, id="agent-tasks-input")
+            with Horizontal(id="agent-tasks-buttons"):
                 yield Button(
                     "Clear done [x]",
                     variant="warning",
-                    id="agent-notes-clear-done-btn",
+                    id="agent-tasks-clear-done-btn",
                 )
-                yield Label("", id="agent-notes-buttons-spacer")
-                yield Button("Save", variant="primary", id="agent-notes-save-btn")
+                yield Label("", id="agent-tasks-buttons-spacer")
+                yield Button("Save", variant="primary", id="agent-tasks-save-btn")
 
     def on_mount(self) -> None:
-        ta = self.query_one("#agent-notes-input", ZeusTextArea)
+        ta = self.query_one("#agent-tasks-input", ZeusTextArea)
         ta.focus()
         ta.move_cursor(ta.document.end)
 
     def _save(self) -> None:
-        note = self.query_one("#agent-notes-input", ZeusTextArea).text
+        task_text = self.query_one("#agent-tasks-input", ZeusTextArea).text
         self.dismiss()
-        self.zeus.do_save_agent_notes(self.agent, note)
+        self.zeus.do_save_agent_tasks(self.agent, task_text)
 
     def _clear_done_tasks(self) -> None:
-        ta = self.query_one("#agent-notes-input", ZeusTextArea)
-        updated, removed = clear_done_note_tasks(ta.text)
+        ta = self.query_one("#agent-tasks-input", ZeusTextArea)
+        updated, removed = clear_done_tasks(ta.text)
         ta.load_text(updated)
         ta.move_cursor(ta.document.end)
         if removed:
@@ -156,9 +156,9 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.notify("No done tasks to clear", timeout=2)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "agent-notes-save-btn":
+        if event.button.id == "agent-tasks-save-btn":
             self._save()
-        elif event.button.id == "agent-notes-clear-done-btn":
+        elif event.button.id == "agent-tasks-clear-done-btn":
             self._clear_done_tasks()
         event.stop()
 
@@ -694,8 +694,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Hippeis Management ───"),
     ("c", "Muster Hippeus"),
     ("a", "Bring Hippeus under the Aegis"),
-    ("h", "Queue next task from notes for selected Hippeus"),
-    ("n", "Edit notes for selected Hippeus"),
+    ("h", "Queue next task for selected Hippeus"),
+    ("T", "Edit tasks for selected Hippeus"),
     ("m", "Open message dialog for selected Hippeus"),
     ("Ctrl+i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
@@ -733,7 +733,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("↑/↓", "Cursor up/down; at visual top/bottom browse history"),
     ("", "─── Dialogs ───"),
     ("Esc (dialog)", "Close/cancel active dialog"),
-    ("Ctrl+s (notes dialog)", "Save notes in Hippeus Tasks dialog"),
+    ("Ctrl+s (tasks dialog)", "Save tasks in Hippeus Tasks dialog"),
     ("Ctrl+s (message dialog)", "Send message in Hippeus Message dialog"),
     ("Ctrl+w (message dialog)", "Queue message in Hippeus Message dialog"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),

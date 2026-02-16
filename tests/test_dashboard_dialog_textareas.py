@@ -5,7 +5,7 @@ import re
 
 from zeus.dashboard.screens import (
     AgentMessageScreen,
-    AgentNotesScreen,
+    AgentTasksScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
 )
@@ -17,28 +17,28 @@ def _compose_source(screen_class: type) -> str:
     return inspect.getsource(screen_class.compose)
 
 
-def test_agent_notes_dialog_uses_zeus_textarea() -> None:
-    source = _compose_source(AgentNotesScreen)
+def test_agent_tasks_dialog_uses_zeus_textarea() -> None:
+    source = _compose_source(AgentTasksScreen)
     assert "ZeusTextArea(" in source
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
 
 
-def test_agent_notes_dialog_includes_clear_done_button() -> None:
-    source = _compose_source(AgentNotesScreen)
-    assert "agent-notes-clear-done-btn" in source
+def test_agent_tasks_dialog_includes_clear_done_button() -> None:
+    source = _compose_source(AgentTasksScreen)
+    assert "agent-tasks-clear-done-btn" in source
     assert "Clear done [x]" in source
 
 
-def test_agent_notes_dialog_header_uses_single_title_and_format_line() -> None:
-    source = _compose_source(AgentNotesScreen)
+def test_agent_tasks_dialog_header_uses_single_title_and_format_line() -> None:
+    source = _compose_source(AgentTasksScreen)
     assert "Tasks:" in source
     assert "Format: '- [] task' or '- [ ] task'" in source
     assert "Press H" not in source
 
 
-def test_agent_notes_dialog_has_no_cancel_button() -> None:
-    source = _compose_source(AgentNotesScreen)
-    assert "agent-notes-cancel-btn" not in source
+def test_agent_tasks_dialog_has_no_cancel_button() -> None:
+    source = _compose_source(AgentTasksScreen)
+    assert "agent-tasks-cancel-btn" not in source
     assert 'Button("Save"' in source
 
 

@@ -1,6 +1,6 @@
-"""Tests for dashboard agent notes behavior helpers."""
+"""Tests for dashboard agent tasks behavior helpers."""
 
-from zeus.dashboard.app import ZeusApp, _extract_next_note_task
+from zeus.dashboard.app import ZeusApp, _extract_next_task
 from zeus.models import AgentWindow
 
 
@@ -16,28 +16,28 @@ def _agent(name: str, kitty_id: int, agent_id: str = "") -> AgentWindow:
     )
 
 
-def test_agent_notes_key_prefers_agent_id() -> None:
+def test_agent_tasks_key_prefers_agent_id() -> None:
     app = ZeusApp()
     agent = _agent("x", 1, agent_id="agent-1")
-    assert app._agent_notes_key(agent) == "agent-1"
+    assert app._agent_tasks_key(agent) == "agent-1"
 
 
-def test_has_note_for_agent_checks_stored_text() -> None:
+def test_has_task_for_agent_checks_stored_text() -> None:
     app = ZeusApp()
     agent = _agent("x", 1, agent_id="agent-1")
-    app._agent_notes = {"agent-1": "next: fix parser"}
+    app._agent_tasks = {"agent-1": "next: fix parser"}
 
-    assert app._has_note_for_agent(agent) is True
+    assert app._has_task_for_agent(agent) is True
 
 
-def test_extract_next_note_task_consumes_first_pending_block() -> None:
+def test_extract_next_task_consumes_first_pending_block() -> None:
     note = (
         "- [ ] first line\n"
         "  detail line\n"
         "- [ ] second line\n"
     )
 
-    extracted = _extract_next_note_task(note)
+    extracted = _extract_next_task(note)
     assert extracted is not None
     message, updated = extracted
 
@@ -46,14 +46,14 @@ def test_extract_next_note_task_consumes_first_pending_block() -> None:
     assert updated.splitlines()[2] == "- [ ] second line"
 
 
-def test_extract_next_note_task_accepts_brackets_without_inner_space() -> None:
+def test_extract_next_task_accepts_brackets_without_inner_space() -> None:
     note = (
         "- [] first line\n"
         "  detail line\n"
         "- [] second line\n"
     )
 
-    extracted = _extract_next_note_task(note)
+    extracted = _extract_next_task(note)
     assert extracted is not None
     message, updated = extracted
 
@@ -62,10 +62,10 @@ def test_extract_next_note_task_accepts_brackets_without_inner_space() -> None:
     assert updated.splitlines()[2] == "- [] second line"
 
 
-def test_extract_next_note_task_falls_back_to_first_non_empty_line() -> None:
+def test_extract_next_task_falls_back_to_first_non_empty_line() -> None:
     note = "\nplain next step\n- [x] done item\n"
 
-    extracted = _extract_next_note_task(note)
+    extracted = _extract_next_task(note)
     assert extracted is not None
     message, updated = extracted
 
@@ -73,10 +73,10 @@ def test_extract_next_note_task_falls_back_to_first_non_empty_line() -> None:
     assert "plain next step" not in updated
 
 
-def test_action_queue_next_note_task_queues_and_marks_done(monkeypatch) -> None:
+def test_action_queue_next_task_queues_and_marks_done(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("alpha", 1, agent_id="agent-1")
-    app._agent_notes = {
+    app._agent_tasks = {
         "agent-1": "- [ ] first line\n  detail line\n- [ ] second line"
     }
 
@@ -91,7 +91,7 @@ def test_action_queue_next_note_task_queues_and_marks_done(monkeypatch) -> None:
         "_queue_text_to_agent",
         lambda target, text: queued.append((target.name, text)),
     )
-    monkeypatch.setattr(app, "_save_agent_notes", lambda: None)
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: None)
     monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
     monkeypatch.setattr(
         app,
@@ -100,18 +100,18 @@ def test_action_queue_next_note_task_queues_and_marks_done(monkeypatch) -> None:
     )
     app._interact_visible = False
 
-    app.action_queue_next_note_task()
+    app.action_queue_next_task()
 
     assert queued == [("alpha", "first line\n  detail line")]
-    assert app._agent_notes["agent-1"].splitlines()[0] == "- [x] first line"
-    assert notices[-1] == "Queued next task from notes: alpha"
+    assert app._agent_tasks["agent-1"].splitlines()[0] == "- [x] first line"
+    assert notices[-1] == "Queued next task: alpha"
     assert renders == [True]
 
 
-def test_action_queue_next_note_task_notifies_when_no_task(monkeypatch) -> None:
+def test_action_queue_next_task_notifies_when_no_task(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("alpha", 1, agent_id="agent-1")
-    app._agent_notes = {"agent-1": "\n  \n"}
+    app._agent_tasks = {"agent-1": "\n  \n"}
 
     notices: list[str] = []
 
@@ -119,6 +119,6 @@ def test_action_queue_next_note_task_notifies_when_no_task(monkeypatch) -> None:
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
     monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
 
-    app.action_queue_next_note_task()
+    app.action_queue_next_task()
 
-    assert notices[-1] == "No note task found for alpha"
+    assert notices[-1] == "No task found for alpha"
