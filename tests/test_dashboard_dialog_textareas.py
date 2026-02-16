@@ -65,3 +65,5 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert source.index("agent-message-add-task-btn") < source.index(
         "agent-message-add-task-first-btn"
     )
+    assert "agent-message-shortcuts-hint" in source
+    assert "Control-S send | Control-W queue" in source

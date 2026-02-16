@@ -193,6 +193,10 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                     variant="warning",
                     id="agent-message-add-task-first-btn",
                 )
+                yield Label(
+                    "Control-S send | Control-W queue",
+                    id="agent-message-shortcuts-hint",
+                )
 
     def on_mount(self) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)

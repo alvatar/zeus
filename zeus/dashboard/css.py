@@ -313,6 +313,13 @@ AgentMessageScreen {{
     color: #dddddd;
 }}
 
+#agent-message-shortcuts-hint {{
+    margin: 0 0 0 1;
+    color: #888888;
+    height: 1;
+    content-align: left middle;
+}}
+
 {_button_row_css(
     "agent-message-buttons",
     align="left middle",
