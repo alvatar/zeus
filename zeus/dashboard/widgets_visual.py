@@ -123,18 +123,28 @@ def state_sparkline_markup(
 
 
 def _gradient_color(pct: float) -> str:
-    """Return a hex color smoothly interpolated across a cyan→yellow→red ramp."""
+    """Return a hex color interpolated across a white→yellow→orange→red ramp."""
     p = max(0.0, min(100.0, pct)) / 100.0
-    if p < 0.70:
-        t = p / 0.70
-        r = int(0x00 + (0xD7 - 0x00) * t)
-        g = int(0xD7 + (0xD7 - 0xD7) * t)
-        b = int(0xD7 + (0x00 - 0xD7) * t)
+
+    if p < 0.50:
+        # white -> yellow (drop blue channel)
+        t = p / 0.50
+        r = 0xFF
+        g = 0xFF
+        b = int(0xFF + (0x00 - 0xFF) * t)
+    elif p < 0.80:
+        # yellow -> orange (reduce green)
+        t = (p - 0.50) / 0.30
+        r = 0xFF
+        g = int(0xFF + (0x99 - 0xFF) * t)
+        b = 0x00
     else:
-        t = (p - 0.70) / 0.30
-        r = int(0xD7 + (0xFF - 0xD7) * t)
-        g = int(0xD7 + (0x33 - 0xD7) * t)
-        b = int(0x00 + (0x33 - 0x00) * t)
+        # orange -> red (reduce green to zero)
+        t = (p - 0.80) / 0.20
+        r = 0xFF
+        g = int(0x99 + (0x00 - 0x99) * t)
+        b = 0x00
+
     return f"#{r:02x}{g:02x}{b:02x}"
 
 

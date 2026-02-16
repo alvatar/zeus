@@ -1,6 +1,7 @@
 """Tests for sparkline rendering and compact name helpers."""
 
 from zeus.dashboard.widgets import (
+    _gradient_color,
     braille_sparkline,
     braille_sparkline_markup,
     state_sparkline_markup,
@@ -58,6 +59,26 @@ def test_compact_name_many_segments():
     assert result.startswith("a")
     assert result.endswith("e")
     assert len(result) <= 5
+
+
+# ── _gradient_color ───────────────────────────────────────────────────
+
+
+def test_gradient_color_uses_white_to_red_stops() -> None:
+    assert _gradient_color(0) == "#ffffff"
+    assert _gradient_color(50) == "#ffff00"
+    assert _gradient_color(80) == "#ff9900"
+    assert _gradient_color(100) == "#ff0000"
+
+
+def test_gradient_color_drops_blue_then_green() -> None:
+    low = _gradient_color(25)
+    mid = _gradient_color(60)
+    high = _gradient_color(90)
+
+    assert low.startswith("#ffff")  # white -> yellow transition
+    assert mid.endswith("00")       # blue gone by yellow/orange zone
+    assert high.endswith("00")      # blue remains absent near red
 
 
 # ── braille_sparkline ─────────────────────────────────────────────────
