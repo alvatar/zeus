@@ -7,6 +7,7 @@ from pathlib import Path
 
 import zeus.message_queue as mq
 import zeus.msg_cli as msg_cli
+from zeus.models import AgentWindow
 
 
 def _prepare(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
@@ -26,6 +27,18 @@ def _single_envelope(queue_root: Path) -> mq.OutboundEnvelope:
     env = mq.load_envelope(files[0])
     assert env is not None
     return env
+
+
+def _agent(name: str, agent_id: str) -> AgentWindow:
+    return AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name=name,
+        pid=100,
+        kitty_pid=200,
+        cwd="/tmp/project",
+        agent_id=agent_id,
+    )
 
 
 def test_msg_cli_send_polemarch_resolves_parent(monkeypatch, tmp_path: Path) -> None:
@@ -81,3 +94,53 @@ def test_msg_cli_send_rejects_payload_outside_message_tmp_dir(monkeypatch, tmp_p
 
     files = sorted((queue_root / "new").glob("*.json"))
     assert files == []
+
+
+def test_msg_cli_send_resolves_plain_display_name_to_agent_id(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    payload = msg_root / "m.md"
+    payload.write_text("ping\n")
+
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setattr(
+        msg_cli,
+        "discover_agents",
+        lambda: [
+            _agent("barlovento-harbor", "f4294e5363654f52aa4d3a4f2f1cf533"),
+            _agent("barlovento-onchain", "7ad581163d4e4460b5cd3df67a3bcbd5"),
+        ],
+    )
+
+    rc = msg_cli.cmd_send(Namespace(to="barlovento-harbor", file=str(payload)))
+    assert rc == 0
+
+    env = _single_envelope(queue_root)
+    assert env.target_kind == "agent"
+    assert env.target_ref == "f4294e5363654f52aa4d3a4f2f1cf533"
+    assert env.target_agent_id == "f4294e5363654f52aa4d3a4f2f1cf533"
+
+
+def test_msg_cli_send_rejects_ambiguous_display_name(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    payload = msg_root / "m.md"
+    payload.write_text("ping\n")
+
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setattr(
+        msg_cli,
+        "discover_agents",
+        lambda: [
+            _agent("worker", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            _agent("worker", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        ],
+    )
+
+    rc = msg_cli.cmd_send(Namespace(to="worker", file=str(payload)))
+    assert rc == 1
+    assert sorted((queue_root / "new").glob("*.json")) == []
