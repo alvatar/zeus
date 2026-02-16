@@ -16,14 +16,17 @@ Define canonical naming for Zeus user-facing language.
 | Worker groups (plural) | **Phalanges** |
 | Phalanx subordinate (singular) | **Hoplite** |
 | Phalanx subordinates (plural) | **Hoplites** |
+| Generic tmux viewer row | **tmux session** |
 | Phalanx parent/commander role (future feature) | **Polemarch** |
 
 ## Normative rules
 
 1. User-facing UI copy, help text, notifications, CLI help text, and project docs MUST use the canonical terms above.
 2. `Polemarch` is a reserved term for future functionality and MUST NOT imply currently available features.
-3. `Hoplite` names a subordinate agent inside a Polemarch's Phalanx and MUST NOT be treated as a full Hippeus unless explicitly promoted.
-4. Zeus technical identifiers remain unchanged unless a separate migration spec explicitly says otherwise.
+3. `Hoplite` MUST refer only to an AGENT-based subordinate initialized by a Polemarch and explicitly associated with that Polemarch's Phalanx.
+4. Viewer-only tmux rows/sessions (regular tmux attach/view entries) MUST be labeled `tmux session` and MUST NOT be labeled `Hoplite` or treated as Phalanx members.
+5. A `Hoplite` MUST NOT be treated as a full `Hippeus` unless explicitly promoted.
+6. Zeus technical identifiers remain unchanged unless a separate migration spec explicitly says otherwise.
 
 ## Out of scope (unchanged technical contracts)
 
