@@ -2764,9 +2764,11 @@ class ZeusApp(App):
         if event.key == "enter" and isinstance(self.focused, DataTable):
             event.prevent_default()
             event.stop()
-            # Focus the interact input
+            # Focus interact input when available; otherwise open message dialog.
             if self._interact_visible and self._show_interact_input:
                 self.query_one("#interact-input", ZeusTextArea).focus()
+            elif not self._show_interact_input:
+                self.action_agent_message()
             return
 
         if event.key in {"up", "down"} and isinstance(self.focused, ZeusTextArea):

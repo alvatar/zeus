@@ -1,5 +1,7 @@
 """Tests for table-triggered Hippeus message dialog helpers."""
 
+from textual.widgets import DataTable
+
 from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import AgentMessageScreen
 from zeus.models import AgentWindow
@@ -24,6 +26,27 @@ def _new_app() -> ZeusApp:
     app._agent_tasks = {}
     app._agent_message_drafts = {}
     return app
+
+
+class _DummyKeyEvent:
+    def __init__(self, key: str) -> None:
+        self.key = key
+        self.prevented = False
+        self.stopped = False
+
+    def prevent_default(self) -> None:
+        self.prevented = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class _DummyInput:
+    def __init__(self) -> None:
+        self.focused = False
+
+    def focus(self) -> None:
+        self.focused = True
 
 
 def test_action_agent_message_pushes_message_screen(monkeypatch) -> None:
@@ -61,6 +84,51 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     screen = pushed[0]
     assert isinstance(screen, AgentMessageScreen)
     assert screen.draft == "draft body"
+
+
+def test_enter_on_table_opens_message_dialog_when_input_hidden(monkeypatch) -> None:
+    app = _new_app()
+    table = DataTable()
+    event = _DummyKeyEvent("enter")
+
+    called: list[bool] = []
+    monkeypatch.setattr(ZeusApp, "focused", property(lambda self: table))
+    monkeypatch.setattr(app, "_dismiss_splash", lambda: False)
+    monkeypatch.setattr(app, "_dismiss_celebration", lambda: False)
+    monkeypatch.setattr(app, "action_agent_message", lambda: called.append(True))
+
+    app._show_interact_input = False
+    app._interact_visible = True
+
+    app.on_key(event)  # type: ignore[arg-type]
+
+    assert called == [True]
+    assert event.prevented is True
+    assert event.stopped is True
+
+
+def test_enter_on_table_focuses_input_when_input_visible(monkeypatch) -> None:
+    app = _new_app()
+    table = DataTable()
+    event = _DummyKeyEvent("enter")
+    interact_input = _DummyInput()
+
+    called: list[bool] = []
+    monkeypatch.setattr(ZeusApp, "focused", property(lambda self: table))
+    monkeypatch.setattr(app, "_dismiss_splash", lambda: False)
+    monkeypatch.setattr(app, "_dismiss_celebration", lambda: False)
+    monkeypatch.setattr(app, "action_agent_message", lambda: called.append(True))
+    monkeypatch.setattr(app, "query_one", lambda selector, cls=None: interact_input)
+
+    app._show_interact_input = True
+    app._interact_visible = True
+
+    app.on_key(event)  # type: ignore[arg-type]
+
+    assert interact_input.focused is True
+    assert called == []
+    assert event.prevented is True
+    assert event.stopped is True
 
 
 def test_do_save_agent_message_draft_roundtrip() -> None:
