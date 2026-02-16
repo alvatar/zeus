@@ -24,10 +24,15 @@ def test_compact_model_label_keeps_family_version_and_thinking() -> None:
 
 
 def test_compact_model_label_compacts_gpt_variant() -> None:
-    assert _compact_model_label("gpt-4.1-mini", 11) == "g4.1-mi"
+    assert _compact_model_label("gpt-4.1-mini", 11) == "gpt4.1-mi"
 
 
-def test_compact_model_label_falls_back_to_ellipsis_for_unknown_long_name() -> None:
+def test_compact_model_label_keeps_gpt5_codex_readable() -> None:
+    assert _compact_model_label("openai/gpt-5-reasoning-codex", 11) == "gpt5-cdx"
+    assert _compact_model_label("openai/gpt-5-reasoning-codex", 15) == "gpt5-rsn-cdx"
+
+
+def test_compact_model_label_unknown_long_name_uses_token_squash() -> None:
     compact = _compact_model_label("this-is-a-very-long-model-name", 11)
+    assert compact == "this-is-nam"
     assert len(compact) <= 11
-    assert "…" in compact

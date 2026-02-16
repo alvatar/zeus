@@ -177,14 +177,20 @@ _MODEL_TOKEN_SHORT: dict[str, str] = {
     "sonnet": "sn",
     "opus": "op",
     "haiku": "hk",
-    "gpt": "g",
-    "gemini": "gm",
+    "gpt": "gpt",
+    "gemini": "gem",
     "deepseek": "ds",
     "qwen": "qw",
     "flash": "fl",
     "turbo": "tb",
     "mini": "mi",
     "nano": "na",
+    "chat": "ch",
+    "instruct": "ins",
+    "reasoning": "rsn",
+    "reasoner": "rsn",
+    "codex": "cdx",
+    "omni": "om",
     "preview": "",
     "latest": "",
     "experimental": "ex",
@@ -197,19 +203,33 @@ _THINKING_SHORT: dict[str, str] = {
     "med": "md",
     "low": "lo",
 }
-_MODEL_FAMILY_WITH_VERSION = {"sn", "op", "hk", "g", "gm", "ds", "qw"}
+_MODEL_FAMILY_WITH_VERSION = {"sn", "op", "hk", "gpt", "gem", "ds", "qw"}
 
 
 def _is_model_number(token: str) -> bool:
     return bool(_MODEL_NUMBER_RE.fullmatch(token))
 
 
+def _squash_model_token(token: str, width: int) -> str:
+    """Shorten unknown variant tokens without using ellipsis."""
+    if width <= 0:
+        return ""
+    if len(token) <= width:
+        return token
+
+    consonants = token[0] + "".join(ch for ch in token[1:] if ch not in "aeiou")
+    if len(consonants) >= width:
+        return consonants[:width]
+    return token[:width]
+
+
 def _compact_model_label(model: str, maxlen: int) -> str:
-    """Compact model labels to preserve family/version/thinking signal.
+    """Compact model labels with readable family/version-first semantics.
 
     Examples:
       - "anthropic/claude-sonnet-4-5 (xhigh)" -> "sn4.5 xh"
-      - "gpt-4.1-mini" -> "g4.1-mi"
+      - "gpt-4.1-mini" -> "gpt4.1-mi"
+      - "openai/gpt-5-reasoning-codex" -> "gpt5-rsn-cdx" (or shorter if needed)
     """
     if maxlen <= 0:
         return ""
@@ -279,33 +299,52 @@ def _compact_model_label(model: str, maxlen: int) -> str:
         compact_parts.append(token)
         idx += 1
 
-    semantic_base = "-".join(compact_parts) if compact_parts else normalized
+    if not compact_parts:
+        compact_parts = [normalized or "—"]
 
-    thinking_short = _THINKING_SHORT.get(
-        thinking, thinking[:2] if thinking else ""
-    )
-    semantic = (
-        f"{semantic_base} {thinking_short}"
-        if thinking_short
-        else semantic_base
-    )
+    family = compact_parts[0]
+    variants = compact_parts[1:]
 
-    if len(semantic) <= maxlen:
-        return semantic
+    def _base_label(parts: list[str]) -> str:
+        if not parts:
+            return family
+        return f"{family}-{'-'.join(parts)}"
 
-    dense_base = semantic_base.replace("-", "")
+    candidates: list[str] = []
+
+    def _add_candidate(label: str) -> None:
+        if label and label not in candidates:
+            candidates.append(label)
+
+    _add_candidate(_base_label(variants))
+
+    v4 = [_squash_model_token(v, 4) for v in variants]
+    _add_candidate(_base_label(v4))
+
+    v3 = [_squash_model_token(v, 3) for v in variants]
+    _add_candidate(_base_label(v3))
+
+    if len(v3) > 1:
+        _add_candidate(_base_label([v3[0], v3[-1]]))
+        _add_candidate(_base_label([v3[-1]]))
+        _add_candidate(_base_label([v3[0]]))
+
+    _add_candidate(family)
+
+    thinking_short = _THINKING_SHORT.get(thinking, thinking[:2] if thinking else "")
+
+    # Prefer labels that can include thinking without extra ugliness.
     if thinking_short:
-        base_budget = maxlen - len(thinking_short) - 1
-        if base_budget > 0:
-            candidate = f"{_middle_ellipsis(dense_base, base_budget)} {thinking_short}"
-            if len(candidate) <= maxlen:
-                return candidate
+        for candidate in candidates:
+            with_thinking = f"{candidate} {thinking_short}"
+            if len(with_thinking) <= maxlen:
+                return with_thinking
 
-    dense_semantic = semantic.replace("-", "")
-    if len(dense_semantic) <= maxlen:
-        return dense_semantic
+    for candidate in candidates:
+        if len(candidate) <= maxlen:
+            return candidate
 
-    return _middle_ellipsis(semantic, maxlen)
+    return _middle_ellipsis(candidates[0], maxlen)
 
 
 _URL_RE = re.compile(r"(https?://[^\s<>\"']+|www\.[^\s<>\"']+)")
