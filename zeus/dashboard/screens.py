@@ -16,8 +16,9 @@ from textual.widgets import (
     Input,
     Label,
     Select,
-    TextArea,
 )
+
+from .widgets import ZeusTextArea
 
 from ..kitty import generate_agent_id
 from ..models import AgentWindow, TmuxSession
@@ -126,18 +127,18 @@ class AgentNotesScreen(_ZeusScreenMixin, ModalScreen):
                 "Task format: '- [] task' or '- [ ] task'. Multi-line tasks "
                 "continue until the next task header ('- []', '- [ ]', '- [x]')."
             )
-            yield TextArea(self.note, id="agent-notes-input")
+            yield ZeusTextArea(self.note, id="agent-notes-input")
             with Horizontal(id="agent-notes-buttons"):
                 yield Button("Cancel", variant="default", id="agent-notes-cancel-btn")
                 yield Button("Save", variant="primary", id="agent-notes-save-btn")
 
     def on_mount(self) -> None:
-        ta = self.query_one("#agent-notes-input", TextArea)
+        ta = self.query_one("#agent-notes-input", ZeusTextArea)
         ta.focus()
         ta.move_cursor(ta.document.end)
 
     def _save(self) -> None:
-        note = self.query_one("#agent-notes-input", TextArea).text
+        note = self.query_one("#agent-notes-input", ZeusTextArea).text
         self.dismiss()
         self.zeus.do_save_agent_notes(self.agent, note)
 
@@ -500,18 +501,18 @@ class ConfirmBroadcastScreen(_ZeusScreenMixin, ModalScreen):
                 names = f"{names}, +{extra} more"
             yield Label(f"Recipients ({len(self.recipient_names)}): {names}")
             yield Label("Message (editable):")
-            yield TextArea(self.message, id="broadcast-preview")
+            yield ZeusTextArea(self.message, id="broadcast-preview")
             with Horizontal(id="broadcast-buttons"):
                 yield Button("Cancel", variant="default", id="broadcast-cancel-btn")
                 yield Button("Broadcast", variant="primary", id="broadcast-send-btn")
 
     def on_mount(self) -> None:
-        preview = self.query_one("#broadcast-preview", TextArea)
+        preview = self.query_one("#broadcast-preview", ZeusTextArea)
         preview.focus()
         preview.move_cursor(preview.document.end)
 
     def _current_message(self) -> str:
-        return self.query_one("#broadcast-preview", TextArea).text
+        return self.query_one("#broadcast-preview", ZeusTextArea).text
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "broadcast-send-btn":
@@ -572,7 +573,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
                 id="direct-target-select",
             )
             yield Label("Message (editable):")
-            yield TextArea(self.message, id="direct-preview")
+            yield ZeusTextArea(self.message, id="direct-preview")
             with Horizontal(id="direct-buttons"):
                 yield Button("Cancel", variant="default", id="direct-cancel-btn")
                 yield Button("Send", variant="primary", id="direct-send-btn")
@@ -582,7 +583,7 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
         select.focus()
 
     def _current_message(self) -> str:
-        return self.query_one("#direct-preview", TextArea).text
+        return self.query_one("#direct-preview", ZeusTextArea).text
 
     def _selected_target_key(self) -> str | None:
         select = self.query_one("#direct-target-select", Select)
