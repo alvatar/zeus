@@ -27,8 +27,7 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
 
 
-def test_dependency_dialog_css_handles_relationship_and_button_spacing() -> None:
-    assert "#dependency-relationship {" in css.DEPENDENCY_SELECT_CSS
+def test_dependency_dialog_css_has_expected_spacing() -> None:
     assert "max-height: 24;" in css.DEPENDENCY_SELECT_CSS
     assert "#dependency-select-buttons {" in css.DEPENDENCY_SELECT_CSS
     assert "margin: 1 0 0 0;" in css.DEPENDENCY_SELECT_CSS

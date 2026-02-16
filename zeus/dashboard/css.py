@@ -292,11 +292,6 @@ DependencySelectScreen {{
     color: #cccccc;
 }}
 
-#dependency-relationship {{
-    width: 100%;
-    margin: 0 0 1 0;
-}}
-
 #dependency-select {{
     width: 100%;
     margin: 0 0 1 0;
