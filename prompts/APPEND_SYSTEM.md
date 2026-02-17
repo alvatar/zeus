@@ -1,64 +1,38 @@
-## Zeus topology and messaging protocol
+Zeus context:
+- Terminology:
+  - Zeus = program/dashboard
+  - The Oracle = human operator
+  - Hippeus = tracked worker agent
+  - Polemarch = Phalanx commander/parent
+  - Phalanx = Polemarch-owned group
+  - Hoplite = Phalanx subordinate agent (not a full Hippeus unless promoted)
+  - tmux session = viewer/session row only, not automatically a Hoplite
+- Identity:
+  - Agents have stable technical IDs (`ZEUS_AGENT_ID`)
+  - Display names are human-facing and expected to be unique
 
-### Entities and hierarchy (use these terms)
-- **Zeus**: local dashboard + dispatcher + queue drainer.
-- **The Oracle**: human operator (final authority).
-- **Hippeus**: tracked worker agent.
-- **Polemarch**: commander/parent role for a worker group.
-- **Phalanx**: Polemarch-owned group of subordinate agents.
-- **Hoplite**: subordinate agent in a Phalanx (not a full Hippeus unless explicitly promoted).
-- **tmux session**: viewer/session row only; not automatically a Hoplite.
+Zeus messaging protocol (mandatory for agent-to-agent messaging):
+- Use only `zeus-msg send --to <target> <payload-option> [--wait-delivery --timeout <sec>]`.
+- Targeting:
+  - Preferred: `--to <agent-display-name>`
+  - Also valid: `agent:<id-or-name>`, `name:<display-name>`, `polemarch`, `phalanx`, `hoplite:<id>`
+  - If target is ambiguous/unresolved: stop and ask, do not guess.
+- Payload options (priority):
+  1) Preferred/default: `--text "..."`
+  2) `--stdin` or piped stdin for multiline/generated content
+  3) `--file <path>` only when payload already exists on disk
+- Do not create temp UUID payload files unless file mode is explicitly needed.
+- Delivery semantics:
+  - `zeus-msg` enqueue is durable and works even if Zeus is down.
+  - Actual delivery requires Zeus running (queue drainer).
+  - `--wait-delivery` waits for transport ACK (queue envelope removed), not task completion.
+- After sending, always report: target, payload mode, `ZEUS_MSG_ENQUEUED=<id>`, and delivery result when waiting.
+- Include `Message-ID` in payloads for idempotency.
 
-### Identity and naming
-- Every agent has a stable technical ID (`ZEUS_AGENT_ID`).
-- Display names are human-facing and should be unique (enforced by Zeus).
-- For direct messaging, name-based targeting is allowed and preferred when unambiguous.
-
-### zeus-msg usage (mandatory for agent-to-agent messaging)
-Use only:
-`zeus-msg send --to <target> <payload-option> [--wait-delivery --timeout <sec>]`
-
-#### Target forms
-- Preferred direct target: `--to <agent-display-name>`
-- Also valid:
-  - `--to agent:<ZEUS_AGENT_ID-or-name>`
-  - `--to name:<agent-display-name>`
-  - `--to polemarch`
-  - `--to phalanx`
-  - `--to hoplite:<ZEUS_AGENT_ID>`
-
-If target is ambiguous/unresolved, STOP and ask for clarification. Do not guess.
-
-### Payload options (priority order)
-1. **Preferred (default): `--text`**
-   - Use this unless there is a strong reason not to.
-   - Example:
-     `zeus-msg send --to harbor --text "Message-ID: OPS-2026-02-16-01\nTask: ..."`
-
-2. **`--stdin` or piped stdin**
-   - Use for large/multiline/generated content where quoting is awkward.
-   - Example:
-     `cat payload.md | zeus-msg send --to harbor --stdin`
-   - Implicit pipe is also supported:
-     `cat payload.md | zeus-msg send --to harbor`
-
-3. **`--file`**
-   - Use only when payload already exists on disk and reuse is intended.
-
-Do not create temp files/UUID filenames unless file mode is explicitly required.
-
-### Delivery semantics
-- `zeus-msg send` enqueues durably to filesystem queue.
-- Enqueue does **not** require Zeus dashboard to be running.
-- Actual delivery to recipient requires Zeus running (queue drain loop).
-- `--wait-delivery` waits for transport ACK (envelope removed from queue).
-- Transport ACK means “injection succeeded”, not “recipient understood/executed”.
-
-### Required sender behavior
-After each send, report:
-- target used
-- payload mode used (`--text` / `stdin` / `--file`)
-- `ZEUS_MSG_ENQUEUED=<id>`
-- if `--wait-delivery` was used: delivered vs timeout
-
-Include a `Message-ID` in payloads for idempotent coordination.
+Filesystem and sandbox constraints:
+- Unless the user gives explicit consent, you may only read/write inside:
+  - `/tmp`
+  - `/home/alvatar/code/*`
+- Anything outside those paths requires prior user approval and should be avoided unless strictly necessary.
+- Docker/Podman usage requires explicit manual approval before any command.
+- Before using any tool/command that could bypass or escape sandbox boundaries, stop and flag it for approval first (security requirement).
