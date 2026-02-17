@@ -23,6 +23,9 @@ class TmuxSession:
     agent_id: str = ""        # hoplite/pane agent id (@zeus_agent or startup cmd)
     role: str = ""            # tmux @zeus_role (e.g. hoplite)
     phalanx_id: str = ""      # tmux @zeus_phalanx
+    backend: str = ""         # tmux @zeus_backend tag
+    display_name: str = ""    # tmux @zeus_name display alias
+    session_path: str = ""    # tmux @zeus_session_path pointer
     match_source: str = ""    # owner-id/env-id/cwd/screen-exact/screen-fallback
     _proc_metrics: Optional['ProcessMetrics'] = None
 
@@ -55,6 +58,8 @@ class AgentWindow:
     parent_id: str = ""  # ZEUS_PARENT_ID for agent lineage
     role: str = ""  # ZEUS_ROLE for agent-level role (e.g. polemarch)
     session_path: str = ""
+    backend: str = "kitty"  # kitty | tmux-hidden
+    tmux_session: str = ""  # tmux session for non-kitty backends
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)
     _screen_text: str = ""

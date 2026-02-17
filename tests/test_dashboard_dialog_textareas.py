@@ -95,6 +95,7 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "os.getcwd()" not in source
     assert "RadioSet(" in source
     assert "invoke-role-hippeus" in source
+    assert "invoke-role-hidden-hippeus" in source
     assert "invoke-role-polemarch" in source
     assert "compact=False" in source
     assert "new-agent-buttons" not in source
@@ -323,6 +324,128 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
     assert schedule_calls == [("agent-2", "planner")]
     assert notices[-1] == "Invoked Polemarch: planner"
+
+
+def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("shadow")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(
+                pressed_button=SimpleNamespace(id="invoke-role-hidden-hippeus")
+            )
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-3")
+
+    notices: list[str] = []
+    timers: list[float] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not bootstrap hidden invoke")
+
+        def set_timer(self, delay: float, _callback) -> None:  # noqa: ANN001
+            timers.append(delay)
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    launch_calls: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.launch_hidden_hippeus",
+        lambda *, name, directory, agent_id: launch_calls.append(
+            (name, directory, agent_id)
+        )
+        or ("hidden-agent-3", "/tmp/session.jsonl"),
+    )
+
+    popen_called: list[bool] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.subprocess.Popen",
+        lambda *args, **kwargs: popen_called.append(True),  # noqa: ARG005
+    )
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._launch()
+
+    assert launch_calls[0][0] == "shadow"
+    assert launch_calls[0][1].endswith("/code")
+    assert launch_calls[0][2] == "agent-3"
+    assert popen_called == []
+    assert notices[-1] == "Invoked hidden Hippeus: shadow"
+    assert timers == [1.5]
+    assert dismissed == [True]
+
+
+def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("shadow")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(
+                pressed_button=SimpleNamespace(id="invoke-role-hidden-hippeus")
+            )
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-4")
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not bootstrap hidden invoke")
+
+        def set_timer(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not schedule timer on failed invoke")
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.launch_hidden_hippeus",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("tmux unavailable")),
+    )
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._launch()
+
+    assert notices[-1] == "Failed to invoke hidden Hippeus: tmux unavailable"
+    assert dismissed == []
 
 
 def test_rename_dialog_shows_inline_error_for_duplicate_name(monkeypatch) -> None:

@@ -24,7 +24,8 @@ from textual.widgets import (
 
 from .widgets import ZeusTextArea
 
-from ..kitty import generate_agent_id, get_screen_text
+from ..kitty import generate_agent_id
+from ..hidden_hippeus import launch_hidden_hippeus
 from ..models import AgentWindow, TmuxSession
 from ..notes import clear_done_tasks
 from .css import (
@@ -74,6 +75,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             yield Label("Type:")
             yield RadioSet(
                 RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
+                RadioButton("Hidden Hippeus", id="invoke-role-hidden-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
                 id="invoke-role",
                 compact=False,
@@ -96,6 +98,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         pressed = role_set.pressed_button
         if pressed is not None and pressed.id == "invoke-role-polemarch":
             return "polemarch"
+        if pressed is not None and pressed.id == "invoke-role-hidden-hippeus":
+            return "hidden-hippeus"
         return "hippeus"
 
     def _launch(self) -> None:
@@ -114,6 +118,26 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         role = self._selected_role()
         agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
+
+        if role == "hidden-hippeus":
+            try:
+                launch_hidden_hippeus(
+                    name=name,
+                    directory=directory,
+                    agent_id=agent_id,
+                )
+            except (RuntimeError, ValueError) as exc:
+                self.zeus.notify(
+                    f"Failed to invoke hidden Hippeus: {exc}",
+                    timeout=3,
+                )
+                return
+
+            self.zeus.notify(f"Invoked hidden Hippeus: {name}", timeout=3)
+            self.dismiss()
+            self.zeus.set_timer(1.5, self.zeus.poll_and_update)
+            return
+
         env: dict[str, str] = os.environ.copy()
         env["ZEUS_AGENT_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
@@ -436,7 +460,11 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
 
     @work(thread=True, exclusive=True, group="expanded_output_stream")
     def _fetch_output(self) -> None:
-        screen_text = get_screen_text(self.agent, full=True, ansi=True)
+        screen_text = self.zeus._read_agent_screen_text(
+            self.agent,
+            full=True,
+            ansi=True,
+        )
         self.zeus.call_from_thread(self._apply_output, screen_text)
 
     def _apply_output(self, screen_text: str) -> None:
@@ -977,7 +1005,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("h", "History for selected Hippeus"),
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
-    ("z", "Invoke Hippeus / Polemarch"),
+    ("z", "Invoke Hippeus / Hidden Hippeus / Polemarch"),
     ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
     ("n", "Queue next task for selected Hippeus"),
     (

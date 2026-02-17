@@ -84,6 +84,21 @@ def _read_tmux_agent_id(session_name: str) -> str:
     return _read_tmux_option(session_name, "@zeus_agent")
 
 
+def _read_tmux_backend(session_name: str) -> str:
+    """Read session option @zeus_backend, if present."""
+    return _read_tmux_option(session_name, "@zeus_backend")
+
+
+def _read_tmux_display_name(session_name: str) -> str:
+    """Read session option @zeus_name, if present."""
+    return _read_tmux_option(session_name, "@zeus_name")
+
+
+def _read_tmux_session_path(session_name: str) -> str:
+    """Read session option @zeus_session_path, if present."""
+    return _read_tmux_option(session_name, "@zeus_session_path")
+
+
 def _extract_start_command_agent_id(command: str) -> str:
     """Extract ZEUS_AGENT_ID from pane_start_command when present.
 
@@ -170,6 +185,9 @@ def discover_tmux_sessions() -> list[TmuxSession]:
         env_agent_id = _read_tmux_env_agent_id(name)
         role = _read_tmux_role(name)
         phalanx_id = _read_tmux_phalanx(name)
+        backend = _read_tmux_backend(name)
+        display_name = _read_tmux_display_name(name)
+        session_path = _read_tmux_session_path(name)
         option_agent_id = _read_tmux_agent_id(name)
         start_cmd_agent_id = _extract_start_command_agent_id(cmd_str)
         session_agent_id = (
@@ -191,6 +209,9 @@ def discover_tmux_sessions() -> list[TmuxSession]:
                 agent_id=session_agent_id,
                 role=role,
                 phalanx_id=phalanx_id,
+                backend=backend,
+                display_name=display_name,
+                session_path=session_path,
             )
         )
     return sessions

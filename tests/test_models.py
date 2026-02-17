@@ -22,6 +22,8 @@ def test_agent_window_defaults():
     assert a.model == ""
     assert a.role == ""
     assert a.session_path == ""
+    assert a.backend == "kitty"
+    assert a.tmux_session == ""
     assert a.tmux_sessions == []
     assert a.proc_metrics.cpu_pct == 0.0
     assert a._screen_text == ""
@@ -36,6 +38,9 @@ def test_tmux_session_defaults():
     assert s.agent_id == ""
     assert s.role == ""
     assert s.phalanx_id == ""
+    assert s.backend == ""
+    assert s.display_name == ""
+    assert s.session_path == ""
     assert s.match_source == ""
 
 

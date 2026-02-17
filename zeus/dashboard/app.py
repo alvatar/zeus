@@ -72,6 +72,16 @@ from ..tmux import (
     ensure_tmux_update_environment,
     match_tmux_to_agents,
 )
+from ..hidden_hippeus import (
+    HIDDEN_AGENT_BACKEND,
+    capture_hidden_screen_text,
+    discover_hidden_agents,
+    hidden_agent_row_key,
+    is_hidden_tmux_session,
+    kill_hidden_session,
+    send_hidden_escape,
+    send_hidden_text,
+)
 from ..state import detect_state, activity_signature, parse_footer
 from ..usage import read_usage, read_openai_usage, time_left
 from ..windowing import (
@@ -844,6 +854,11 @@ class ZeusApp(App):
         agents = discover_agents()
         pid_ws: dict[int, str] = build_pid_workspace_map()
         tmux_sessions: list[TmuxSession] = discover_tmux_sessions()
+        hidden_agents, visible_tmux_sessions = discover_hidden_agents(
+            tmux_sessions,
+            name_overrides=load_names(),
+        )
+        agents.extend(hidden_agents)
 
         usage = read_usage()
         openai = read_openai_usage()
@@ -853,10 +868,10 @@ class ZeusApp(App):
         screen_activity_sig = dict(self._screen_activity_sig)
 
         for a in agents:
-            agent_key = f"{a.socket}:{a.kitty_id}"
+            agent_key = self._agent_key(a)
             # Use full extent so state detection isn't affected by manual
-            # scrolling/focus changes in the kitty viewport.
-            screen: str = get_screen_text(a, full=True)
+            # scrolling/focus changes in the terminal viewport.
+            screen: str = self._read_agent_screen_text(a, full=True)
             a._screen_text = screen
 
             coarse = detect_state(screen)
@@ -882,7 +897,7 @@ class ZeusApp(App):
             a.proc_metrics = read_process_metrics(metrics_root_pid)
 
         # Read tmux pane metrics in the worker too
-        match_tmux_to_agents(agents, tmux_sessions)
+        match_tmux_to_agents(agents, visible_tmux_sessions)
         backfill_tmux_owner_options(agents)
         for a in agents:
             for sess in a.tmux_sessions:
@@ -898,7 +913,7 @@ class ZeusApp(App):
         idle_notified = set(self.idle_notified)
 
         for a in agents:
-            akey: str = f"{a.socket}:{a.kitty_id}"
+            akey: str = self._agent_key(a)
             old: State | None = prev_states.get(akey)
             if akey not in state_changed_at:
                 state_changed_at[akey] = now
@@ -914,7 +929,7 @@ class ZeusApp(App):
                 idle_notified.discard(akey)
             prev_states[akey] = a.state
 
-        live_keys = {f"{a.socket}:{a.kitty_id}" for a in agents}
+        live_keys = {self._agent_key(a) for a in agents}
         state_changed_at = {
             k: v for k, v in state_changed_at.items() if k in live_keys
         }
@@ -970,8 +985,8 @@ class ZeusApp(App):
     def _any_agent_state_changed(self, old_states: dict[str, State]) -> bool:
         return any(
             (
-                old_states.get(f"{a.socket}:{a.kitty_id}") is not None
-                and old_states.get(f"{a.socket}:{a.kitty_id}") != a.state
+                old_states.get(self._agent_key(a)) is not None
+                and old_states.get(self._agent_key(a)) != a.state
             )
             for a in self.agents
         )
@@ -982,7 +997,7 @@ class ZeusApp(App):
         # - once when an agent is first seen already IDLE (startup/new window)
         live_keys: set[str] = set()
         for a in self.agents:
-            key = f"{a.socket}:{a.kitty_id}"
+            key = self._agent_key(a)
             live_keys.add(key)
 
             if self._is_input_blocked(a):
@@ -1165,7 +1180,7 @@ class ZeusApp(App):
         for a in self.agents:
             if self._is_input_blocked(a):
                 continue  # paused/blocked agents are excluded from statistics
-            akey = f"{a.socket}:{a.kitty_id}"
+            akey = self._agent_key(a)
             live_names.add(a.name)
             waiting = a.state == State.IDLE and akey in self._action_needed
             state_label = "WAITING" if waiting else a.state.value.upper()
@@ -1279,7 +1294,7 @@ class ZeusApp(App):
             # Priority first (1=high … 4=paused)
             p = self._get_priority(a.name)
             # State: WAITING (0) → WORKING (1) → IDLE (2) → BLOCKED (3) → PAUSED (4)
-            akey: str = f"{a.socket}:{a.kitty_id}"
+            akey: str = self._agent_key(a)
             if self._is_blocked(a):
                 st = 3
             elif self._is_paused(a):
@@ -1353,9 +1368,10 @@ class ZeusApp(App):
             indent_level: int = 0,
             relation_icon: str | None = None,
         ) -> None:
-            akey: str = f"{a.socket}:{a.kitty_id}"
+            akey: str = self._agent_key(a)
             blocked: bool = self._is_blocked(a)
             paused: bool = self._is_paused(a)
+            hidden: bool = self._is_hidden_agent(a)
             waiting: bool = (
                 (not paused)
                 and (not blocked)
@@ -1390,6 +1406,10 @@ class ZeusApp(App):
                 state_color = self._state_ui_color("IDLE")
                 row_style = ""
 
+            if hidden and not blocked:
+                state_color = "#666666"
+                row_style = "#666666"
+
             hoplite_count = sum(
                 1
                 for sess in a.tmux_sessions
@@ -1398,6 +1418,7 @@ class ZeusApp(App):
             agent_role = (a.role or "").strip().lower()
             is_polemarch_display = agent_role == "polemarch"
             role_marker = "🗡 " if is_polemarch_display else ""
+            hidden_marker = "🔍 " if hidden else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
             )
@@ -1407,12 +1428,15 @@ class ZeusApp(App):
                 if relation_icon:
                     raw_name = (
                         f"{branch_prefix}{relation_icon} "
-                        f"{role_marker}{a.name}{phalanx_marker}"
+                        f"{hidden_marker}{role_marker}{a.name}{phalanx_marker}"
                     )
                 else:
-                    raw_name = f"{branch_prefix}{role_marker}{a.name}{phalanx_marker}"
+                    raw_name = (
+                        f"{branch_prefix}{hidden_marker}{role_marker}"
+                        f"{a.name}{phalanx_marker}"
+                    )
             else:
-                raw_name = f"{role_marker}{a.name}{phalanx_marker}"
+                raw_name = f"{hidden_marker}{role_marker}{a.name}{phalanx_marker}"
 
             # Always use Text so bracketed labels like "[phalanx: N]" render
             # literally and are not parsed as Rich markup tags.
@@ -1592,7 +1616,8 @@ class ZeusApp(App):
             viewer_sessions = [
                 sess
                 for sess in a.tmux_sessions
-                if not self._is_hoplite_session_for(a, sess)
+                if (not self._is_hoplite_session_for(a, sess))
+                and (not is_hidden_tmux_session(sess))
             ]
 
             hoplite_prefix = f"{'  ' * indent_level}└ 🗡 "
@@ -1700,7 +1725,7 @@ class ZeusApp(App):
             kids.sort(key=lambda a: self._get_priority(a.name))
 
         def _agent_color(a: AgentWindow) -> str:
-            akey = f"{a.socket}:{a.kitty_id}"
+            akey = self._agent_key(a)
             if self._is_blocked(a):
                 state_label = "BLOCKED"
             elif self._is_paused(a):
@@ -1720,7 +1745,7 @@ class ZeusApp(App):
                 return "BLOCKED"
             if self._is_paused(a):
                 return "PAUSED"
-            akey = f"{a.socket}:{a.kitty_id}"
+            akey = self._agent_key(a)
             waiting = a.state == State.IDLE and akey in self._action_needed
             return "WAITING" if waiting else a.state.value.upper()
 
@@ -1981,7 +2006,7 @@ class ZeusApp(App):
         if not key_val or key_val.startswith("tmux:"):
             return None
         for a in self.agents:
-            if f"{a.socket}:{a.kitty_id}" == key_val:
+            if self._agent_key(a) == key_val:
                 return a
         return None
 
@@ -2015,6 +2040,30 @@ class ZeusApp(App):
             return False
         return bool((sess.phalanx_id or "").strip())
 
+    @staticmethod
+    def _is_hidden_agent(agent: AgentWindow) -> bool:
+        return (
+            (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND
+            and bool((agent.tmux_session or "").strip())
+        )
+
+    def _read_agent_screen_text(
+        self,
+        agent: AgentWindow,
+        *,
+        full: bool = False,
+        ansi: bool = False,
+    ) -> str:
+        if self._is_hidden_agent(agent):
+            return capture_hidden_screen_text(
+                agent.tmux_session,
+                full=full,
+                ansi=ansi,
+            )
+        if ansi:
+            return get_screen_text(agent, full=full, ansi=True)
+        return get_screen_text(agent, full=full)
+
     # ── Actions ───────────────────────────────────────────────────────
 
     def _send_stop_to_selected_agent(self) -> None:
@@ -2024,6 +2073,14 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if not agent:
             return
+
+        if self._is_hidden_agent(agent):
+            if send_hidden_escape(agent.tmux_session):
+                self.notify(f"ESC → {agent.name}", timeout=2)
+            else:
+                self.notify(f"ESC failed: {agent.name}", timeout=3)
+            return
+
         kitty_cmd(
             agent.socket, "send-text", "--match",
             f"id:{agent.kitty_id}", "\x1b",
@@ -2066,8 +2123,47 @@ class ZeusApp(App):
             )
             return
         agent = self._get_selected_agent()
-        if agent:
-            focus_window(agent)
+        if not agent:
+            return
+        if self._is_hidden_agent(agent):
+            self._focus_hidden_agent(agent)
+            return
+        focus_window(agent)
+
+    def _focus_hidden_agent(self, agent: AgentWindow) -> None:
+        """Focus/attach hidden Hippeus tmux session."""
+        sess_name = (agent.tmux_session or "").strip()
+        if not sess_name:
+            self.notify("Hidden Hippeus session missing", timeout=2)
+            return
+
+        tmux_target = TmuxSession(
+            name=sess_name,
+            command="",
+            cwd=agent.cwd,
+            attached=self._get_tmux_client_pid(sess_name) is not None,
+        )
+
+        if tmux_target.attached:
+            if self._focus_tmux_client(tmux_target):
+                self.notify(f"Focused: {agent.name}", timeout=2)
+            else:
+                self.notify(f"Could not find window for {sess_name}", timeout=2)
+            return
+
+        proc = subprocess.Popen(
+            ["kitty", "tmux", "attach-session", "-t", sess_name],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if agent.workspace and agent.workspace != "?":
+            move_pid_to_workspace_and_focus_later(
+                proc.pid,
+                agent.workspace,
+                delay=0.5,
+            )
+        self.notify(f"Opening tmux:{sess_name}", timeout=2)
 
     def action_open_shell_here(self) -> None:
         """Ctrl+O: open a plain kitty shell in selected target's directory."""
@@ -2138,6 +2234,11 @@ class ZeusApp(App):
 
     @staticmethod
     def _agent_key(agent: AgentWindow) -> str:
+        if (
+            (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND
+            and (agent.agent_id or "").strip()
+        ):
+            return hidden_agent_row_key(agent.agent_id)
         return f"{agent.socket}:{agent.kitty_id}"
 
     @staticmethod
@@ -2162,7 +2263,13 @@ class ZeusApp(App):
 
     @staticmethod
     def _agent_identity_key(agent: AgentWindow) -> str:
-        return agent.agent_id or f"{agent.socket}:{agent.kitty_id}"
+        if agent.agent_id:
+            return agent.agent_id
+        if (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND:
+            sess = (agent.tmux_session or "").strip()
+            if sess:
+                return f"hidden-session:{sess}"
+        return f"{agent.socket}:{agent.kitty_id}"
 
     def _agent_tasks_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
@@ -2362,7 +2469,7 @@ class ZeusApp(App):
                 if payload is not None:
                     return payload
 
-        screen_text = get_screen_text(source, full=True)
+        screen_text = self._read_agent_screen_text(source, full=True)
         if screen_text.strip():
             pointer = _extract_share_file_path(screen_text)
             if pointer:
@@ -3129,7 +3236,7 @@ class ZeusApp(App):
             return
         self._set_interact_target_name(agent.name)
         self._set_interact_editable(not self._is_blocked(agent))
-        key = f"{agent.socket}:{agent.kitty_id}"
+        key = self._agent_key(agent)
         target_changed = (
             old_agent_key != key
             or old_tmux_name is not None
@@ -3602,9 +3709,13 @@ class ZeusApp(App):
             self._attach_tmux(tmux)
             return
         agent = self._get_selected_agent()
-        if agent:
-            focus_window(agent)
-            self.notify(f"Focused: {agent.name}", timeout=2)
+        if not agent:
+            return
+        if self._is_hidden_agent(agent):
+            self._focus_hidden_agent(agent)
+            return
+        focus_window(agent)
+        self.notify(f"Focused: {agent.name}", timeout=2)
 
     def on_click(self, event: events.Click) -> None:
         if self._dismiss_splash():
@@ -3643,6 +3754,20 @@ class ZeusApp(App):
         self.do_kill_tmux_session(tmux)
 
     def do_kill_agent(self, agent: AgentWindow) -> None:
+        if self._is_hidden_agent(agent):
+            sess_name = (agent.tmux_session or "").strip()
+            if not sess_name:
+                self.notify(f"Kill failed: {agent.name}", timeout=3)
+                return
+            ok, detail = kill_hidden_session(sess_name)
+            if ok:
+                self.notify(f"Killed: {agent.name}", timeout=2)
+            else:
+                reason = detail or agent.name
+                self.notify(f"Kill failed: {reason}", timeout=3)
+            self.poll_and_update()
+            return
+
         close_window(agent)
         self.notify(f"Killed: {agent.name}", timeout=2)
         self.poll_and_update()
@@ -4317,7 +4442,7 @@ class ZeusApp(App):
 
     def _get_screen_context(self, agent: AgentWindow) -> str:
         # Full extent keeps classification stable even if user scrolls kitty.
-        text = get_screen_text(agent, full=True)
+        text = self._read_agent_screen_text(agent, full=True)
         lines = text.splitlines()
         recent = [l for l in lines if l.strip()][-24:]
         return "\n".join(recent)
@@ -4399,8 +4524,8 @@ class ZeusApp(App):
     @work(thread=True, exclusive=True, group="interact_stream")
     def _fetch_interact_stream(self, agent: AgentWindow) -> None:
         """Fetch screen text with ANSI formatting in background thread."""
-        screen_text = get_screen_text(agent, ansi=True)
-        agent_key = f"{agent.socket}:{agent.kitty_id}"
+        screen_text = self._read_agent_screen_text(agent, ansi=True)
+        agent_key = self._agent_key(agent)
         self.call_from_thread(
             self._apply_interact_stream,
             agent_key,
@@ -4466,6 +4591,17 @@ class ZeusApp(App):
     ) -> bool:
         """Send text to an agent either as plain Enter or queue sequence."""
         clean = self._normalize_outgoing_text(text)
+
+        if self._is_hidden_agent(agent):
+            ok = send_hidden_text(
+                agent.tmux_session,
+                clean,
+                queue=queue_sequence is not None,
+            )
+            if ok:
+                append_history(self._history_key_for_agent(agent), clean)
+            return ok
+
         match = f"id:{agent.kitty_id}"
 
         if queue_sequence is None:
@@ -4511,7 +4647,7 @@ class ZeusApp(App):
             return False
 
     def _send_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
-        """Send text to the agent's kitty window followed by Enter."""
+        """Send text to agent backend followed by Enter."""
         return self._dispatch_agent_text(agent, text)
 
     def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
