@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from textual.widgets import DataTable
 
 from zeus.dashboard.app import ZeusApp
-from zeus.dashboard.screens import AgentMessageScreen
+from zeus.dashboard.screens import AgentMessageScreen, ExpandedOutputScreen
 from zeus.models import AgentWindow
 from tests.helpers import capture_kitty_cmd, capture_notify
 
@@ -102,6 +102,36 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     screen = pushed[0]
     assert isinstance(screen, AgentMessageScreen)
     assert screen.draft == "draft body"
+
+
+def test_action_expand_output_pushes_expanded_output_screen(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    pushed: list[object] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_expand_output()
+
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, ExpandedOutputScreen)
+    assert screen.agent is agent
+
+
+def test_action_expand_output_requires_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
+
+    app.action_expand_output()
+
+    assert notices[-1] == "Select a Hippeus row to expand output"
 
 
 def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:

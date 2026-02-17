@@ -9,6 +9,7 @@ from zeus.dashboard.screens import (
     AgentTasksScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
+    ExpandedOutputScreen,
     NewAgentScreen,
     RenameScreen,
     RenameTmuxScreen,
@@ -72,6 +73,18 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert "agent-message-shortcuts-hint" in source
     assert "(Control-S send | Control-W queue)" in source
     assert "agent-message-title-row" in source
+
+
+def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
+    source = _compose_source(ExpandedOutputScreen)
+    assert "RichLog(" in source
+    assert "expanded-output-stream" in source
+
+    bindings = {binding.key: binding.action for binding in ExpandedOutputScreen.BINDINGS}
+    assert bindings["escape"] == "dismiss"
+    assert bindings["e"] == "dismiss"
+    assert bindings["f5"] == "refresh"
+    assert bindings["m"] == "message"
 
 
 def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:

@@ -42,6 +42,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["n"] == "Queue next task for selected Hippeus"
     assert entries["g"] == "Queue 'go ahead' for selected Hippeus"
     assert entries["t"] == "Edit tasks for selected Hippeus"
+    assert entries["e"] == "Expand output for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
     assert entries["i"] == "Set/remove blocking dependency for selected Hippeus"
     assert "m" not in entries
@@ -80,6 +81,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("n", "Queue next task for selected Hippeus"),
         ("g", "Queue 'go ahead' for selected Hippeus"),
         ("t", "Edit tasks for selected Hippeus"),
+        ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
         ("i", "Set/remove blocking dependency for selected Hippeus"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
@@ -109,6 +111,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "n",
         "g",
         "t",
+        "e",
         "Ctrl+t",
         "i",
         "s",
@@ -142,6 +145,9 @@ def test_help_lists_modal_only_bindings() -> None:
     assert entries["Ctrl+s (tasks dialog)"] == "Save tasks in Hippeus Tasks dialog"
     assert entries["Ctrl+s (message dialog)"] == "Send message in Hippeus Message dialog"
     assert entries["Ctrl+w (message dialog)"] == "Queue message in Hippeus Message dialog"
+    assert entries["m (expanded output)"] == (
+        "Open Hippeus Message dialog from expanded output"
+    )
     assert entries["y / n / Enter (kill confirm)"] == (
         "Confirm or cancel kill confirmation dialogs"
     )

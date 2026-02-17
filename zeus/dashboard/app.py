@@ -92,6 +92,7 @@ from .screens import (
     NewAgentScreen,
     AgentTasksScreen,
     AgentMessageScreen,
+    ExpandedOutputScreen,
     DependencySelectScreen,
     SubAgentScreen,
     RenameScreen,
@@ -469,6 +470,7 @@ class ZeusApp(App):
         Binding("n", "queue_next_task", "Queue Task"),
         Binding("g", "go_ahead", "Go ahead"),
         Binding("t", "agent_tasks", "Tasks"),
+        Binding("e", "expand_output", "Expand output", show=False),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
         Binding("i", "toggle_dependency", "Dependency", show=False),
@@ -3697,6 +3699,15 @@ class ZeusApp(App):
             self.notify(f"Cleared tasks: {agent.name}", timeout=2)
         self._save_agent_tasks()
         self.poll_and_update()
+
+    def action_expand_output(self) -> None:
+        if self._should_ignore_table_action():
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to expand output", timeout=2)
+            return
+        self.push_screen(ExpandedOutputScreen(agent))
 
     def action_agent_message(self) -> None:
         if self._should_ignore_table_action():

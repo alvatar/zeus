@@ -6,7 +6,8 @@ import os
 import subprocess
 from typing import TYPE_CHECKING
 
-from textual import events
+from rich.text import Text
+from textual import events, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -17,18 +18,20 @@ from textual.widgets import (
     Label,
     RadioButton,
     RadioSet,
+    RichLog,
     Select,
 )
 
 from .widgets import ZeusTextArea
 
-from ..kitty import generate_agent_id
+from ..kitty import generate_agent_id, get_screen_text
 from ..models import AgentWindow, TmuxSession
 from ..notes import clear_done_tasks
 from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
     AGENT_MESSAGE_CSS,
+    EXPANDED_OUTPUT_CSS,
     DEPENDENCY_SELECT_CSS,
     SUBAGENT_CSS,
     RENAME_CSS,
@@ -37,6 +40,11 @@ from .css import (
     BROADCAST_CONFIRM_CSS,
     DIRECT_MESSAGE_CONFIRM_CSS,
     HELP_CSS,
+)
+from .stream import (
+    kitty_ansi_to_standard,
+    strip_pi_input_chrome,
+    trim_trailing_blank_lines,
 )
 
 if TYPE_CHECKING:
@@ -259,6 +267,98 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         draft = self.query_one("#agent-message-input", ZeusTextArea).text
         self.zeus.do_save_agent_message_draft(self.agent, draft)
         self.dismiss()
+
+
+class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = EXPANDED_OUTPUT_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("e", "dismiss", "Close", show=False),
+        Binding("f5", "refresh", "Refresh", show=False),
+        Binding("m", "message", "Message", show=False),
+    ]
+
+    def __init__(self, agent: AgentWindow) -> None:
+        super().__init__()
+        self.agent = agent
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="expanded-output-dialog"):
+            with Horizontal(id="expanded-output-title-row"):
+                yield Label(
+                    f"Expanded output [bold]{self.agent.name}[/bold]",
+                    id="expanded-output-title",
+                )
+                yield Label("", id="expanded-output-title-spacer")
+                yield Label(
+                    "(m message | F5 refresh | Esc close)",
+                    id="expanded-output-hint",
+                )
+            yield RichLog(
+                id="expanded-output-stream",
+                wrap=True,
+                markup=False,
+                auto_scroll=False,
+            )
+            yield Label(
+                "↑/↓ PgUp/PgDn Home/End scroll",
+                id="expanded-output-footer",
+            )
+
+    def on_mount(self) -> None:
+        stream = self.query_one("#expanded-output-stream", RichLog)
+        stream.can_focus = True
+        stream.focus()
+        self._fetch_output()
+
+    @work(thread=True, exclusive=True, group="expanded_output_stream")
+    def _fetch_output(self) -> None:
+        screen_text = get_screen_text(self.agent, full=True, ansi=True)
+        self.zeus.call_from_thread(self._apply_output, screen_text)
+
+    def _apply_output(self, screen_text: str) -> None:
+        if not self.is_attached:
+            return
+        stream = self.query_one("#expanded-output-stream", RichLog)
+        content = trim_trailing_blank_lines(strip_pi_input_chrome(screen_text))
+        stream.clear()
+        if not content.strip():
+            stream.write(f"  [{self.agent.name}] (no output)")
+            return
+        raw = kitty_ansi_to_standard(content)
+        stream.write(Text.from_ansi(raw))
+
+    def action_refresh(self) -> None:
+        self._fetch_output()
+
+    def action_message(self) -> None:
+        self.zeus.push_screen(
+            AgentMessageScreen(
+                self.agent,
+                self.zeus._message_draft_for_agent(self.agent),
+            )
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        stream = self.query_one("#expanded-output-stream", RichLog)
+        key = event.key
+        if key == "up":
+            stream.scroll_up(animate=False)
+        elif key == "down":
+            stream.scroll_down(animate=False)
+        elif key == "pageup":
+            stream.scroll_page_up(animate=False)
+        elif key == "pagedown":
+            stream.scroll_page_down(animate=False)
+        elif key == "home":
+            stream.scroll_home(animate=False)
+        elif key == "end":
+            stream.scroll_end(animate=False)
+        else:
+            return
+
+        event.stop()
+        event.prevent_default()
 
 
 class DependencySelectScreen(_ZeusScreenMixin, ModalScreen):
@@ -739,6 +839,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("n", "Queue next task for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
     ("t", "Edit tasks for selected Hippeus"),
+    ("e", "Expand output for selected Hippeus"),
     ("Ctrl+t", "Clear done tasks for selected Hippeus"),
     ("i", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
@@ -773,6 +874,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+s (tasks dialog)", "Save tasks in Hippeus Tasks dialog"),
     ("Ctrl+s (message dialog)", "Send message in Hippeus Message dialog"),
     ("Ctrl+w (message dialog)", "Queue message in Hippeus Message dialog"),
+    ("m (expanded output)", "Open Hippeus Message dialog from expanded output"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),

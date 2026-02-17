@@ -356,6 +356,61 @@ AgentMessageScreen {{
 )}
 """
 
+EXPANDED_OUTPUT_CSS = """
+ExpandedOutputScreen {
+    align: center middle;
+    background: #000000d0;
+}
+
+#expanded-output-dialog {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000000;
+    padding: 0 1;
+}
+
+#expanded-output-title-row {
+    width: 100%;
+    height: 1;
+    align: left middle;
+    background: #0a1a2a;
+    color: #00d7d7;
+    margin: 0 0 1 0;
+    padding: 0 1;
+}
+
+#expanded-output-title,
+#expanded-output-title-spacer,
+#expanded-output-hint {
+    margin: 0;
+    height: 1;
+}
+
+#expanded-output-title-spacer {
+    width: 1fr;
+}
+
+#expanded-output-hint {
+    color: #6a9090;
+    content-align: right middle;
+}
+
+#expanded-output-stream {
+    height: 1fr;
+    border-top: solid #1a3030;
+    padding: 0 1;
+    overflow-y: auto;
+    scrollbar-size: 1 1;
+}
+
+#expanded-output-footer {
+    height: 1;
+    color: #6a9090;
+    margin: 1 0 0 0;
+}
+"""
+
 DEPENDENCY_SELECT_CSS = f"""
 DependencySelectScreen {{
     align: center middle;
