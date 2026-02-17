@@ -128,7 +128,8 @@ if $WRAP_PI; then
                     cat > "$SANDBOX_CONF" <<'SCONF'
 # Writable paths for pi sandbox, one per line.
 # ~ is expanded to $HOME. Lines starting with # are ignored.
-# Strict mode: only ~/code and /tmp (and subpaths) are honored.
+# Each absolute path listed here is mounted read-write if it exists.
+# Non-existent paths are skipped with a warning on stderr.
 ~/code
 /tmp
 SCONF
@@ -242,18 +243,6 @@ path_is_mounted_dir() {
     return 1
 }
 
-is_allowed_rw_path() {
-    local path="\$1"
-    case "\$path" in
-        "\${HOME}/code"|"\${HOME}/code/"*|"/tmp"|"/tmp/"*)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 # Minimal sandbox skeleton under HOME (no broad home visibility).
 for d in "\${HOME}" \
          "\${HOME}/code" \
@@ -294,9 +283,7 @@ bwrap_bind "\${HOME}/.npm"
 bwrap_bind "\${HOME}/.codex"
 bwrap_bind "\${HOME}/.claude"
 
-# User writable paths (strict): only ~/code and /tmp (or subpaths).
-bwrap_bind "\${HOME}/code"
-bwrap_bind "/tmp"
+# User writable paths from sandbox-paths.conf allowlist.
 if [ -f "\$SANDBOX_CONF" ]; then
     while IFS= read -r line; do
         line="\${line%%#*}"
@@ -307,7 +294,8 @@ if [ -f "\$SANDBOX_CONF" ]; then
         if [[ "\$expanded" != /* ]]; then
             continue
         fi
-        if ! is_allowed_rw_path "\$expanded"; then
+        if [ ! -e "\$expanded" ]; then
+            echo "Zeus pi wrapper warning: sandbox path does not exist, skipping: \$expanded" >&2
             continue
         fi
         bwrap_bind "\$expanded"

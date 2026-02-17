@@ -23,6 +23,8 @@ def test_install_seeds_sandbox_config_with_defaults() -> None:
 
     assert "sandbox-paths.conf" in text
     assert "Writable paths for pi sandbox" in text
+    assert "Each absolute path listed here is mounted read-write if it exists." in text
+    assert "Non-existent paths are skipped with a warning on stderr." in text
     assert "~/code" in text
     assert "/tmp" in text
 
@@ -91,11 +93,18 @@ def test_generated_wrapper_precreates_codex_and_claude_dirs() -> None:
     assert '"\\${HOME}/.claude"' in text
 
 
-def test_generated_wrapper_strictly_limits_rw_paths() -> None:
+def test_generated_wrapper_uses_sandbox_config_as_rw_allowlist() -> None:
     text = _read("install.sh")
 
-    assert "is_allowed_rw_path" in text
-    assert '"\\${HOME}/code"|"\\${HOME}/code/"*|"/tmp"|"/tmp/"*' in text
+    assert "is_allowed_rw_path" not in text
+    assert '# User writable paths from sandbox-paths.conf allowlist.' in text
+    assert 'if [ ! -e "\\$expanded" ]; then' in text
+    assert (
+        'echo "Zeus pi wrapper warning: sandbox path does not exist, skipping: \\$expanded" >&2'
+        in text
+    )
+    assert 'bwrap_bind "\\${HOME}/code"' not in text
+    assert 'bwrap_bind "/tmp"' not in text
     assert 'BWRAP_ARGS+=("--chmod" "0111" "\\${HOME}")' in text
 
 

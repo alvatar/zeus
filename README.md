@@ -75,7 +75,7 @@ Writable paths are controlled via `~/.config/zeus/sandbox-paths.conf` (auto-crea
 /tmp
 ```
 
-Strict mode note: only `~/code` and `/tmp` (or subpaths under them) are accepted from this config as writable mounts; other config entries are ignored. The wrapper also keeps a minimal fixed writable set for operation (`~/.pi/agent/*` state files, `~/.local/bin`, `~/.local/lib/node_modules`, `~/.npm`, `~/.codex`, `~/.claude`), and exports npm defaults so global installs target user paths (`NPM_CONFIG_PREFIX=~/.local`, `NPM_CONFIG_CACHE=~/.npm`).
+Allowlist note: `sandbox-paths.conf` is the writable allowlist for user paths. Each absolute path listed there (after `~` expansion) is mounted read-write if it exists; non-existent paths are skipped with a warning on stderr. The wrapper also keeps a minimal fixed writable set for operation (`~/.pi/agent/*` state files, `~/.local/bin`, `~/.local/lib/node_modules`, `~/.npm`, `~/.codex`, `~/.claude`), and exports npm defaults so global installs target user paths (`NPM_CONFIG_PREFIX=~/.local`, `NPM_CONFIG_CACHE=~/.npm`).
 
 To disable sandboxing in the generated wrapper:
 
