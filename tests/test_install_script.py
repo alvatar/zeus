@@ -45,6 +45,9 @@ def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     assert 'bwrap_bind "\\${HOME}/.pi/agent/auth.json"' in text
     assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-cache.json"' in text
     assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-npx-cache.json"' in text
+    assert 'bwrap_bind "\\${HOME}/.local/bin"' in text
+    assert 'bwrap_bind "\\${HOME}/.local/lib/node_modules"' in text
+    assert 'bwrap_bind "\\${HOME}/.npm"' in text
 
 
 def test_generated_wrapper_strictly_limits_rw_paths() -> None:

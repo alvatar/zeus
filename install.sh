@@ -192,7 +192,10 @@ if ! command -v bwrap >/dev/null 2>&1; then
 fi
 
 PI_AGENT_DIR="\${HOME}/.pi/agent"
-mkdir -p "\$PI_AGENT_DIR/sessions"
+mkdir -p "\$PI_AGENT_DIR/sessions" \
+         "\${HOME}/.npm" \
+         "\${HOME}/.local/bin" \
+         "\${HOME}/.local/lib/node_modules"
 touch "\$PI_AGENT_DIR/auth.json" \
       "\$PI_AGENT_DIR/mcp-cache.json" \
       "\$PI_AGENT_DIR/mcp-npx-cache.json"
@@ -248,7 +251,9 @@ for d in "\${HOME}" \
          "\${HOME}/.pi/agent/sessions" \
          "\${HOME}/.local" \
          "\${HOME}/.local/bin" \
-         "\${HOME}/.local/lib"; do
+         "\${HOME}/.local/lib" \
+         "\${HOME}/.local/lib/node_modules" \
+         "\${HOME}/.npm"; do
     BWRAP_ARGS+=("--dir" "\$d")
 done
 
@@ -258,8 +263,6 @@ for p in /usr /lib /lib64 /bin /sbin /etc; do
 done
 
 # Pi/runtime support (read-only, minimal)
-bwrap_ro "\${HOME}/.local/bin"
-bwrap_ro "\${HOME}/.local/lib/node_modules"
 bwrap_ro "\${HOME}/.pi/agent/settings.json"
 bwrap_ro "\${HOME}/.pi/agent/mcp.json"
 bwrap_ro "\${HOME}/.pi/agent/extensions"
@@ -272,6 +275,9 @@ bwrap_bind "\${HOME}/.pi/agent/sessions"
 bwrap_bind "\${HOME}/.pi/agent/auth.json"
 bwrap_bind "\${HOME}/.pi/agent/mcp-cache.json"
 bwrap_bind "\${HOME}/.pi/agent/mcp-npx-cache.json"
+bwrap_bind "\${HOME}/.local/bin"
+bwrap_bind "\${HOME}/.local/lib/node_modules"
+bwrap_bind "\${HOME}/.npm"
 
 # User writable paths (strict): only ~/code and /tmp (or subpaths).
 bwrap_bind "\${HOME}/code"
