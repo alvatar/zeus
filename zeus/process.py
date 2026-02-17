@@ -14,8 +14,8 @@ from .models import ProcessMetrics
 # Module-level state for delta-based metrics
 # ---------------------------------------------------------------------------
 
-_prev_proc_cpu: dict[int, tuple[float, float]] = {}
-_prev_proc_io: dict[int, tuple[float, float, float]] = {}
+_prev_proc_cpu: dict[int, tuple[float, float, int]] = {}
+_prev_proc_io: dict[int, tuple[float, float, float, int]] = {}
 _gpu_pmon_cache: dict[int, tuple[float, float]] | None = None
 _gpu_pmon_ts: float = 0.0
 
@@ -57,23 +57,79 @@ def fmt_bytes(bps: float) -> str:
 _fmt_bytes = fmt_bytes
 
 
+def _read_proc_stat_fields(pid: int) -> tuple[int, int, int, int] | None:
+    """Read key /proc/<pid>/stat fields.
+
+    Returns tuple: (ppid, utime_ticks, stime_ticks, starttime_ticks).
+    """
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            raw = f.read().strip()
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+
+    rparen = raw.rfind(")")
+    if rparen < 0 or rparen + 2 >= len(raw):
+        return None
+
+    rest = raw[rparen + 2:].split()
+    # rest[0]=state, rest[1]=ppid, rest[11]=utime, rest[12]=stime,
+    # rest[19]=starttime
+    try:
+        ppid = int(rest[1])
+        utime = int(rest[11])
+        stime = int(rest[12])
+        starttime = int(rest[19])
+    except (IndexError, ValueError):
+        return None
+
+    return (ppid, utime, stime, starttime)
+
+
+def _read_proc_children(pid: int) -> list[int]:
+    """Read direct children PIDs from /proc task children list."""
+    try:
+        with open(f"/proc/{pid}/task/{pid}/children") as f:
+            raw = f.read().strip()
+    except (FileNotFoundError, PermissionError, OSError):
+        return []
+
+    if not raw:
+        return []
+
+    out: list[int] = []
+    for token in raw.split():
+        try:
+            child = int(token)
+        except ValueError:
+            continue
+        if child > 0:
+            out.append(child)
+    return out
+
+
 def _get_process_tree(root_pid: int) -> list[int]:
     """Get all PIDs in the tree rooted at root_pid (inclusive)."""
-    pids: list[int] = [root_pid]
-    try:
-        children = subprocess.run(
-            ["pgrep", "-P", str(root_pid)],
-            capture_output=True, text=True, timeout=2)
-        if children.returncode == 0:
-            for line in children.stdout.strip().splitlines():
-                try:
-                    child = int(line.strip())
-                    pids.extend(_get_process_tree(child))
-                except ValueError:
-                    pass
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return pids
+    if root_pid <= 0:
+        return []
+    if not os.path.exists(f"/proc/{root_pid}"):
+        return []
+
+    out: list[int] = []
+    pending: list[int] = [root_pid]
+    seen: set[int] = set()
+
+    while pending:
+        pid = pending.pop()
+        if pid in seen or pid <= 0:
+            continue
+        seen.add(pid)
+        out.append(pid)
+        for child in _read_proc_children(pid):
+            if child not in seen:
+                pending.append(child)
+
+    return out
 
 
 def _clk_tck() -> int:
@@ -90,12 +146,11 @@ def _read_proc_cpu(pids: list[int]) -> float:
     """Read total CPU ticks (utime+stime) for a set of PIDs."""
     total: float = 0.0
     for pid in pids:
-        try:
-            with open(f"/proc/{pid}/stat") as f:
-                parts = f.read().split()
-            total += float(parts[13]) + float(parts[14])
-        except (FileNotFoundError, IndexError, ValueError):
-            pass
+        stat = _read_proc_stat_fields(pid)
+        if stat is None:
+            continue
+        _, utime, stime, _ = stat
+        total += float(utime + stime)
     return total
 
 
@@ -352,18 +407,31 @@ def _net_io_rchar_fallback(pids: list[int]) -> tuple[float, float]:
 def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     """Read CPU%, RAM, GPU% for an agent's process tree."""
     global _prev_proc_cpu, _prev_proc_io
+
     pids: list[int] = _get_process_tree(kitty_pid)
+    if not pids:
+        _prev_proc_cpu.pop(kitty_pid, None)
+        _prev_proc_io.pop(kitty_pid, None)
+        return ProcessMetrics()
+
+    root_stat = _read_proc_stat_fields(kitty_pid)
+    if root_stat is None:
+        _prev_proc_cpu.pop(kitty_pid, None)
+        _prev_proc_io.pop(kitty_pid, None)
+        return ProcessMetrics()
+    root_starttime = root_stat[3]
+
     now: float = time.time()
 
-    # CPU: delta-based
+    # CPU: delta-based and reset-safe across PID reuse / exec churn.
     ticks: float = _read_proc_cpu(pids)
     cpu_pct: float = 0.0
     prev = _prev_proc_cpu.get(kitty_pid)
-    if prev is not None:
+    if prev is not None and prev[2] == root_starttime:
         dt: float = now - prev[1]
         if dt > 0:
-            cpu_pct = ((ticks - prev[0]) / _CLK_TCK / dt) * 100
-    _prev_proc_cpu[kitty_pid] = (ticks, now)
+            cpu_pct = max(0.0, ((ticks - prev[0]) / _CLK_TCK / dt) * 100)
+    _prev_proc_cpu[kitty_pid] = (ticks, now, root_starttime)
 
     # RAM
     ram_mb: float = _read_proc_ram(pids)
@@ -387,12 +455,12 @@ def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     if diag is not None:
         net_recv, net_sent = diag
         prev_io = _prev_proc_io.get(kitty_pid)
-        if prev_io is not None:
+        if prev_io is not None and prev_io[3] == root_starttime:
             dt = now - prev_io[2]
             if dt > 0:
-                io_read = max(0, (net_recv - prev_io[0]) / dt)
-                io_write = max(0, (net_sent - prev_io[1]) / dt)
-        _prev_proc_io[kitty_pid] = (net_recv, net_sent, now)
+                io_read = max(0.0, (net_recv - prev_io[0]) / dt)
+                io_write = max(0.0, (net_sent - prev_io[1]) / dt)
+        _prev_proc_io[kitty_pid] = (net_recv, net_sent, now, root_starttime)
 
     return ProcessMetrics(
         cpu_pct=cpu_pct, ram_mb=ram_mb,
