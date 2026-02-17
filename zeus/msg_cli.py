@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 from .config import MESSAGE_TMP_DIR
 from .kitty import discover_agents
@@ -141,12 +142,62 @@ def _read_payload(path_text: str) -> str | None:
         return None
 
 
+def _payload_from_args(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    file_arg = getattr(args, "file", None)
+    text_arg = getattr(args, "text", None)
+    stdin_arg = bool(getattr(args, "stdin", False))
+
+    sources = 0
+    if file_arg:
+        sources += 1
+    if text_arg is not None:
+        sources += 1
+    if stdin_arg:
+        sources += 1
+
+    if sources > 1:
+        return None, "choose exactly one payload source: --file, --text, or --stdin"
+
+    if file_arg:
+        payload = _read_payload(str(file_arg))
+        if payload is None:
+            return None, (
+                f"invalid --file path (must be readable under {MESSAGE_TMP_DIR})"
+            )
+        return payload, None
+
+    if text_arg is not None:
+        return str(text_arg), None
+
+    if stdin_arg:
+        return sys.stdin.read(), None
+
+    if not sys.stdin.isatty():
+        return sys.stdin.read(), None
+
+    return None, "missing payload: provide --file, --text, --stdin, or pipe stdin"
+
+
+def _wait_for_delivery(enqueue_path: Path, timeout_s: float) -> bool:
+    """Wait until Zeus acks delivery by removing queue envelope file."""
+    queue_root = enqueue_path.parent.parent
+    inflight_path = queue_root / "inflight" / enqueue_path.name
+
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while time.monotonic() <= deadline:
+        if not enqueue_path.exists() and not inflight_path.exists():
+            return True
+        time.sleep(0.1)
+
+    return not enqueue_path.exists() and not inflight_path.exists()
+
+
 def cmd_send(args: argparse.Namespace) -> int:
-    payload = _read_payload(args.file)
+    payload, payload_err = _payload_from_args(args)
     if payload is None:
-        return _err(
-            f"invalid --file path (must be readable under {MESSAGE_TMP_DIR})"
-        )
+        return _err(payload_err or "invalid payload")
+    if payload == "":
+        return _err("payload is empty")
 
     sender_agent_id = os.environ.get("ZEUS_AGENT_ID", "").strip()
     sender_role = os.environ.get("ZEUS_ROLE", "").strip().lower()
@@ -183,8 +234,18 @@ def cmd_send(args: argparse.Namespace) -> int:
     )
 
     ensure_queue_dirs()
-    enqueue_envelope(envelope)
+    enqueue_path = enqueue_envelope(envelope)
     print(f"ZEUS_MSG_ENQUEUED={envelope.id}")
+
+    if bool(getattr(args, "wait_delivery", False)):
+        timeout_s = float(getattr(args, "timeout", 30.0))
+        if _wait_for_delivery(enqueue_path, timeout_s):
+            print(f"ZEUS_MSG_DELIVERED={envelope.id}")
+            return 0
+        return _err(
+            f"delivery timeout after {timeout_s:.1f}s; message remains queued"
+        )
+
     return 0
 
 
@@ -195,7 +256,7 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_send = sub.add_parser("send", help="Queue one outbound message from file")
+    p_send = sub.add_parser("send", help="Queue one outbound message")
     p_send.add_argument(
         "--to",
         required=True,
@@ -204,7 +265,30 @@ def main() -> int:
             "agent:<id-or-name> | name:<display-name> | <id-or-name>"
         ),
     )
-    p_send.add_argument("--file", required=True, help="Payload file path (must be under message_tmp_dir)")
+    p_send.add_argument(
+        "--file",
+        help="Payload file path (must be under message_tmp_dir)",
+    )
+    p_send.add_argument(
+        "--text",
+        help="Inline payload text",
+    )
+    p_send.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read payload from stdin",
+    )
+    p_send.add_argument(
+        "--wait-delivery",
+        action="store_true",
+        help="Block until Zeus transport-acks delivery",
+    )
+    p_send.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="Delivery wait timeout in seconds (used with --wait-delivery)",
+    )
     p_send.set_defaults(func=cmd_send)
 
     args = parser.parse_args()

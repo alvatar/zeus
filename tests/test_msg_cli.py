@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from argparse import Namespace
+import io
 from pathlib import Path
 
 import zeus.message_queue as mq
@@ -41,6 +42,25 @@ def _agent(name: str, agent_id: str) -> AgentWindow:
     )
 
 
+def _args(
+    *,
+    to: str,
+    file: str | None = None,
+    text: str | None = None,
+    stdin: bool = False,
+    wait_delivery: bool = False,
+    timeout: float = 30.0,
+) -> Namespace:
+    return Namespace(
+        to=to,
+        file=file,
+        text=text,
+        stdin=stdin,
+        wait_delivery=wait_delivery,
+        timeout=timeout,
+    )
+
+
 def test_msg_cli_send_polemarch_resolves_parent(monkeypatch, tmp_path: Path) -> None:
     msg_root, queue_root = _prepare(monkeypatch, tmp_path)
     payload = msg_root / "m.md"
@@ -52,7 +72,7 @@ def test_msg_cli_send_polemarch_resolves_parent(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setenv("ZEUS_ROLE", "hoplite")
     monkeypatch.setenv("AGENTMON_NAME", "hoplite-a")
 
-    rc = msg_cli.cmd_send(Namespace(to="polemarch", file=str(payload)))
+    rc = msg_cli.cmd_send(_args(to="polemarch", file=str(payload)))
     assert rc == 0
 
     env = _single_envelope(queue_root)
@@ -73,7 +93,7 @@ def test_msg_cli_send_phalanx_from_polemarch_uses_owner_fallback(monkeypatch, tm
     monkeypatch.delenv("ZEUS_PHALANX_ID", raising=False)
     monkeypatch.setenv("ZEUS_ROLE", "polemarch")
 
-    rc = msg_cli.cmd_send(Namespace(to="phalanx", file=str(payload)))
+    rc = msg_cli.cmd_send(_args(to="phalanx", file=str(payload)))
     assert rc == 0
 
     env = _single_envelope(queue_root)
@@ -89,7 +109,7 @@ def test_msg_cli_send_rejects_payload_outside_message_tmp_dir(monkeypatch, tmp_p
 
     monkeypatch.setenv("ZEUS_AGENT_ID", "agent-1")
 
-    rc = msg_cli.cmd_send(Namespace(to="agent:agent-2", file=str(outside)))
+    rc = msg_cli.cmd_send(_args(to="agent:agent-2", file=str(outside)))
     assert rc == 1
 
     files = sorted((queue_root / "new").glob("*.json"))
@@ -114,7 +134,7 @@ def test_msg_cli_send_resolves_plain_display_name_to_agent_id(
         ],
     )
 
-    rc = msg_cli.cmd_send(Namespace(to="barlovento-harbor", file=str(payload)))
+    rc = msg_cli.cmd_send(_args(to="barlovento-harbor", file=str(payload)))
     assert rc == 0
 
     env = _single_envelope(queue_root)
@@ -141,6 +161,109 @@ def test_msg_cli_send_rejects_ambiguous_display_name(
         ],
     )
 
-    rc = msg_cli.cmd_send(Namespace(to="worker", file=str(payload)))
+    rc = msg_cli.cmd_send(_args(to="worker", file=str(payload)))
     assert rc == 1
     assert sorted((queue_root / "new").glob("*.json")) == []
+
+
+def test_msg_cli_send_accepts_inline_text_payload(monkeypatch, tmp_path: Path) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+
+    rc = msg_cli.cmd_send(_args(to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", text="hello"))
+    assert rc == 0
+
+    env = _single_envelope(queue_root)
+    assert env.message == "hello"
+
+
+def test_msg_cli_send_accepts_stdin_payload(monkeypatch, tmp_path: Path) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setattr(msg_cli.sys, "stdin", io.StringIO("from-stdin"))
+
+    rc = msg_cli.cmd_send(_args(to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", stdin=True))
+    assert rc == 0
+
+    env = _single_envelope(queue_root)
+    assert env.message == "from-stdin"
+
+
+def test_msg_cli_send_rejects_multiple_payload_sources(monkeypatch, tmp_path: Path) -> None:
+    msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    payload = msg_root / "m.md"
+    payload.write_text("hello\n")
+
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            file=str(payload),
+            text="also",
+        )
+    )
+    assert rc == 1
+    assert sorted((queue_root / "new").glob("*.json")) == []
+
+
+def test_msg_cli_send_accepts_implicit_piped_stdin(monkeypatch, tmp_path: Path) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setattr(msg_cli.sys, "stdin", io.StringIO("pipe-default"))
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            file=None,
+            text=None,
+            stdin=False,
+        )
+    )
+
+    assert rc == 0
+    env = _single_envelope(queue_root)
+    assert env.message == "pipe-default"
+
+
+def test_msg_cli_send_wait_delivery_timeout_keeps_message_queued(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            text="wait-me",
+            wait_delivery=True,
+            timeout=0.01,
+        )
+    )
+
+    assert rc == 1
+    files = sorted((queue_root / "new").glob("*.json"))
+    assert len(files) == 1
+
+
+def test_msg_cli_send_wait_delivery_success(monkeypatch, tmp_path: Path, capsys) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setattr(msg_cli, "_wait_for_delivery", lambda _p, _t: True)
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            text="ok",
+            wait_delivery=True,
+            timeout=1.0,
+        )
+    )
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "ZEUS_MSG_ENQUEUED=" in out
+    assert "ZEUS_MSG_DELIVERED=" in out
+    env = _single_envelope(queue_root)
+    assert env.message == "ok"
