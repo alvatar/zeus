@@ -855,7 +855,8 @@ class ZeusApp(App):
                 screen
             )
             a.workspace = pid_ws.get(a.kitty_pid, "?")
-            a.proc_metrics = read_process_metrics(a.kitty_pid)
+            metrics_root_pid = a.pid if a.pid > 0 else a.kitty_pid
+            a.proc_metrics = read_process_metrics(metrics_root_pid)
 
         # Read tmux pane metrics in the worker too
         match_tmux_to_agents(agents, tmux_sessions)
