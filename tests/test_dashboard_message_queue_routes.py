@@ -170,6 +170,47 @@ def test_drain_message_queue_unpauses_paused_agent_targets(
     assert mq.list_inflight_envelopes() == []
 
 
+def test_drain_message_queue_clears_dependency_for_blocked_target_from_blocker(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    app = ZeusApp()
+
+    source = _agent("source", 1, agent_id="agent-source")
+    target = _agent("target", 2, agent_id="agent-target")
+    app.agents = [source, target]
+    app._message_receipts = {}
+    app._agent_priorities = {"target": 4}
+    target_dep_key = app._agent_dependency_key(target)
+    app._agent_dependencies = {target_dep_key: app._agent_dependency_key(source)}
+
+    sends: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app,
+        "_queue_text_to_agent",
+        lambda agent, text: sends.append((agent.name, text)) or True,
+    )
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: True)
+
+    env = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="agent",
+        target_ref="agent-target",
+        target_agent_id="agent-target",
+        message="release",
+    )
+    mq.enqueue_envelope(env)
+    app._drain_message_queue()
+
+    assert sends == [("target", "release")]
+    assert target_dep_key not in app._agent_dependencies
+    assert app._agent_priorities.get("target", 3) == 4
+    assert mq.list_new_envelopes() == []
+    assert mq.list_inflight_envelopes() == []
+
+
 def test_drain_message_queue_dedupes_same_message_id_per_recipient(
     monkeypatch,
     tmp_path: Path,

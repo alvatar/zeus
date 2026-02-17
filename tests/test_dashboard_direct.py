@@ -155,21 +155,16 @@ def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_depende
 
     app.agents = [source, target]
     app._agent_dependencies[target_dep_key] = app._agent_dependency_key(source)
+    app._agent_priorities = {target.name: 4}
 
     sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
     saves: list[dict[str, str]] = []
-    renders: list[bool] = []
 
     monkeypatch.setattr(
         app,
         "_save_agent_dependencies",
         lambda: saves.append(dict(app._agent_dependencies)),
-    )
-    monkeypatch.setattr(
-        app,
-        "_render_agent_table_and_status",
-        lambda: renders.append(True) or True,
     )
     app._interact_visible = False
 
@@ -177,8 +172,8 @@ def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_depende
 
     assert len(sent) == 4
     assert target_dep_key not in app._agent_dependencies
+    assert app._agent_priorities.get(target.name, 3) == 4
     assert saves == [{}]
-    assert renders == [True]
     assert notices[-1] == "Message from source queued to target; dependency cleared"
 
 

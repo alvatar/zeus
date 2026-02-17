@@ -1450,14 +1450,12 @@ class ZeusApp(App):
                 tok_cell = Text(str(tok_cell), style=row_style)
                 task_cell = Text(str(task_cell), style=row_style)
 
-            if blocked:
-                pri_cell: str | Text = Text("-", style=f"bold {self._BLOCKED_NON_STATE_FG}")
-            else:
-                pri_val = self._get_priority(a.name)
-                _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
-                pri_cell = Text(
-                    str(pri_val), style=f"bold {_pri_colors[pri_val]}",
-                )
+            pri_val = self._get_priority(a.name)
+            _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
+            pri_style = row_style or _pri_colors[pri_val]
+            pri_cell: str | Text = Text(
+                str(pri_val), style=f"bold {pri_style}",
+            )
 
             row_key: str = akey
             cells: dict[str, str | Text] = {
@@ -2232,6 +2230,35 @@ class ZeusApp(App):
         source_dep_key = self._agent_dependency_key(source)
         return self._agent_dependencies.get(target_dep_key) == source_dep_key
 
+    def _clear_dependency_if_blocked_by_source_id(
+        self,
+        target: AgentWindow,
+        source_agent_id: str,
+    ) -> bool:
+        """Clear target dependency only when it is blocked by source_agent_id."""
+        source_id = source_agent_id.strip()
+        if not source_id:
+            return False
+
+        target_dep_key = self._agent_dependency_key(target)
+        blocker_dep_key = self._agent_dependencies.get(target_dep_key)
+        if not blocker_dep_key:
+            return False
+
+        source = self._get_agent_by_id(source_id)
+        source_dep_key = self._agent_dependency_key(source) if source else source_id
+        if blocker_dep_key != source_dep_key:
+            return False
+
+        self._agent_dependencies.pop(target_dep_key, None)
+        self._dependency_missing_polls.pop(target_dep_key, None)
+        self._save_agent_dependencies()
+        if getattr(self, "_screen_stack", []):
+            self._render_agent_table_and_status()
+            if self._interact_visible:
+                self._refresh_interact_panel()
+        return True
+
     def _direct_recipients(self, source_key: str) -> list[AgentWindow]:
         """Return direct-send recipients for a source.
 
@@ -2690,9 +2717,20 @@ class ZeusApp(App):
 
         return []
 
-    def _deliver_queue_target(self, target: QueueDeliveryTarget, message: str) -> bool:
+    def _deliver_queue_target(
+        self,
+        target: QueueDeliveryTarget,
+        message: str,
+        *,
+        source_agent_id: str = "",
+    ) -> bool:
         if target.kind == "agent" and target.agent is not None:
-            self._resume_agent_if_paused(target.agent)
+            dependency_cleared = self._clear_dependency_if_blocked_by_source_id(
+                target.agent,
+                source_agent_id,
+            )
+            if not dependency_cleared:
+                self._resume_agent_if_paused(target.agent)
             return self._queue_text_to_agent(target.agent, message)
         if target.kind == "tmux" and target.tmux_session:
             return self._dispatch_tmux_text(target.tmux_session, message, queue=True)
@@ -2787,7 +2825,11 @@ class ZeusApp(App):
                     ):
                         continue
 
-                    delivered = self._deliver_queue_target(target, claimed.message)
+                    delivered = self._deliver_queue_target(
+                        target,
+                        claimed.message,
+                        source_agent_id=claimed.source_agent_id,
+                    )
                     if not delivered:
                         all_delivered = False
                         break
@@ -2870,13 +2912,14 @@ class ZeusApp(App):
             self.notify("Target is no longer active", timeout=3)
             return
 
-        self._resume_agent_if_paused(target)
-
         source_agent_id = ""
         if source_key:
             source_agent = self._get_agent_by_key(source_key)
             if source_agent is not None:
                 source_agent_id = self._agent_identity_key(source_agent)
+
+        if not blocked_by_source:
+            self._resume_agent_if_paused(target)
 
         if not self._enqueue_outbound_agent_message(
             target,
@@ -2890,13 +2933,6 @@ class ZeusApp(App):
         self._drain_message_queue()
 
         if blocked_by_source:
-            target_dep_key = self._agent_dependency_key(target)
-            self._agent_dependencies.pop(target_dep_key, None)
-            self._dependency_missing_polls.pop(target_dep_key, None)
-            self._save_agent_dependencies()
-            self._render_agent_table_and_status()
-            if self._interact_visible:
-                self._refresh_interact_panel()
             self.notify(
                 f"Message from {source_name} queued to {target.name}; dependency cleared",
                 timeout=3,
@@ -4002,7 +4038,6 @@ class ZeusApp(App):
             self.notify("Dependency rejected: would create cycle", timeout=3)
             return
 
-        self._resume_agent_if_paused(live_blocked)
         self._agent_dependencies[blocked_dep_key] = blocker_dep_key
         self._dependency_missing_polls.pop(blocked_dep_key, None)
         self._save_agent_dependencies()

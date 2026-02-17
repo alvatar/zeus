@@ -71,7 +71,7 @@ def test_do_set_dependency_rejects_cycle(monkeypatch) -> None:
     assert notices[-1] == "Dependency rejected: would create cycle"
 
 
-def test_do_set_dependency_unpauses_paused_agent(monkeypatch) -> None:
+def test_do_set_dependency_preserves_existing_priority(monkeypatch) -> None:
     app = ZeusApp()
     paused = _agent("paused", 1, agent_id="paused-id")
     blocker = _agent("blocker", 2, agent_id="blocker-id")
@@ -82,12 +82,11 @@ def test_do_set_dependency_unpauses_paused_agent(monkeypatch) -> None:
     notices: list[str] = []
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
     monkeypatch.setattr(app, "poll_and_update", lambda: None)
-    monkeypatch.setattr(app, "_save_priorities", lambda: None)
 
     app.do_set_dependency(paused, "blocker-id")
 
     assert app._agent_dependencies == {"paused-id": "blocker-id"}
-    assert app._agent_priorities.get("paused", 3) == 3
+    assert app._agent_priorities.get("paused", 3) == 4
     assert notices[-1] == "paused blocked by blocker"
 
 
