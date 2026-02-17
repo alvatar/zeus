@@ -266,7 +266,7 @@ for d in "\${HOME}" \
 done
 
 # Core system mounts (read-only)
-for p in /usr /lib /lib64 /bin /sbin /etc; do
+for p in /usr /lib /lib64 /bin /sbin /etc /run; do
     bwrap_ro "\$p"
 done
 
@@ -321,6 +321,8 @@ exec bwrap \
     --die-with-parent \
     --proc /proc \
     --dev /dev \
+    --setenv GIT_SSH_COMMAND "ssh -F /dev/null -o StrictHostKeyChecking=no" \
+    --setenv SSH_AUTH_SOCK "\${SSH_AUTH_SOCK:-/run/user/\$(id -u)/ssh-agent.socket}" \
     --chdir "\$BWRAP_CHDIR" \
     "\${BWRAP_ARGS[@]}" \
     "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"

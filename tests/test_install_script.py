@@ -38,6 +38,20 @@ def test_generated_wrapper_uses_bwrap_and_supports_no_sandbox_flag() -> None:
     assert "--dev /dev" in text
 
 
+def test_generated_wrapper_mounts_run_and_sets_git_ssh_env() -> None:
+    text = _read("install.sh")
+
+    assert "for p in /usr /lib /lib64 /bin /sbin /etc /run; do" in text
+    assert (
+        '--setenv GIT_SSH_COMMAND "ssh -F /dev/null -o StrictHostKeyChecking=no"'
+        in text
+    )
+    assert (
+        '--setenv SSH_AUTH_SOCK "\\${SSH_AUTH_SOCK:-/run/user/\\$(id -u)/ssh-agent.socket}"'
+        in text
+    )
+
+
 def test_generated_wrapper_sets_npm_prefix_and_cache_to_user_paths() -> None:
     text = _read("install.sh")
 
