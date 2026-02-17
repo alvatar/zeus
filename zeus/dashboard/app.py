@@ -1492,12 +1492,7 @@ class ZeusApp(App):
         def _add_tmux_rows(a: AgentWindow, indent_level: int = 1) -> None:
             def _add_tmux_session_row(sess: TmuxSession, *, prefix: str) -> None:
                 age_s: int = int(time.time()) - sess.created if sess.created else 0
-                if age_s >= 3600:
-                    age_str = f"{age_s // 3600}h{(age_s % 3600) // 60}m"
-                elif age_s >= 60:
-                    age_str = f"{age_s // 60}m"
-                else:
-                    age_str = f"{age_s}s"
+                age_str = _fmt_duration(float(age_s))
 
                 tmux_name: str | Text
                 tmux_cmd: str | Text
@@ -1536,12 +1531,12 @@ class ZeusApp(App):
                 if sess.attached:
                     tmux_name = f"{prefix}{sess.name}"
                     tmux_cmd = cleaned_cmd
-                    tmux_age = f"⏱ {age_str} ●"
+                    tmux_age = age_str
                 else:
                     dim: str = "#555555"
                     tmux_name = Text(f"{prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
-                    tmux_age = Text(f"⏱ {age_str}", style=dim)
+                    tmux_age = Text(age_str, style=dim)
                     cpu_t = Text(str(cpu_t), style=dim) if str(cpu_t) else ""
                     ram_t = Text(str(ram_t), style=dim) if str(ram_t) else ""
                     gpu_t = Text(str(gpu_t), style=dim) if str(gpu_t) else ""

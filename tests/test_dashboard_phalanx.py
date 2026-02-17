@@ -172,3 +172,20 @@ def test_render_agent_table_lists_hoplites_with_dagger_prefix(monkeypatch) -> No
     tmux_name_cell = table.added_rows[1][name_idx]
     assert isinstance(tmux_name_cell, str)
     assert tmux_name_cell == "  └ 🗡 h1"
+
+
+def test_render_tmux_elapsed_uses_same_format_as_agent_elapsed(monkeypatch) -> None:
+    app = ZeusApp()
+    polemarch = _agent(agent_id="polemarch-1", role="polemarch")
+    polemarch.tmux_sessions = [
+        _tmux(name="h1", role="hoplite", owner_id="polemarch-1", phalanx_id="phalanx-1"),
+    ]
+    app.agents = [polemarch]
+
+    table, _ = _render(app, monkeypatch)
+
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    elapsed_idx = cols.index("Elapsed")
+    tmux_elapsed_cell = table.added_rows[1][elapsed_idx]
+    assert isinstance(tmux_elapsed_cell, str)
+    assert tmux_elapsed_cell == "0s"
