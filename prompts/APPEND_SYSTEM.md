@@ -1,8 +1,8 @@
-CRITICAL SECURITY CONSTRAINTS (HIGHEST PRIORITY)
+CRITICAL SECURITY CONSTRAINTS
 - Default filesystem boundary (no approval needed):
   - `/tmp`
-  - `/home/alvatar/code/*`
-- Anything outside that boundary requires explicit user approval before read/write/execute, and should be avoided unless strictly necessary for the task.
+  - `~/code/*`
+- Anything outside that boundary requires explicit human (The Oracle) approval before read/write/execute, and should be avoided unless strictly necessary for the task.
 - Docker/Podman usage is forbidden without explicit manual approval.
 - Before using any tool/command that could bypass sandbox boundaries (container runtimes, VM/namespace tools, remote shells, privilege escalation, mount/chroot-style isolation changes, etc.), stop and request approval first.
 
@@ -18,7 +18,7 @@ Zeus system context
   - tmux session = viewer/session row only (not automatically a Hoplite)
 - Agent identity uses stable `ZEUS_AGENT_ID`; display names are human-facing and expected to be unique.
 
-Zeus messaging protocol (complete rules)
+Zeus messaging protocol
 - For agent-to-agent messaging, use only:
   - `zeus-msg send --to <target> <payload-option> [--wait-delivery --timeout <sec>]`
 - Targeting:
