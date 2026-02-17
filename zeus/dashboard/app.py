@@ -486,6 +486,7 @@ class ZeusApp(App):
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
         Binding("b", "broadcast_summary", "Broadcast", show=False),
         Binding("m", "direct_summary", "Direct Summary", show=False),
+        Binding("y", "yank_summary_payload", "Yank", show=False),
 
         Binding("1", "toggle_interact_input", "Input", show=False, priority=True),
         Binding("2", "toggle_minimap", "Map", show=False, priority=True),
@@ -781,6 +782,23 @@ class ZeusApp(App):
             timeout=timeout,
             markup=markup,
         )
+
+    @staticmethod
+    def _copy_text_to_system_clipboard(text: str) -> bool:
+        """Best-effort clipboard copy via wl-copy."""
+        if shutil.which("wl-copy") is None:
+            return False
+        try:
+            result = subprocess.run(
+                ["wl-copy"],
+                input=text,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+        return result.returncode == 0
 
     def _pulse_widget(self, selector: str, low_opacity: float) -> None:
         """Run a clearly-visible single-beat opacity pulse on a widget."""
@@ -2490,6 +2508,37 @@ class ZeusApp(App):
             target_options=target_options,
             initial_target_key=target_options[0][1],
         )
+
+    def action_yank_summary_payload(self) -> None:
+        """Y: yank marked payload from selected Hippeus to system clipboard."""
+        if self._should_ignore_table_action():
+            return
+
+        source = self._get_selected_agent()
+        if not source:
+            self.notify("Select a Hippeus row to yank summary payload", timeout=2)
+            return
+
+        payload = self._share_payload_for_source(source)
+        if payload is None:
+            self.notify(self._SHARE_MARKER_REMINDER, timeout=4)
+            return
+
+        if not payload:
+            self.notify(
+                f"Wrapped {_SHARE_MARKER} markers found, but the enclosed block is empty.",
+                timeout=4,
+            )
+            return
+
+        if not self._copy_text_to_system_clipboard(payload):
+            self.notify_force(
+                "wl-copy unavailable; could not yank payload",
+                timeout=3,
+            )
+            return
+
+        self.notify(f"Yanked payload: {source.name}", timeout=2)
 
     @work(thread=True, exclusive=True, group="broadcast")
     def _prepare_summary_preview(

@@ -967,6 +967,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("e", "Expand output for selected Hippeus"),
     ("r", "Rename Hippeus / tmux"),
     ("t", "Edit tasks for selected Hippeus"),
+    ("y", "Yank block between %%%% markers for selected Hippeus"),
     ("Ctrl+t", "Clear done tasks for selected Hippeus"),
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("a", "Bring Hippeus under the Aegis"),

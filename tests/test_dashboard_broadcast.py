@@ -224,3 +224,86 @@ def test_do_enqueue_broadcast_queues_active_and_paused_recipients(monkeypatch) -
 
     assert app._agent_priorities.get(paused.name, 3) == 3
     assert notices[-1] == "Broadcast from source queued to 3 Hippeis"
+
+
+def test_action_yank_summary_payload_copies_payload(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+
+    copied: list[str] = []
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: source)
+    monkeypatch.setattr(app, "_share_payload_for_source", lambda _source: "payload")
+    monkeypatch.setattr(
+        app,
+        "_copy_text_to_system_clipboard",
+        lambda text: copied.append(text) or True,
+    )
+
+    app.action_yank_summary_payload()
+
+    assert copied == ["payload"]
+    assert notices[-1] == "Yanked payload: source"
+
+
+def test_action_yank_summary_payload_requires_selected_agent(monkeypatch) -> None:
+    app = ZeusApp()
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
+
+    app.action_yank_summary_payload()
+
+    assert notices[-1] == "Select a Hippeus row to yank summary payload"
+
+
+def test_action_yank_summary_payload_notifies_when_no_payload(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: source)
+    monkeypatch.setattr(app, "_share_payload_for_source", lambda _source: None)
+
+    app.action_yank_summary_payload()
+
+    assert notices[-1] == app._SHARE_MARKER_REMINDER
+
+
+def test_action_yank_summary_payload_notifies_when_block_empty(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: source)
+    monkeypatch.setattr(app, "_share_payload_for_source", lambda _source: "")
+
+    app.action_yank_summary_payload()
+
+    assert notices[-1] == "Wrapped %%%% markers found, but the enclosed block is empty."
+
+
+def test_action_yank_summary_payload_uses_force_notify_when_clipboard_missing(
+    monkeypatch,
+) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+
+    notices = capture_notify(app, monkeypatch)
+    forced: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: source)
+    monkeypatch.setattr(app, "_share_payload_for_source", lambda _source: "payload")
+    monkeypatch.setattr(app, "_copy_text_to_system_clipboard", lambda _text: False)
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: forced.append(message))
+
+    app.action_yank_summary_payload()
+
+    assert notices == []
+    assert forced[-1] == "wl-copy unavailable; could not yank payload"

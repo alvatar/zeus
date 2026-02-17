@@ -46,7 +46,7 @@ def test_kill_tmux_session_binding_action() -> None:
     assert bindings["ctrl+k"].action == "kill_tmux_session"
 
 
-def test_agent_management_keys_include_z_a_n_g_t_e_d_h_b_and_m() -> None:
+def test_agent_management_keys_include_z_a_n_g_t_e_d_h_y_b_and_m() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "z" in bindings
     assert bindings["z"].action == "new_agent"
@@ -64,6 +64,8 @@ def test_agent_management_keys_include_z_a_n_g_t_e_d_h_b_and_m() -> None:
     assert bindings["d"].action == "toggle_dependency"
     assert "h" in bindings
     assert bindings["h"].action == "message_history"
+    assert "y" in bindings
+    assert bindings["y"].action == "yank_summary_payload"
     assert "b" in bindings
     assert bindings["b"].action == "broadcast_summary"
     assert "m" in bindings
