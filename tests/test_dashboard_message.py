@@ -223,6 +223,28 @@ def test_expanded_output_apply_scrolls_to_bottom(monkeypatch) -> None:
     assert stream.scrolled_to_end is True
 
 
+def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent)
+    pushed: list[object] = []
+
+    class _ZeusStub:
+        def _message_draft_for_agent(self, _agent: AgentWindow) -> str:
+            return "draft"
+
+        def push_screen(self, modal: object) -> None:
+            pushed.append(modal)
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.action_message()
+
+    assert len(pushed) == 1
+    modal = pushed[0]
+    assert isinstance(modal, AgentMessageScreen)
+    assert modal.compact_for_expanded_output is True
+
+
 def test_message_screen_mouse_scroll_forwards_to_expanded_output_when_outside_dialog(
     monkeypatch,
 ) -> None:

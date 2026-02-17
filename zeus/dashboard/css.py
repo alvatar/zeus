@@ -348,6 +348,20 @@ AgentMessageScreen {{
     color: #dddddd;
 }}
 
+AgentMessageScreen.from-expanded-output {{
+    align: center top;
+}}
+
+AgentMessageScreen.from-expanded-output #agent-message-dialog {{
+    width: 130;
+    max-height: 30;
+    margin: 1 0 0 0;
+}}
+
+AgentMessageScreen.from-expanded-output #agent-message-input {{
+    height: 12;
+}}
+
 {_button_row_css(
     "agent-message-buttons",
     align="left middle",
@@ -401,7 +415,7 @@ ExpandedOutputScreen {
     border-top: solid #1a3030;
     padding: 0 1;
     overflow-y: auto;
-    scrollbar-size: 1 1;
+    scrollbar-size: 0 1;
 }
 
 #expanded-output-footer {

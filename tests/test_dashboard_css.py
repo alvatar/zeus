@@ -88,6 +88,17 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "#agent-message-buttons {" in css.AGENT_MESSAGE_CSS
     assert "align: left middle;" in css.AGENT_MESSAGE_CSS
     assert "margin: 0 2 0 0;" in css.AGENT_MESSAGE_CSS
+    assert "AgentMessageScreen.from-expanded-output {" in css.AGENT_MESSAGE_CSS
+    assert "AgentMessageScreen.from-expanded-output #agent-message-dialog {" in css.AGENT_MESSAGE_CSS
+    assert "width: 130;" in css.AGENT_MESSAGE_CSS
+    assert "max-height: 30;" in css.AGENT_MESSAGE_CSS
+    assert "AgentMessageScreen.from-expanded-output #agent-message-input {" in css.AGENT_MESSAGE_CSS
+    assert "height: 12;" in css.AGENT_MESSAGE_CSS
+
+
+def test_expanded_output_hides_horizontal_scrollbar() -> None:
+    assert "#expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
+    assert "scrollbar-size: 0 1;" in css.EXPANDED_OUTPUT_CSS
 
 
 def test_help_css_uses_table_like_rows_without_borders() -> None:

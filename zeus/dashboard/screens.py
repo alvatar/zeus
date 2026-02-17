@@ -204,13 +204,23 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("ctrl+w", "queue", "Queue", show=False),
     ]
 
-    def __init__(self, agent: AgentWindow, draft: str = "") -> None:
+    def __init__(
+        self,
+        agent: AgentWindow,
+        draft: str = "",
+        *,
+        compact_for_expanded_output: bool = False,
+    ) -> None:
         super().__init__()
         self.agent = agent
         self.draft = draft
+        self.compact_for_expanded_output = compact_for_expanded_output
+        if self.compact_for_expanded_output:
+            self.add_class("from-expanded-output")
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="agent-message-dialog"):
+        dialog_classes = "from-expanded-output" if self.compact_for_expanded_output else ""
+        with Vertical(id="agent-message-dialog", classes=dialog_classes):
             with Horizontal(id="agent-message-title-row"):
                 yield Label(f"Message [bold]{self.agent.name}[/bold]", id="agent-message-title")
                 yield Label("", id="agent-message-title-spacer")
@@ -393,6 +403,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             AgentMessageScreen(
                 self.agent,
                 self.zeus._message_draft_for_agent(self.agent),
+                compact_for_expanded_output=True,
             )
         )
 
