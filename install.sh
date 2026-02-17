@@ -128,6 +128,7 @@ if $WRAP_PI; then
                     cat > "$SANDBOX_CONF" <<'SCONF'
 # Writable paths for pi sandbox, one per line.
 # ~ is expanded to $HOME. Lines starting with # are ignored.
+# Strict mode: only ~/code and /tmp (and subpaths) are honored.
 ~/code
 /tmp
 SCONF
@@ -227,12 +228,36 @@ path_is_mounted_dir() {
     return 1
 }
 
+is_allowed_rw_path() {
+    local path="\$1"
+    case "\$path" in
+        "\${HOME}/code"|"\${HOME}/code/"*|"/tmp"|"/tmp/"*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Minimal sandbox skeleton under HOME (no broad home visibility).
+for d in "\${HOME}" \
+         "\${HOME}/code" \
+         "\${HOME}/.pi" \
+         "\${HOME}/.pi/agent" \
+         "\${HOME}/.pi/agent/sessions" \
+         "\${HOME}/.local" \
+         "\${HOME}/.local/bin" \
+         "\${HOME}/.local/lib"; do
+    BWRAP_ARGS+=("--dir" "\$d")
+done
+
 # Core system mounts (read-only)
-for p in /usr /lib /lib64 /bin /sbin /etc /run; do
+for p in /usr /lib /lib64 /bin /sbin /etc; do
     bwrap_ro "\$p"
 done
 
-# Pi/runtime support (read-only)
+# Pi/runtime support (read-only, minimal)
 bwrap_ro "\${HOME}/.local/bin"
 bwrap_ro "\${HOME}/.local/lib/node_modules"
 bwrap_ro "\${HOME}/.pi/agent/settings.json"
@@ -241,8 +266,6 @@ bwrap_ro "\${HOME}/.pi/agent/extensions"
 bwrap_ro "\${HOME}/.pi/agent/bin"
 bwrap_ro "\${HOME}/.pi/agent/APPEND_SYSTEM.md"
 bwrap_ro "\${HOME}/.gitconfig"
-bwrap_ro "\${HOME}/.npm"
-bwrap_ro "\${HOME}/.config"
 
 # Pi/runtime support (read-write, fixed)
 bwrap_bind "\${HOME}/.pi/agent/sessions"
@@ -250,7 +273,9 @@ bwrap_bind "\${HOME}/.pi/agent/auth.json"
 bwrap_bind "\${HOME}/.pi/agent/mcp-cache.json"
 bwrap_bind "\${HOME}/.pi/agent/mcp-npx-cache.json"
 
-# User writable paths from config
+# User writable paths (strict): only ~/code and /tmp (or subpaths).
+bwrap_bind "\${HOME}/code"
+bwrap_bind "/tmp"
 if [ -f "\$SANDBOX_CONF" ]; then
     while IFS= read -r line; do
         line="\${line%%#*}"
@@ -261,12 +286,15 @@ if [ -f "\$SANDBOX_CONF" ]; then
         if [[ "\$expanded" != /* ]]; then
             continue
         fi
+        if ! is_allowed_rw_path "\$expanded"; then
+            continue
+        fi
         bwrap_bind "\$expanded"
     done < "\$SANDBOX_CONF"
-else
-    bwrap_bind "\${HOME}/code"
-    bwrap_bind "/tmp"
 fi
+
+# Hard-deny home-root reads/writes; only explicit submounts remain usable.
+BWRAP_ARGS+=("--chmod" "0111" "\${HOME}")
 
 BWRAP_CHDIR="/"
 if path_is_mounted_dir "\$PWD"; then

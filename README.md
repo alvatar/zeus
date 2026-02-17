@@ -75,6 +75,8 @@ Writable paths are controlled via `~/.config/zeus/sandbox-paths.conf` (auto-crea
 /tmp
 ```
 
+Strict mode note: only `~/code` and `/tmp` (or subpaths under them) are accepted as writable mounts. Other config entries are ignored.
+
 To disable sandboxing in the generated wrapper:
 
 ```bash
