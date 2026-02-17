@@ -71,6 +71,15 @@ def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     assert 'bwrap_bind "\\${HOME}/.local/bin"' in text
     assert 'bwrap_bind "\\${HOME}/.local/lib/node_modules"' in text
     assert 'bwrap_bind "\\${HOME}/.npm"' in text
+    assert 'bwrap_bind "\\${HOME}/.codex"' in text
+    assert 'bwrap_bind "\\${HOME}/.claude"' in text
+
+
+def test_generated_wrapper_precreates_codex_and_claude_dirs() -> None:
+    text = _read("install.sh")
+
+    assert '"\\${HOME}/.codex"' in text
+    assert '"\\${HOME}/.claude"' in text
 
 
 def test_generated_wrapper_strictly_limits_rw_paths() -> None:

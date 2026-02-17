@@ -203,7 +203,9 @@ PI_AGENT_DIR="\${HOME}/.pi/agent"
 mkdir -p "\$PI_AGENT_DIR/sessions" \
          "\${HOME}/.npm" \
          "\${HOME}/.local/bin" \
-         "\${HOME}/.local/lib/node_modules"
+         "\${HOME}/.local/lib/node_modules" \
+         "\${HOME}/.codex" \
+         "\${HOME}/.claude"
 touch "\$PI_AGENT_DIR/auth.json" \
       "\$PI_AGENT_DIR/mcp-cache.json" \
       "\$PI_AGENT_DIR/mcp-npx-cache.json"
@@ -261,7 +263,9 @@ for d in "\${HOME}" \
          "\${HOME}/.local/bin" \
          "\${HOME}/.local/lib" \
          "\${HOME}/.local/lib/node_modules" \
-         "\${HOME}/.npm"; do
+         "\${HOME}/.npm" \
+         "\${HOME}/.codex" \
+         "\${HOME}/.claude"; do
     BWRAP_ARGS+=("--dir" "\$d")
 done
 
@@ -286,6 +290,8 @@ bwrap_bind "\${HOME}/.pi/agent/mcp-npx-cache.json"
 bwrap_bind "\${HOME}/.local/bin"
 bwrap_bind "\${HOME}/.local/lib/node_modules"
 bwrap_bind "\${HOME}/.npm"
+bwrap_bind "\${HOME}/.codex"
+bwrap_bind "\${HOME}/.claude"
 
 # User writable paths (strict): only ~/code and /tmp (or subpaths).
 bwrap_bind "\${HOME}/code"
