@@ -895,7 +895,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("t", "Edit tasks for selected Hippeus"),
     ("e", "Expand output for selected Hippeus"),
     ("Ctrl+t", "Clear done tasks for selected Hippeus"),
-    ("i", "Set/remove blocking dependency for selected Hippeus"),
+    ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("s", "Spawn sub-Hippeus"),
     ("q", "Stop Hippeus (table focus)"),
     ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),

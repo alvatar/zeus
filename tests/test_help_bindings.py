@@ -44,7 +44,8 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["t"] == "Edit tasks for selected Hippeus"
     assert entries["e"] == "Expand output for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
-    assert entries["i"] == "Set/remove blocking dependency for selected Hippeus"
+    assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
+    assert "i" not in entries
     assert "m" not in entries
     assert entries["1"] == "Toggle interact input area"
 
@@ -83,7 +84,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("t", "Edit tasks for selected Hippeus"),
         ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
-        ("i", "Set/remove blocking dependency for selected Hippeus"),
+        ("d", "Set/remove blocking dependency for selected Hippeus"),
         ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
         (
             "Ctrl+m",
@@ -113,7 +114,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "t",
         "e",
         "Ctrl+t",
-        "i",
+        "d",
         "s",
         "k",
         "p",

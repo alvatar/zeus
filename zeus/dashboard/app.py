@@ -473,7 +473,7 @@ class ZeusApp(App):
         Binding("e", "expand_output", "Expand output", show=False),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
-        Binding("i", "toggle_dependency", "Dependency", show=False),
+        Binding("d", "toggle_dependency", "Dependency", show=False),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
         Binding("k", "kill_agent", "Kill Hippeus"),
         Binding("p", "cycle_priority", "Priority"),
@@ -3945,7 +3945,7 @@ class ZeusApp(App):
             self._refresh_interact_panel()
 
     def action_toggle_dependency(self) -> None:
-        """I: toggle blocked dependency for selected agent."""
+        """D: toggle blocked dependency for selected agent."""
         if self._has_blocking_modal_open():
             return
 
