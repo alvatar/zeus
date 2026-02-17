@@ -17,6 +17,10 @@ Zeus system context
   - Hoplite = Phalanx subordinate (not a full Hippeus unless promoted)
   - tmux session = viewer/session row only (not automatically a Hoplite)
 - Agent identity uses stable `ZEUS_AGENT_ID`; display names are human-facing and expected to be unique.
+- Role self-identification (mandatory):
+  - Source of truth: `ZEUS_ROLE` (`hippeus` | `polemarch` | `hoplite`).
+  - Identity: `ZEUS_AGENT_ID`.
+  - Hoplite linkage: `ZEUS_PARENT_ID`, `ZEUS_PHALANX_ID` must be present for hoplite behavior.
 
 Zeus messaging protocol
 - For agent-to-agent messaging, use only:
