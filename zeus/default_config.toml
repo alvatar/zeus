@@ -35,7 +35,7 @@ P = 1
 Elapsed = 4
 Name = 34
 "Model/Cmd" = 11
-CPU = 3
+CPU = 4
 RAM = 4
 
 [columns.wide]
@@ -48,7 +48,7 @@ P = 1
 Elapsed = 5
 Name = 34
 "Model/Cmd" = 11
-CPU = 3
+CPU = 4
 RAM = 4
 
 # ── Mini-map ─────────────────────────────────────────────────────────

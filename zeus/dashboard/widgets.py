@@ -6,6 +6,7 @@ from .widgets_text import ZeusDataTable, ZeusTextArea
 from .widgets_visual import (
     UsageBar,
     _gradient_color,
+    _tmux_metric_gradient_color,
     braille_sparkline,
     braille_sparkline_markup,
     state_sparkline_markup,
@@ -24,6 +25,7 @@ __all__ = [
     "ZeusDataTable",
     "ZeusTextArea",
     "_gradient_color",
+    "_tmux_metric_gradient_color",
     "braille_sparkline",
     "braille_sparkline_markup",
     "shutil",

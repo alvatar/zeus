@@ -9,7 +9,10 @@ from zeus.dashboard.widgets import (
 )
 from zeus.dashboard.app import _compact_name
 from zeus.settings import SETTINGS
-from zeus.dashboard.widgets_visual import _usage_gradient_color
+from zeus.dashboard.widgets_visual import (
+    _usage_gradient_color,
+    _tmux_metric_gradient_color,
+)
 
 
 # ── _compact_name ─────────────────────────────────────────────────────
@@ -87,6 +90,15 @@ def test_usage_gradient_keeps_original_cyan_to_red_ramp() -> None:
     assert _usage_gradient_color(0) == "#00d7d7"
     assert _usage_gradient_color(70) == "#d7d700"
     assert _usage_gradient_color(100) == "#ff3233"
+
+
+def test_tmux_metric_gradient_starts_gray_and_reaches_hot_red() -> None:
+    assert _tmux_metric_gradient_color(0) == "#666666"
+    assert _tmux_metric_gradient_color(100) == "#ff0000"
+
+    low = _tmux_metric_gradient_color(10)
+    high = _tmux_metric_gradient_color(80)
+    assert low != high
 
 
 def test_usage_bar_time_left_column_is_fixed_width_and_right_aligned() -> None:

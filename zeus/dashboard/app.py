@@ -1309,7 +1309,7 @@ class ZeusApp(App):
                 return f"{s // 3600}h{(s % 3600) // 60}m"
             return f"{s // 86400}d{(s % 86400) // 3600}h"
 
-        from .widgets import _gradient_color
+        from .widgets import _gradient_color, _tmux_metric_gradient_color
 
         def _ctx_gauge(pct: float) -> Text:
             """Single-character circular context gauge with gradient color."""
@@ -1509,10 +1509,7 @@ class ZeusApp(App):
                 if pm:
                     cpu_pct = max(0.0, pm.cpu_pct)
                     cpu_label = f"{cpu_pct:.0f}%"
-                    if cpu_pct <= 0:
-                        cpu_t = cpu_label
-                    else:
-                        cpu_t = Text(cpu_label, style=_gradient_color(cpu_pct))
+                    cpu_t = Text(cpu_label, style=_tmux_metric_gradient_color(cpu_pct))
 
                     ram_t = _format_ram_mb(pm.ram_mb)
 
@@ -1520,10 +1517,7 @@ class ZeusApp(App):
                     gpu_str: str = f"{gpu_pct:.0f}%"
                     if pm.gpu_mem_mb > 0:
                         gpu_str += f" {pm.gpu_mem_mb:.0f}M"
-                    if gpu_pct <= 0:
-                        gpu_t = gpu_str
-                    else:
-                        gpu_t = Text(gpu_str, style=_gradient_color(gpu_pct))
+                    gpu_t = Text(gpu_str, style=_tmux_metric_gradient_color(gpu_pct))
 
                     net_str: str = (
                         f"↓{fmt_bytes(pm.io_read_bps)} "

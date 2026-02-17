@@ -148,6 +148,25 @@ def _gradient_color(pct: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _tmux_metric_gradient_color(pct: float) -> str:
+    """Return tmux metric color ramp from baseline gray to hot gradient."""
+    p = max(0.0, min(100.0, pct))
+    if p <= 0:
+        return "#666666"
+
+    hot = _gradient_color(p)
+    hot_r = int(hot[1:3], 16)
+    hot_g = int(hot[3:5], 16)
+    hot_b = int(hot[5:7], 16)
+
+    base_r, base_g, base_b = 0x66, 0x66, 0x66
+    t = p / 100.0
+    r = int(base_r + (hot_r - base_r) * t)
+    g = int(base_g + (hot_g - base_g) * t)
+    b = int(base_b + (hot_b - base_b) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _usage_gradient_color(pct: float) -> str:
     """Return the original usage-bar gradient (cyan→yellow→red)."""
     p = max(0.0, min(100.0, pct)) / 100.0

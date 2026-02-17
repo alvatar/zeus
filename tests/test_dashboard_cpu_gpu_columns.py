@@ -1,6 +1,7 @@
 """Tests for CPU/GPU column color behavior in dashboard rows."""
 
 import inspect
+from pathlib import Path
 
 from zeus.dashboard.app import ZeusApp
 
@@ -12,3 +13,18 @@ def test_cpu_gpu_columns_use_gradient_except_zero_percent() -> None:
     assert "if gpu_pct <= 0:" in source
     assert "style=_gradient_color(cpu_pct)" in source
     assert "style=_gradient_color(gpu_pct)" in source
+
+
+def test_tmux_cpu_gpu_columns_use_tmux_gradient_from_gray_baseline() -> None:
+    source = inspect.getsource(ZeusApp._render_agent_table_and_status)
+
+    assert "style=_tmux_metric_gradient_color(cpu_pct)" in source
+    assert "style=_tmux_metric_gradient_color(gpu_pct)" in source
+
+
+def test_default_config_sets_cpu_column_one_char_wider() -> None:
+    text = (Path(__file__).resolve().parents[1] / "zeus" / "default_config.toml").read_text()
+
+    assert "[columns.split.widths]" in text
+    assert "[columns.wide.widths]" in text
+    assert text.count("CPU = 4") >= 2
