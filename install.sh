@@ -138,7 +138,8 @@ SCONF
                 fi
             fi
 
-            cat > "$PI_BIN" <<EOF
+            PI_WRAP_TMP="${PI_BIN}.zeus-wrap.tmp.$$"
+            cat > "$PI_WRAP_TMP" <<EOF
 #!/bin/bash
 # --- Zeus pi wrapper ---
 set -euo pipefail
@@ -333,7 +334,8 @@ exec bwrap \
     "\${BWRAP_ARGS[@]}" \
     "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"
 EOF
-            chmod +x "$PI_BIN"
+            chmod +x "$PI_WRAP_TMP"
+            mv -f "$PI_WRAP_TMP" "$PI_BIN"
             echo "✓ Installed Zeus pi wrapper at $PI_BIN"
         fi
     fi

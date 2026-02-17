@@ -38,6 +38,15 @@ def test_generated_wrapper_uses_bwrap_and_supports_no_sandbox_flag() -> None:
     assert "--dev /dev" in text
 
 
+def test_wrapper_install_writes_via_temp_file_then_moves_into_place() -> None:
+    text = _read("install.sh")
+
+    assert 'PI_WRAP_TMP="${PI_BIN}.zeus-wrap.tmp.$$"' in text
+    assert 'cat > "$PI_WRAP_TMP" <<EOF' in text
+    assert 'mv -f "$PI_WRAP_TMP" "$PI_BIN"' in text
+    assert 'cat > "$PI_BIN" <<EOF' not in text
+
+
 def test_generated_wrapper_mounts_run_and_sets_git_ssh_env() -> None:
     text = _read("install.sh")
 
