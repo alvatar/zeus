@@ -7,6 +7,7 @@ LIB_DIR="${HOME}/.local/lib"
 
 DEV_MODE=false
 WRAP_PI=false
+NO_BWRAP=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -16,9 +17,12 @@ for arg in "$@"; do
         --wrap-pi)
             WRAP_PI=true
             ;;
+        --no-bwrap)
+            NO_BWRAP=true
+            ;;
         *)
             echo "Unknown option: $arg" >&2
-            echo "Usage: $0 [--dev|-d] [--wrap-pi]" >&2
+            echo "Usage: $0 [--dev|-d] [--wrap-pi] [--no-bwrap]" >&2
             exit 1
             ;;
     esac
@@ -32,13 +36,28 @@ else
 fi
 if $WRAP_PI; then
     echo "pi wrapper: enabled"
+    if $NO_BWRAP; then
+        echo "pi sandbox: disabled (--no-bwrap)"
+    else
+        echo "pi sandbox: bubblewrap (bwrap)"
+    fi
 else
     echo "pi wrapper: disabled"
     echo "⚠⚠⚠ NOTICE: pi wrapper is NOT installed in this run."
     echo "⚠ Independent pi launches won't get deterministic ZEUS_AGENT_ID by default."
     echo "⚠ Run with --wrap-pi to enable it."
+    if $NO_BWRAP; then
+        echo "⚠ --no-bwrap ignored because --wrap-pi is not enabled."
+    fi
 fi
 echo ""
+
+if $WRAP_PI && ! $NO_BWRAP && ! command -v bwrap &>/dev/null; then
+    echo "⚠ bwrap (bubblewrap) not found. Sandbox will be disabled at runtime."
+    echo "  Install: pacman -S bubblewrap (Arch) / apt install bubblewrap (Debian)"
+    echo "  The wrapper will fall back to running pi without sandboxing."
+    echo ""
+fi
 
 # 1. Install zeus binary and package
 mkdir -p "$BIN_DIR"
@@ -72,7 +91,7 @@ if [ -f "$SCRIPT_DIR/bin/zeus-launch" ]; then
     fi
 fi
 
-# 3. Optional pi wrapper for deterministic ZEUS_AGENT_ID on independent pi launches
+# 3. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
 if $WRAP_PI; then
     PI_BIN="$BIN_DIR/pi"
     PI_ORIG="$BIN_DIR/pi.zeus-orig"
@@ -96,12 +115,36 @@ if $WRAP_PI; then
         fi
 
         if $WRAP_READY; then
+            WRAPPER_BWRAP_ENABLED=1
+            if $NO_BWRAP; then
+                WRAPPER_BWRAP_ENABLED=0
+            fi
+
+            if [ "$WRAPPER_BWRAP_ENABLED" = "1" ]; then
+                ZEUS_CONF_DIR="${HOME}/.config/zeus"
+                SANDBOX_CONF="${ZEUS_CONF_DIR}/sandbox-paths.conf"
+                mkdir -p "$ZEUS_CONF_DIR"
+                if [ ! -f "$SANDBOX_CONF" ]; then
+                    cat > "$SANDBOX_CONF" <<'SCONF'
+# Writable paths for pi sandbox, one per line.
+# ~ is expanded to $HOME. Lines starting with # are ignored.
+~/code
+/tmp
+SCONF
+                    echo "✓ Created default sandbox config: $SANDBOX_CONF"
+                else
+                    echo "✓ Sandbox config already exists: $SANDBOX_CONF (preserved)"
+                fi
+            fi
+
             cat > "$PI_BIN" <<EOF
 #!/bin/bash
 # --- Zeus pi wrapper ---
 set -euo pipefail
 
 PI_REAL="$PI_ORIG"
+WRAPPER_BWRAP_ENABLED="$WRAPPER_BWRAP_ENABLED"
+SANDBOX_CONF="\${HOME}/.config/zeus/sandbox-paths.conf"
 
 if [ -z "\${ZEUS_AGENT_ID:-}" ]; then
     ZEUS_AGENT_ID=\$(python3 - <<'PY'
@@ -124,7 +167,121 @@ if [ ! -e "\$PI_REAL" ] && [ ! -L "\$PI_REAL" ]; then
     exit 1
 fi
 
-exec "\$PI_REAL" "\$@"
+PASSTHROUGH_ARGS=()
+NO_SANDBOX=false
+for arg in "\$@"; do
+    if [ "\$arg" = "--no-sandbox" ]; then
+        NO_SANDBOX=true
+    else
+        PASSTHROUGH_ARGS+=("\$arg")
+    fi
+done
+
+if \$NO_SANDBOX; then
+    exec "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"
+fi
+
+if [ "\$WRAPPER_BWRAP_ENABLED" != "1" ]; then
+    exec "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"
+fi
+
+if ! command -v bwrap >/dev/null 2>&1; then
+    echo "Zeus pi wrapper warning: bwrap not found; running without sandbox" >&2
+    exec "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"
+fi
+
+PI_AGENT_DIR="\${HOME}/.pi/agent"
+mkdir -p "\$PI_AGENT_DIR/sessions"
+touch "\$PI_AGENT_DIR/auth.json" \
+      "\$PI_AGENT_DIR/mcp-cache.json" \
+      "\$PI_AGENT_DIR/mcp-npx-cache.json"
+
+BWRAP_ARGS=()
+MOUNT_DIRS=()
+
+bwrap_bind() {
+    local path="\$1"
+    [ -e "\$path" ] || return 0
+    BWRAP_ARGS+=("--bind" "\$path" "\$path")
+    if [ -d "\$path" ]; then
+        MOUNT_DIRS+=("\$path")
+    fi
+}
+
+bwrap_ro() {
+    local path="\$1"
+    [ -e "\$path" ] || return 0
+    BWRAP_ARGS+=("--ro-bind" "\$path" "\$path")
+    if [ -d "\$path" ]; then
+        MOUNT_DIRS+=("\$path")
+    fi
+}
+
+path_is_mounted_dir() {
+    local target="\$1"
+    for dir in "\${MOUNT_DIRS[@]}"; do
+        if [ "\$target" = "\$dir" ] || [[ "\$target" == "\$dir/"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Core system mounts (read-only)
+for p in /usr /lib /lib64 /bin /sbin /etc /run; do
+    bwrap_ro "\$p"
+done
+
+# Pi/runtime support (read-only)
+bwrap_ro "\${HOME}/.local/bin"
+bwrap_ro "\${HOME}/.local/lib/node_modules"
+bwrap_ro "\${HOME}/.pi/agent/settings.json"
+bwrap_ro "\${HOME}/.pi/agent/mcp.json"
+bwrap_ro "\${HOME}/.pi/agent/extensions"
+bwrap_ro "\${HOME}/.pi/agent/bin"
+bwrap_ro "\${HOME}/.pi/agent/APPEND_SYSTEM.md"
+bwrap_ro "\${HOME}/.gitconfig"
+bwrap_ro "\${HOME}/.npm"
+bwrap_ro "\${HOME}/.config"
+
+# Pi/runtime support (read-write, fixed)
+bwrap_bind "\${HOME}/.pi/agent/sessions"
+bwrap_bind "\${HOME}/.pi/agent/auth.json"
+bwrap_bind "\${HOME}/.pi/agent/mcp-cache.json"
+bwrap_bind "\${HOME}/.pi/agent/mcp-npx-cache.json"
+
+# User writable paths from config
+if [ -f "\$SANDBOX_CONF" ]; then
+    while IFS= read -r line; do
+        line="\${line%%#*}"
+        line="\$(echo "\$line" | xargs)"
+        [ -z "\$line" ] && continue
+
+        expanded="\${line/#\~/\$HOME}"
+        if [[ "\$expanded" != /* ]]; then
+            continue
+        fi
+        bwrap_bind "\$expanded"
+    done < "\$SANDBOX_CONF"
+else
+    bwrap_bind "\${HOME}/code"
+    bwrap_bind "/tmp"
+fi
+
+BWRAP_CHDIR="/"
+if path_is_mounted_dir "\$PWD"; then
+    BWRAP_CHDIR="\$PWD"
+elif path_is_mounted_dir "/tmp"; then
+    BWRAP_CHDIR="/tmp"
+fi
+
+exec bwrap \
+    --die-with-parent \
+    --proc /proc \
+    --dev /dev \
+    --chdir "\$BWRAP_CHDIR" \
+    "\${BWRAP_ARGS[@]}" \
+    "\$PI_REAL" "\${PASSTHROUGH_ARGS[@]}"
 EOF
             chmod +x "$PI_BIN"
             echo "✓ Installed Zeus pi wrapper at $PI_BIN"
@@ -184,6 +341,13 @@ fi
 if $WRAP_PI; then
     if [ -f "$BIN_DIR/pi" ] && grep -q "Zeus pi wrapper" "$BIN_DIR/pi" 2>/dev/null; then
         echo "✓ pi wrapper installed at $BIN_DIR/pi"
+        if $NO_BWRAP; then
+            echo "⚠ pi wrapper sandbox disabled (--no-bwrap)"
+        elif command -v bwrap &>/dev/null; then
+            echo "✓ bwrap detected: sandbox enabled for wrapped pi runs"
+        else
+            echo "⚠ bwrap missing: wrapped pi will run unsandboxed until installed"
+        fi
     else
         echo "⚠ pi wrapper requested but not installed"
     fi

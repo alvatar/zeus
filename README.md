@@ -67,11 +67,26 @@ Optional (recommended): install a managed `pi` wrapper for deterministic `ZEUS_A
 bash install.sh --wrap-pi
 ```
 
+With `--wrap-pi`, the wrapper runs `pi` inside a `bwrap` sandbox by default.
+Writable paths are controlled via `~/.config/zeus/sandbox-paths.conf` (auto-created with defaults on first install):
+
+```text
+~/code
+/tmp
+```
+
+To disable sandboxing in the generated wrapper:
+
+```bash
+bash install.sh --wrap-pi --no-bwrap
+```
+
 The installer:
 1. Copies `zeus` and `zeus-launch` to `~/.local/bin/`
 2. (Optional `--wrap-pi`) wraps `~/.local/bin/pi` and stores backup at `~/.local/bin/pi.zeus-orig`
-3. Patches `~/.config/kitty/kitty.conf` to enable remote control
-4. Prints instructions for the sway keybinding
+3. (Optional sandbox mode) seeds `~/.config/zeus/sandbox-paths.conf` if missing
+4. Patches `~/.config/kitty/kitty.conf` to enable remote control
+5. Prints instructions for the sway keybinding
 
 After installing, add this to `~/.config/sway/config`:
 ```
