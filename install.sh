@@ -112,7 +112,12 @@ PY
     export ZEUS_AGENT_ID
 fi
 
+if [ -z "\${ZEUS_ROLE:-}" ]; then
+    export ZEUS_ROLE="hippeus"
+fi
+
 tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
+tmux set -ga update-environment ZEUS_ROLE >/dev/null 2>&1 || true
 
 if [ ! -e "\$PI_REAL" ] && [ ! -L "\$PI_REAL" ]; then
     echo "Zeus pi wrapper error: original pi not found at \$PI_REAL" >&2

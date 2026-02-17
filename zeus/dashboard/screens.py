@@ -108,8 +108,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         env: dict[str, str] = os.environ.copy()
         env["AGENTMON_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
+        env["ZEUS_ROLE"] = role
         if role == "polemarch":
-            env["ZEUS_ROLE"] = "polemarch"
             env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
 
         subprocess.Popen(

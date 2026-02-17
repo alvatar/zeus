@@ -186,6 +186,131 @@ def test_invoke_launch_rejects_duplicate_agent_name(monkeypatch) -> None:
     assert dismissed == []
 
 
+def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("alpha")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-hippeus"))
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-1")
+
+    schedule_calls: list[tuple[str, str]] = []
+    notices: list[str] = []
+    timers: list[float] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, agent_id: str, name: str) -> None:
+            schedule_calls.append((agent_id, name))
+
+        def set_timer(self, delay: float, _callback) -> None:  # noqa: ANN001
+            timers.append(delay)
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_env: dict[str, str] = {}
+
+    class _DummyProc:
+        pid = 123
+
+    def _fake_popen(_cmd, **kwargs):  # noqa: ANN001
+        popen_env.update(kwargs.get("env", {}))
+        return _DummyProc()
+
+    monkeypatch.setattr("zeus.dashboard.screens.subprocess.Popen", _fake_popen)
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._launch()
+
+    assert popen_env["AGENTMON_NAME"] == "alpha"
+    assert popen_env["ZEUS_AGENT_ID"] == "agent-1"
+    assert popen_env["ZEUS_ROLE"] == "hippeus"
+    assert "ZEUS_PHALANX_ID" not in popen_env
+    assert schedule_calls == []
+    assert notices[-1] == "Invoked Hippeus: alpha"
+    assert timers == [1.5]
+    assert dismissed == [True]
+
+
+def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("planner")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-polemarch"))
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-2")
+
+    schedule_calls: list[tuple[str, str]] = []
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, agent_id: str, name: str) -> None:
+            schedule_calls.append((agent_id, name))
+
+        def set_timer(self, _delay: float, _callback) -> None:  # noqa: ANN001
+            return
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_env: dict[str, str] = {}
+
+    class _DummyProc:
+        pid = 123
+
+    def _fake_popen(_cmd, **kwargs):  # noqa: ANN001
+        popen_env.update(kwargs.get("env", {}))
+        return _DummyProc()
+
+    monkeypatch.setattr("zeus.dashboard.screens.subprocess.Popen", _fake_popen)
+    monkeypatch.setattr(screen, "dismiss", lambda: None)
+
+    screen._launch()
+
+    assert popen_env["AGENTMON_NAME"] == "planner"
+    assert popen_env["ZEUS_AGENT_ID"] == "agent-2"
+    assert popen_env["ZEUS_ROLE"] == "polemarch"
+    assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
+    assert schedule_calls == [("agent-2", "planner")]
+    assert notices[-1] == "Invoked Polemarch: planner"
+
+
 def test_rename_dialog_shows_inline_error_for_duplicate_name(monkeypatch) -> None:
     from zeus.models import AgentWindow
 

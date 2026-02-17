@@ -243,6 +243,7 @@ def spawn_subagent(
     env["AGENTMON_NAME"] = name
     env["ZEUS_PARENT"] = agent.name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
+    env["ZEUS_ROLE"] = "hippeus"
     env["ZEUS_SESSION_PATH"] = forked
     proc = subprocess.Popen(
         ["kitty", "--directory", cwd, "--hold",

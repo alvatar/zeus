@@ -632,6 +632,7 @@ class ZeusApp(App):
 
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
+        ensure_tmux_update_environment("ZEUS_ROLE")
         self._load_priorities()
         self._load_agent_tasks()
         self._load_agent_dependencies()

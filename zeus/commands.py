@@ -23,11 +23,13 @@ from .tmux import ensure_tmux_update_environment
 
 def cmd_new(args: argparse.Namespace) -> None:
     ensure_tmux_update_environment()
+    ensure_tmux_update_environment("ZEUS_ROLE")
     name: str = args.name
     directory: str = os.path.expanduser(args.directory or os.getcwd())
     env: dict[str, str] = os.environ.copy()
     env["AGENTMON_NAME"] = name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
+    env["ZEUS_ROLE"] = "hippeus"
 
     session_path = make_new_session_path(directory)
     env["ZEUS_SESSION_PATH"] = session_path
