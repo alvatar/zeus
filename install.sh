@@ -160,6 +160,14 @@ if [ -z "\${ZEUS_ROLE:-}" ]; then
     export ZEUS_ROLE="hippeus"
 fi
 
+: "\${NPM_CONFIG_PREFIX:=\${HOME}/.local}"
+export NPM_CONFIG_PREFIX
+export npm_config_prefix="\$NPM_CONFIG_PREFIX"
+
+: "\${NPM_CONFIG_CACHE:=\${HOME}/.npm}"
+export NPM_CONFIG_CACHE
+export npm_config_cache="\$NPM_CONFIG_CACHE"
+
 tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
 tmux set -ga update-environment ZEUS_ROLE >/dev/null 2>&1 || true
 

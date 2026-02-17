@@ -38,6 +38,15 @@ def test_generated_wrapper_uses_bwrap_and_supports_no_sandbox_flag() -> None:
     assert "--dev /dev" in text
 
 
+def test_generated_wrapper_sets_npm_prefix_and_cache_to_user_paths() -> None:
+    text = _read("install.sh")
+
+    assert 'NPM_CONFIG_PREFIX:=\\${HOME}/.local' in text
+    assert 'export npm_config_prefix="\\$NPM_CONFIG_PREFIX"' in text
+    assert 'NPM_CONFIG_CACHE:=\\${HOME}/.npm' in text
+    assert 'export npm_config_cache="\\$NPM_CONFIG_CACHE"' in text
+
+
 def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     text = _read("install.sh")
 
