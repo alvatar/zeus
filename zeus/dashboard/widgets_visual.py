@@ -192,7 +192,8 @@ class UsageBar(Static):
         pct_field: str = pct_str.rjust(4)
 
         extra_width: int = 7
-        extra: str = (self.extra_text or "").ljust(extra_width)
+        extra_raw: str = (self.extra_text or "")
+        extra: str = extra_raw.rjust(extra_width)
 
         t = Text()
         t.append(f"{self.label_text} ", style="#447777")

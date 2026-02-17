@@ -1,6 +1,7 @@
 """Tests for sparkline rendering and compact name helpers."""
 
 from zeus.dashboard.widgets import (
+    UsageBar,
     _gradient_color,
     braille_sparkline,
     braille_sparkline_markup,
@@ -86,6 +87,31 @@ def test_usage_gradient_keeps_original_cyan_to_red_ramp() -> None:
     assert _usage_gradient_color(0) == "#00d7d7"
     assert _usage_gradient_color(70) == "#d7d700"
     assert _usage_gradient_color(100) == "#ff3233"
+
+
+def test_usage_bar_time_left_column_is_fixed_width_and_right_aligned() -> None:
+    bar = UsageBar("Claude Session:")
+    bar.pct = 42
+
+    bar.extra_text = "(52m)"
+    short = bar.render().plain
+
+    bar.extra_text = "(3h10m)"
+    long = bar.render().plain
+
+    # One separator + 7-char time-left column.
+    assert short[-8:] == "   (52m)"
+    assert long[-8:] == " (3h10m)"
+
+
+def test_usage_bar_empty_time_left_keeps_same_column_width() -> None:
+    bar = UsageBar("OpenAI Session:")
+    bar.pct = 9
+
+    bar.extra_text = ""
+    plain = bar.render().plain
+
+    assert plain[-8:] == " " * 8
 
 
 # ── braille_sparkline ─────────────────────────────────────────────────
