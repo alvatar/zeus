@@ -98,6 +98,31 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         assert agent_mgmt_idx < idx < settings_idx
 
 
+def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
+    start = _HELP_BINDINGS.index(("", "─── Hippeis Management ───")) + 1
+    end = _HELP_BINDINGS.index(("", "─── Navigation ───"))
+    keys = [key for key, _desc in _HELP_BINDINGS[start:end]]
+
+    assert keys == [
+        "q",
+        "e",
+        "r",
+        "t",
+        "Ctrl+t",
+        "p",
+        "a",
+        "s",
+        "d",
+        "g",
+        "k",
+        "Ctrl+k (tmux row)",
+        "z",
+        "Ctrl+b",
+        "n",
+        "Ctrl+m",
+    ]
+
+
 def test_help_lists_all_top_level_app_bindings() -> None:
     keys = {key for key, _desc in _HELP_BINDINGS if key}
 
