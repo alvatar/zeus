@@ -2002,7 +2002,7 @@ class ZeusApp(App):
 
     def _send_stop_to_selected_agent(self) -> None:
         """Send ESC to the currently selected agent row."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -2054,7 +2054,7 @@ class ZeusApp(App):
 
     def action_open_shell_here(self) -> None:
         """Ctrl+O: open a plain kitty shell in selected target's directory."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
 
         tmux = self._get_selected_tmux()
@@ -2375,7 +2375,7 @@ class ZeusApp(App):
 
     def action_broadcast_summary(self) -> None:
         """Ctrl+B: share marked block from selected agent to active peers."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
 
         source = self._get_selected_agent()
@@ -2403,7 +2403,7 @@ class ZeusApp(App):
 
     def action_direct_summary(self) -> None:
         """Ctrl+M: share marked block from selected agent to one peer."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
 
         source = self._get_selected_agent()
@@ -3375,9 +3375,15 @@ class ZeusApp(App):
     def _has_modal_open(self) -> bool:
         return len(self.screen_stack) > 1
 
+    def _has_blocking_modal_open(self) -> bool:
+        """Return True for modal dialogs that should block table actions."""
+        if not self._has_modal_open():
+            return False
+        return not isinstance(self.screen, ExpandedOutputScreen)
+
     def _should_ignore_table_action(self) -> bool:
         """Return True when table-centric actions should be ignored."""
-        return self._is_text_input_focused() or self._has_modal_open()
+        return self._is_text_input_focused() or self._has_blocking_modal_open()
 
     def action_cycle_priority(self) -> None:
         """Cycle priority 3→2→1→4→3 for the selected agent."""
@@ -3680,7 +3686,7 @@ class ZeusApp(App):
         self.push_screen(NewAgentScreen())
 
     def action_agent_tasks(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         agent = self._get_selected_agent()
         if not agent:
@@ -3877,7 +3883,7 @@ class ZeusApp(App):
 
     def action_clear_done_tasks(self) -> None:
         """Ctrl+T: clear all done tasks for selected Hippeus."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
 
         agent = self._get_selected_agent()
@@ -3940,7 +3946,7 @@ class ZeusApp(App):
 
     def action_toggle_dependency(self) -> None:
         """I: toggle blocked dependency for selected agent."""
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
 
         blocked_agent = self._get_selected_agent()
@@ -4099,33 +4105,33 @@ class ZeusApp(App):
     # ── Log panel ─────────────────────────────────────────────────────
 
     def action_show_help(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         self.push_screen(HelpScreen())
 
     def action_toggle_interact_input(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         self._show_interact_input = not self._show_interact_input
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_minimap(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         self._show_minimap = not self._show_minimap
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_sparklines(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         self._show_sparklines = not self._show_sparklines
         self._apply_panel_visibility()
         self._save_panel_visibility()
 
     def action_toggle_target_band(self) -> None:
-        if self._has_modal_open():
+        if self._has_blocking_modal_open():
             return
         self._show_target_band = not self._show_target_band
         self._apply_panel_visibility()

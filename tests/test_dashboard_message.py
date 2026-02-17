@@ -134,6 +134,22 @@ def test_action_expand_output_requires_selected_agent(monkeypatch) -> None:
     assert notices[-1] == "Select a Hippeus row to expand output"
 
 
+def test_should_ignore_table_action_allows_expanded_output_modal(monkeypatch) -> None:
+    app = _new_app()
+    expanded = ExpandedOutputScreen(_agent("alpha", 1))
+
+    monkeypatch.setattr(app, "_is_text_input_focused", lambda: False)
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: expanded))
+
+    assert app._should_ignore_table_action() is False
+
+    message_modal = AgentMessageScreen(_agent("alpha", 1))
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: message_modal))
+
+    assert app._should_ignore_table_action() is True
+
+
 def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)

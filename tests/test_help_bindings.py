@@ -145,9 +145,7 @@ def test_help_lists_modal_only_bindings() -> None:
     assert entries["Ctrl+s (tasks dialog)"] == "Save tasks in Hippeus Tasks dialog"
     assert entries["Ctrl+s (message dialog)"] == "Send message in Hippeus Message dialog"
     assert entries["Ctrl+w (message dialog)"] == "Queue message in Hippeus Message dialog"
-    assert entries["m (expanded output)"] == (
-        "Open Hippeus Message dialog from expanded output"
-    )
+    assert "m (expanded output)" not in entries
     assert entries["y / n / Enter (kill confirm)"] == (
         "Confirm or cancel kill confirmation dialogs"
     )

@@ -275,7 +275,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "dismiss", "Close", show=False),
         Binding("e", "dismiss", "Close", show=False),
         Binding("f5", "refresh", "Refresh", show=False),
-        Binding("m", "message", "Message", show=False),
+        Binding("enter", "message", "Message", show=False),
     ]
 
     def __init__(self, agent: AgentWindow) -> None:
@@ -291,7 +291,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 )
                 yield Label("", id="expanded-output-title-spacer")
                 yield Label(
-                    "(m message | F5 refresh | Esc close)",
+                    "(Enter message | F5 refresh | Esc close)",
                     id="expanded-output-hint",
                 )
             yield RichLog(
@@ -874,7 +874,6 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+s (tasks dialog)", "Save tasks in Hippeus Tasks dialog"),
     ("Ctrl+s (message dialog)", "Send message in Hippeus Message dialog"),
     ("Ctrl+w (message dialog)", "Queue message in Hippeus Message dialog"),
-    ("m (expanded output)", "Open Hippeus Message dialog from expanded output"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),
