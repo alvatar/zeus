@@ -193,7 +193,7 @@ python3 -m pytest tests/ -v  # Tests
 ## How it works
 
 1. **Kitty remote control** — each kitty instance creates a Unix socket at `/tmp/kitty-{pid}`, enabling `kitty @ ls` and `kitty @ get-text` queries
-2. **Hippeus discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `AGENTMON_NAME` or pi heuristics (cmdline/title)
+2. **Hippeus discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `ZEUS_AGENT_NAME` or pi heuristics (cmdline/title)
 3. **Hippeus identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `/tmp/zeus-agent-ids.json`)
 4. **tmux ownership** — sessions match by `@zeus_owner` first, then `ZEUS_AGENT_ID` from tmux session env, then cwd/screen heuristics; high-confidence matches are backfilled into `@zeus_owner`
 5. **State detection** — `kitty @ get-text` captures terminal content; pi's braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) indicate WORKING, absence indicates IDLE

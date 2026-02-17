@@ -70,7 +70,7 @@ def test_msg_cli_send_polemarch_resolves_parent(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setenv("ZEUS_PARENT_ID", "polemarch-1")
     monkeypatch.setenv("ZEUS_PHALANX_ID", "phalanx-polemarch-1")
     monkeypatch.setenv("ZEUS_ROLE", "hoplite")
-    monkeypatch.setenv("AGENTMON_NAME", "hoplite-a")
+    monkeypatch.setenv("ZEUS_AGENT_NAME", "hoplite-a")
 
     rc = msg_cli.cmd_send(_args(to="polemarch", file=str(payload)))
     assert rc == 0

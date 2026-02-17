@@ -137,7 +137,7 @@ def discover_agents() -> list[AgentWindow]:
             for tab in os_win.get("tabs", []):
                 for win in tab.get("windows", []):
                     env: dict[str, str] = win.get("env", {})
-                    name: str | None = env.get("AGENTMON_NAME")
+                    name: str | None = env.get("ZEUS_AGENT_NAME")
 
                     if not name:
                         if not _looks_like_pi_window(win):
@@ -240,7 +240,7 @@ def spawn_subagent(
     if not forked:
         return None
     env: dict[str, str] = os.environ.copy()
-    env["AGENTMON_NAME"] = name
+    env["ZEUS_AGENT_NAME"] = name
     env["ZEUS_PARENT"] = agent.name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
     env["ZEUS_ROLE"] = "hippeus"

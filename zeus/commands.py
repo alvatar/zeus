@@ -27,7 +27,7 @@ def cmd_new(args: argparse.Namespace) -> None:
     name: str = args.name
     directory: str = os.path.expanduser(args.directory or os.getcwd())
     env: dict[str, str] = os.environ.copy()
-    env["AGENTMON_NAME"] = name
+    env["ZEUS_AGENT_NAME"] = name
     env["ZEUS_AGENT_ID"] = generate_agent_id()
     env["ZEUS_ROLE"] = "hippeus"
 

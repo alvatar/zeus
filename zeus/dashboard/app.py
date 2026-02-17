@@ -3697,7 +3697,7 @@ class ZeusApp(App):
             HOPLITE_NAME="hoplite-${{HOPLITE_ID:0:4}}"
 
             tmux new-session -d -s "$SESSION" -c "$PWD" \
-              "ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite AGENTMON_NAME=$HOPLITE_NAME exec pi"
+              "ZEUS_AGENT_NAME=$HOPLITE_NAME ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite exec pi"
 
             tmux set-option -t "$SESSION" @zeus_owner "$POLEMARCH_ID"
             tmux set-option -t "$SESSION" @zeus_agent "$HOPLITE_ID"

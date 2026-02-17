@@ -16,7 +16,7 @@ PY
     # Ensure tmux server propagates Zeus identity/role when sessions are created.
     tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
     tmux set -ga update-environment ZEUS_ROLE >/dev/null 2>&1 || true
-    AGENTMON_NAME="$name" ZEUS_AGENT_ID="$agent_id" ZEUS_ROLE="hippeus" kitty --hold bash -lc "pi"
+    ZEUS_AGENT_NAME="$name" ZEUS_AGENT_ID="$agent_id" ZEUS_ROLE="hippeus" kitty --hold bash -lc "pi"
 else
     kitty
 fi

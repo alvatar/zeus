@@ -217,7 +217,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         )
     except ValueError as error:
         return _err(str(error))
-    source_name = os.environ.get("AGENTMON_NAME", "").strip() or sender_agent_id
+    source_name = os.environ.get("ZEUS_AGENT_NAME", "").strip() or sender_agent_id
 
     envelope = OutboundEnvelope.new(
         source_name=source_name,

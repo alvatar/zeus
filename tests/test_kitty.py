@@ -97,7 +97,7 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     assert captured["src"] == str(source)
     assert popen_calls
     assert "--session" in popen_calls[0][-1]
-    assert popen_env["AGENTMON_NAME"] == "child"
+    assert popen_env["ZEUS_AGENT_NAME"] == "child"
     assert popen_env["ZEUS_PARENT"] == "agent"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-id"
     assert popen_env["ZEUS_ROLE"] == "hippeus"

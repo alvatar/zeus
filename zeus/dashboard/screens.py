@@ -115,7 +115,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
         env: dict[str, str] = os.environ.copy()
-        env["AGENTMON_NAME"] = name
+        env["ZEUS_AGENT_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
         env["ZEUS_ROLE"] = role
         if role == "polemarch":

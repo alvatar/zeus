@@ -255,7 +255,7 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
 
     screen._launch()
 
-    assert popen_env["AGENTMON_NAME"] == "alpha"
+    assert popen_env["ZEUS_AGENT_NAME"] == "alpha"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-1"
     assert popen_env["ZEUS_ROLE"] == "hippeus"
     assert "ZEUS_PHALANX_ID" not in popen_env
@@ -317,7 +317,7 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
 
     screen._launch()
 
-    assert popen_env["AGENTMON_NAME"] == "planner"
+    assert popen_env["ZEUS_AGENT_NAME"] == "planner"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-2"
     assert popen_env["ZEUS_ROLE"] == "polemarch"
     assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
