@@ -60,7 +60,7 @@ def test_invoke_dialog_css_has_role_selector_layout() -> None:
     assert "#invoke-role {" in css.NEW_AGENT_CSS
     assert "#invoke-role RadioButton {" in css.NEW_AGENT_CSS
     assert "margin: 1 0;" in css.NEW_AGENT_CSS
-    assert "max-height: 26;" in css.NEW_AGENT_CSS
+    assert "max-height: 30;" in css.NEW_AGENT_CSS
 
 
 def test_dependency_dialog_css_has_expected_spacing() -> None:

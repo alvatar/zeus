@@ -230,7 +230,7 @@ NewAgentScreen {{
 #new-agent-dialog {{
     width: 60;
     height: auto;
-    max-height: 26;
+    max-height: 30;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
