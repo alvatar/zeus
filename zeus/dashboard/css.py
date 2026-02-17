@@ -408,6 +408,11 @@ LastSentMessageScreen {
     content-align: right middle;
 }
 
+#last-sent-message-position {
+    margin: 0 0 1 0;
+    color: #66a6a6;
+}
+
 #last-sent-message-body {
     height: 1fr;
     border: solid #1a5050;

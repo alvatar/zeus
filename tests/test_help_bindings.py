@@ -45,7 +45,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["e"] == "Expand output for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
     assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
-    assert entries["l"] == "Show last sent message for selected Hippeus"
+    assert entries["h"] == "History for selected Hippeus"
     assert "i" not in entries
     assert "Ctrl+b" not in entries
     assert "Ctrl+m" not in entries
@@ -87,7 +87,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
         ("d", "Set/remove blocking dependency for selected Hippeus"),
-        ("l", "Show last sent message for selected Hippeus"),
+        ("h", "History for selected Hippeus"),
         ("b", "Broadcast block between %%%% markers to active Hippeis"),
         (
             "m",
@@ -117,8 +117,8 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "s",
         "d",
         "g",
+        "h",
         "k",
-        "l",
         "Ctrl+k (tmux row)",
         "z",
         "b",
@@ -145,8 +145,8 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "Ctrl+t",
         "d",
         "s",
+        "h",
         "k",
-        "l",
         "p",
         "r",
         "F5",

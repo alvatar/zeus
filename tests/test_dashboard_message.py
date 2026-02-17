@@ -74,12 +74,22 @@ class _DummyInteractInput:
 class _DummyRichLog:
     def __init__(self) -> None:
         self.scrolled_to_end = False
+        self.writes: list[str] = []
+        self.can_focus = False
+        self.focused = False
 
     def clear(self) -> None:
-        return
+        self.writes = []
 
-    def write(self, _value) -> None:  # noqa: ANN001
-        return
+    def write(self, value) -> None:  # noqa: ANN001
+        plain = getattr(value, "plain", None)
+        if isinstance(plain, str):
+            self.writes.append(plain)
+            return
+        self.writes.append(str(value))
+
+    def focus(self) -> None:
+        self.focused = True
 
     def scroll_up(self, animate: bool = False) -> None:
         return
@@ -98,6 +108,14 @@ class _DummyRichLog:
 
     def scroll_end(self, animate: bool = False) -> None:
         self.scrolled_to_end = True
+
+
+class _DummyLabel:
+    def __init__(self) -> None:
+        self.text = ""
+
+    def update(self, text: str) -> None:
+        self.text = text
 
 
 class _ScreenStackAppStub:
@@ -169,7 +187,7 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     assert screen.draft == "draft body"
 
 
-def test_action_last_sent_message_pushes_message_view_screen(monkeypatch) -> None:
+def test_action_message_history_pushes_history_view_screen(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1, agent_id="agent-1")
 
@@ -184,29 +202,29 @@ def test_action_last_sent_message_pushes_message_view_screen(monkeypatch) -> Non
         lambda key: requested_keys.append(key) or ["older", "latest payload"],
     )
 
-    app.action_last_sent_message()
+    app.action_message_history()
 
     assert requested_keys == ["agent:alpha"]
     assert len(pushed) == 1
     screen = pushed[0]
     assert isinstance(screen, LastSentMessageScreen)
     assert screen.agent is agent
-    assert screen.message == "latest payload"
+    assert screen.history_entries == ["older", "latest payload"]
 
 
-def test_action_last_sent_message_requires_selected_agent(monkeypatch) -> None:
+def test_action_message_history_requires_selected_agent(monkeypatch) -> None:
     app = _new_app()
     notices = capture_notify(app, monkeypatch)
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
 
-    app.action_last_sent_message()
+    app.action_message_history()
 
-    assert notices[-1] == "Select a Hippeus row to show last sent message"
+    assert notices[-1] == "Select a Hippeus row to show history"
 
 
-def test_action_last_sent_message_opens_placeholder_when_no_message(monkeypatch) -> None:
+def test_action_message_history_opens_placeholder_when_no_message(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1, agent_id="agent-1")
     notices = capture_notify(app, monkeypatch)
@@ -217,13 +235,47 @@ def test_action_last_sent_message_opens_placeholder_when_no_message(monkeypatch)
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
     monkeypatch.setattr("zeus.dashboard.app.load_history", lambda _key: [])
 
-    app.action_last_sent_message()
+    app.action_message_history()
 
     assert notices == []
     assert len(pushed) == 1
     screen = pushed[0]
     assert isinstance(screen, LastSentMessageScreen)
-    assert screen.message == "(no sent message recorded yet)"
+    assert screen.history_entries == ["(no sent message recorded yet)"]
+
+
+def test_history_screen_up_down_navigates_from_latest_to_previous(monkeypatch) -> None:
+    screen = LastSentMessageScreen(_agent("alpha", 1), ["first", "second", "third"])
+    body = _DummyRichLog()
+    pos = _DummyLabel()
+
+    def _query_one(selector: str, _cls=None):
+        if selector == "#last-sent-message-body":
+            return body
+        if selector == "#last-sent-message-position":
+            return pos
+        raise AssertionError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    screen.on_mount()
+    assert body.writes == ["third"]
+    assert "latest" in pos.text
+    assert "1/3" in pos.text
+
+    screen.action_older()
+    assert body.writes == ["second"]
+    assert "previous" in pos.text
+    assert "2/3" in pos.text
+
+    screen.action_older()
+    assert body.writes == ["first"]
+    assert "previous-2" in pos.text
+    assert "3/3" in pos.text
+
+    screen.action_newer()
+    assert body.writes == ["second"]
+    assert "2/3" in pos.text
 
 
 def test_action_expand_output_pushes_expanded_output_screen(monkeypatch) -> None:

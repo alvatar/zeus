@@ -320,22 +320,32 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
 class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
     CSS = LAST_SENT_MESSAGE_CSS
-    BINDINGS = [Binding("escape", "dismiss", "Close", show=False)]
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close", show=False),
+        Binding("up", "older", "Older", show=False),
+        Binding("down", "newer", "Newer", show=False),
+    ]
 
-    def __init__(self, agent: AgentWindow, message: str) -> None:
+    def __init__(self, agent: AgentWindow, history_entries: list[str]) -> None:
         super().__init__()
         self.agent = agent
-        self.message = message
+        cleaned = [entry.rstrip() for entry in history_entries if entry.strip()]
+        self.history_entries = cleaned if cleaned else ["(no sent message recorded yet)"]
+        self.history_offset = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="last-sent-message-dialog"):
             with Horizontal(id="last-sent-message-title-row"):
                 yield Label(
-                    f"Last message sent to [bold]{self.agent.name}[/bold]",
+                    f"History [bold]{self.agent.name}[/bold]",
                     id="last-sent-message-title",
                 )
                 yield Label("", id="last-sent-message-title-spacer")
-                yield Label("(Esc close)", id="last-sent-message-shortcuts-hint")
+                yield Label(
+                    "(↑ older | ↓ newer | Esc close)",
+                    id="last-sent-message-shortcuts-hint",
+                )
+            yield Label("", id="last-sent-message-position")
             yield RichLog(
                 id="last-sent-message-body",
                 wrap=True,
@@ -343,14 +353,43 @@ class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
                 auto_scroll=False,
             )
 
+    def _current_history_entry(self) -> str:
+        return self.history_entries[-1 - self.history_offset]
+
+    def _history_label(self) -> str:
+        if self.history_offset == 0:
+            return "latest"
+        if self.history_offset == 1:
+            return "previous"
+        return f"previous-{self.history_offset}"
+
+    def _render_history_entry(self) -> None:
+        body = self.query_one("#last-sent-message-body", RichLog)
+        body.clear()
+        body.write(Text(self._current_history_entry()))
+
+        total = len(self.history_entries)
+        self.query_one("#last-sent-message-position", Label).update(
+            f"History: {self._history_label()} • {self.history_offset + 1}/{total} (newest→oldest)"
+        )
+
     def on_mount(self) -> None:
         body = self.query_one("#last-sent-message-body", RichLog)
         body.can_focus = True
         body.focus()
-        if not self.message.strip():
-            body.write("(no message)")
+        self._render_history_entry()
+
+    def action_older(self) -> None:
+        if self.history_offset >= len(self.history_entries) - 1:
             return
-        body.write(Text(self.message))
+        self.history_offset += 1
+        self._render_history_entry()
+
+    def action_newer(self) -> None:
+        if self.history_offset <= 0:
+            return
+        self.history_offset -= 1
+        self._render_history_entry()
 
 
 class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
@@ -934,8 +973,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("s", "Spawn sub-Hippeus"),
     ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
+    ("h", "History for selected Hippeus"),
     ("k", "Kill Hippeus / tmux session"),
-    ("l", "Show last sent message for selected Hippeus"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Polemarch"),
     ("b", "Broadcast block between %%%% markers to active Hippeis"),

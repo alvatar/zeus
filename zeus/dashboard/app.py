@@ -476,8 +476,8 @@ class ZeusApp(App):
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
         Binding("d", "toggle_dependency", "Dependency", show=False),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
+        Binding("h", "message_history", "History", show=False),
         Binding("k", "kill_agent", "Kill Hippeus"),
-        Binding("l", "last_sent_message", "Last message", show=False),
         Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
@@ -3783,17 +3783,16 @@ class ZeusApp(App):
             return
         self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
 
-    def action_last_sent_message(self) -> None:
+    def action_message_history(self) -> None:
         if self._should_ignore_table_action():
             return
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("Select a Hippeus row to show last sent message", timeout=2)
+            self.notify("Select a Hippeus row to show history", timeout=2)
             return
 
         entries = load_history(self._history_key_for_agent(agent))
-        message = entries[-1] if entries else "(no sent message recorded yet)"
-        self.push_screen(LastSentMessageScreen(agent, message))
+        self.push_screen(LastSentMessageScreen(agent, entries))
 
     def action_go_ahead(self) -> None:
         """G: queue fixed 'go ahead' message for selected Hippeus."""
