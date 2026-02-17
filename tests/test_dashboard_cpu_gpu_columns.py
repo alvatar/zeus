@@ -36,4 +36,4 @@ def test_default_config_sets_cpu_column_one_char_wider() -> None:
 
     assert "[columns.split.widths]" in text
     assert "[columns.wide.widths]" in text
-    assert text.count("CPU = 4") >= 2
+    assert text.count("CPU = 5") >= 2
