@@ -37,7 +37,6 @@ def _new_app() -> ZeusApp:
     app._agent_priorities = {}
     app._agent_tasks = {}
     app._agent_message_drafts = {}
-    app._last_sent_messages = {}
     app._pending_polemarch_bootstraps = {}
     return app
 
@@ -173,16 +172,21 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
 def test_action_last_sent_message_pushes_message_view_screen(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1, agent_id="agent-1")
-    app._last_sent_messages[app._agent_identity_key(agent)] = "latest payload"
 
     pushed: list[object] = []
+    requested_keys: list[str] = []
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(
+        "zeus.dashboard.app.load_history",
+        lambda key: requested_keys.append(key) or ["older", "latest payload"],
+    )
 
     app.action_last_sent_message()
 
+    assert requested_keys == ["agent:alpha"]
     assert len(pushed) == 1
     screen = pushed[0]
     assert isinstance(screen, LastSentMessageScreen)
@@ -209,6 +213,7 @@ def test_action_last_sent_message_notifies_when_no_message(monkeypatch) -> None:
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr("zeus.dashboard.app.load_history", lambda _key: [])
 
     app.action_last_sent_message()
 
@@ -524,7 +529,6 @@ def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
     assert sent == [
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello\r"))
     ]
-    assert app._last_sent_message_for_agent(agent) == "hello"
     assert app._agent_message_drafts == {}
 
 
@@ -545,7 +549,6 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
     ]
-    assert app._last_sent_message_for_agent(agent) == "hello"
     assert app._agent_message_drafts == {}
 
 
@@ -570,7 +573,6 @@ def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     assert sent == [
         (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
     ]
-    assert app._last_sent_message_for_agent(paused) == "hello"
 
 
 def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:

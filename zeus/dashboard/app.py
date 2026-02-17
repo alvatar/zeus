@@ -549,7 +549,6 @@ class ZeusApp(App):
     _prepare_target_selection: dict[int, str] = {}
     _agent_tasks: dict[str, str] = {}
     _agent_message_drafts: dict[str, str] = {}
-    _last_sent_messages: dict[str, str] = {}
     _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
@@ -2154,6 +2153,10 @@ class ZeusApp(App):
     def _agent_message_draft_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
 
+    @staticmethod
+    def _history_key_for_agent(agent: AgentWindow) -> str:
+        return f"agent:{agent.name}"
+
     def _message_draft_for_agent(self, agent: AgentWindow) -> str:
         return self._agent_message_drafts.get(self._agent_message_draft_key(agent), "")
 
@@ -2166,15 +2169,6 @@ class ZeusApp(App):
 
     def do_clear_agent_message_draft(self, agent: AgentWindow) -> None:
         self._agent_message_drafts.pop(self._agent_message_draft_key(agent), None)
-
-    def _remember_last_sent_message(self, agent: AgentWindow, text: str) -> None:
-        clean = text.rstrip()
-        if not clean.strip():
-            return
-        self._last_sent_messages[self._agent_identity_key(agent)] = clean
-
-    def _last_sent_message_for_agent(self, agent: AgentWindow) -> str:
-        return self._last_sent_messages.get(self._agent_identity_key(agent), "")
 
     def _agent_dependency_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
@@ -3166,11 +3160,11 @@ class ZeusApp(App):
         if self._interact_agent_key:
             agent = self._get_agent_by_key(self._interact_agent_key)
             if agent:
-                return f"agent:{agent.name}"
+                return self._history_key_for_agent(agent)
         if self._interact_tmux_name:
             for agent in self.agents:
                 if any(s.name == self._interact_tmux_name for s in agent.tmux_sessions):
-                    return f"agent:{agent.name}"
+                    return self._history_key_for_agent(agent)
         return None
 
     def _reset_history_nav(self) -> None:
@@ -3260,7 +3254,7 @@ class ZeusApp(App):
 
     def _prune_interact_histories(self) -> None:
         """Delete history files for agent names that are no longer present."""
-        live_targets: set[str] = {f"agent:{a.name}" for a in self.agents}
+        live_targets: set[str] = {self._history_key_for_agent(a) for a in self.agents}
         prune_histories(live_targets)
 
     # ── Agent priorities / tasks / dependencies ───────────────────
@@ -3797,12 +3791,12 @@ class ZeusApp(App):
             self.notify("Select a Hippeus row to show last sent message", timeout=2)
             return
 
-        last = self._last_sent_message_for_agent(agent)
-        if not last.strip():
+        entries = load_history(self._history_key_for_agent(agent))
+        if not entries:
             self.notify(f"No sent message recorded for {agent.name}", timeout=2)
             return
 
-        self.push_screen(LastSentMessageScreen(agent, last))
+        self.push_screen(LastSentMessageScreen(agent, entries[-1]))
 
     def action_go_ahead(self) -> None:
         """G: queue fixed 'go ahead' message for selected Hippeus."""
@@ -4431,16 +4425,15 @@ class ZeusApp(App):
         match = f"id:{agent.kitty_id}"
 
         if queue_sequence is None:
-            result = kitty_cmd(
-                agent.socket,
-                "send-text",
-                "--match",
-                match,
-                clean + "\r",
+            return bool(
+                kitty_cmd(
+                    agent.socket,
+                    "send-text",
+                    "--match",
+                    match,
+                    clean + "\r",
+                )
             )
-            if result is not None:
-                self._remember_last_sent_message(agent, clean)
-            return bool(result)
 
         if kitty_cmd(agent.socket, "send-text", "--match", match, clean) is None:
             return False
@@ -4449,7 +4442,6 @@ class ZeusApp(App):
             if kitty_cmd(agent.socket, "send-text", "--match", match, key) is None:
                 return False
 
-        self._remember_last_sent_message(agent, clean)
         return True
 
     def _dispatch_tmux_text(
