@@ -60,3 +60,79 @@ def test_do_rename_agent_without_explicit_priority_keeps_priority_map(monkeypatc
 
     assert app._agent_priorities == {"other": 1}
     assert saved_priorities == []
+
+
+def test_do_rename_agent_rejects_duplicate_name(monkeypatch) -> None:
+    app = ZeusApp()
+    target = _agent("old")
+    existing = AgentWindow(
+        kitty_id=2,
+        socket="/tmp/kitty-1",
+        name="taken",
+        pid=102,
+        kitty_pid=202,
+        cwd="/tmp/project",
+    )
+    app.agents = [target, existing]
+
+    notices: list[str] = []
+    polls: list[bool] = []
+    saved_overrides: list[dict[str, str]] = []
+
+    monkeypatch.setattr("zeus.dashboard.app.load_names", lambda: {})
+    monkeypatch.setattr(
+        "zeus.dashboard.app.save_names",
+        lambda overrides: saved_overrides.append(dict(overrides)),
+    )
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "poll_and_update", lambda: polls.append(True))
+
+    ok = app.do_rename_agent(target, "taken")
+
+    assert ok is False
+    assert saved_overrides == []
+    assert polls == []
+    assert notices[-1] == "Name already exists: taken"
+
+
+def test_do_spawn_subagent_rejects_duplicate_name(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+    taken = AgentWindow(
+        kitty_id=2,
+        socket="/tmp/kitty-1",
+        name="taken",
+        pid=102,
+        kitty_pid=202,
+        cwd="/tmp/project",
+    )
+    app.agents = [parent, taken]
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    def _spawn_fail(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("must not spawn")
+
+    monkeypatch.setattr("zeus.dashboard.app.spawn_subagent", _spawn_fail)
+
+    app.do_spawn_subagent(parent, "taken")
+
+    assert notices[-1] == "Name already exists: taken"
+
+
+def test_name_uniqueness_checks_are_case_insensitive() -> None:
+    app = ZeusApp()
+    app.agents = [
+        AgentWindow(
+            kitty_id=2,
+            socket="/tmp/kitty-1",
+            name="Taken",
+            pid=102,
+            kitty_pid=202,
+            cwd="/tmp/project",
+        )
+    ]
+
+    assert app._is_agent_name_taken("taken") is True
+    assert app._is_agent_name_taken("TAKEN") is True

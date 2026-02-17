@@ -426,6 +426,7 @@ RenameScreen, RenameTmuxScreen {
 #rename-dialog {
     width: 55;
     height: auto;
+    min-height: 10;
     border: solid #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
@@ -438,6 +439,11 @@ RenameScreen, RenameTmuxScreen {
 
 #rename-dialog Input {
     margin: 1 0;
+}
+
+#rename-error {
+    margin: 0;
+    color: #ff4d4d;
 }
 """
 

@@ -2,6 +2,7 @@
 
 import inspect
 import re
+from types import SimpleNamespace
 
 from zeus.dashboard.screens import (
     AgentMessageScreen,
@@ -96,6 +97,7 @@ def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
     assert "rename-buttons" not in source
     assert "rename-btn" not in source
     assert "cancel-btn" not in source
+    assert "rename-error" in source
 
     submit_source = inspect.getsource(RenameScreen.on_input_submitted)
     assert "self._do_rename()" in submit_source
@@ -115,3 +117,121 @@ def test_rename_tmux_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
 
     bindings = {binding.key: binding.action for binding in RenameTmuxScreen.BINDINGS}
     assert bindings["escape"] == "dismiss"
+
+
+class _InputStub:
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+        self.focused = False
+
+    def focus(self) -> None:
+        self.focused = True
+
+
+class _LabelStub:
+    def __init__(self) -> None:
+        self.text = ""
+
+    def update(self, text: str) -> None:
+        self.text = text
+
+
+def test_invoke_launch_rejects_duplicate_agent_name(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("taken")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-hippeus"))
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return name == "taken"
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not bootstrap on duplicate")
+
+        def set_timer(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not schedule timer on duplicate")
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_called: list[bool] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.subprocess.Popen",
+        lambda *args, **kwargs: popen_called.append(True),  # noqa: ARG005
+    )
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._launch()
+
+    assert notices[-1] == "Name already exists: taken"
+    assert name_input.focused is True
+    assert popen_called == []
+    assert dismissed == []
+
+
+def test_rename_dialog_shows_inline_error_for_duplicate_name(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = RenameScreen(agent)
+
+    rename_input = _InputStub("taken")
+    rename_error = _LabelStub()
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#rename-input":
+            return rename_input
+        if selector == "#rename-error":
+            return rename_error
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    rename_calls: list[str] = []
+
+    class _ZeusStub:
+        def _agent_key(self, _agent: AgentWindow) -> str:
+            return "/tmp/kitty-1:1"
+
+        def _is_agent_name_taken(self, name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return name == "taken"
+
+        def do_rename_agent(self, _agent: AgentWindow, new_name: str) -> bool:
+            rename_calls.append(new_name)
+            return True
+
+    monkeypatch.setattr(RenameScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._do_rename()
+
+    assert rename_error.text == "Name already exists. Choose a unique Hippeus name."
+    assert rename_input.focused is True
+    assert rename_calls == []
+    assert dismissed == []

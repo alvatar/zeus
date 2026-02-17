@@ -97,6 +97,10 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if not name:
             self.query_one("#agent-name", Input).focus()
             return
+        if self.zeus._is_agent_name_taken(name):
+            self.zeus.notify(f"Name already exists: {name}", timeout=3)
+            self.query_one("#agent-name", Input).focus()
+            return
 
         role = self._selected_role()
         agent_id = generate_agent_id()
@@ -366,11 +370,16 @@ class RenameScreen(_ZeusScreenMixin, ModalScreen):
             yield Label(f"Rename Hippeus [bold]{self.agent.name}[/bold]")
             yield Label("New name:")
             yield Input(value=self.agent.name, id="rename-input")
+            yield Label("", id="rename-error")
 
     def on_mount(self) -> None:
         inp = self.query_one("#rename-input", Input)
         inp.focus()
         inp.action_select_all()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "rename-input":
+            self.query_one("#rename-error", Label).update("")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._do_rename()
@@ -380,8 +389,17 @@ class RenameScreen(_ZeusScreenMixin, ModalScreen):
         if not new_name or new_name == self.agent.name:
             self.dismiss()
             return
-        self.dismiss()
-        self.zeus.do_rename_agent(self.agent, new_name)
+
+        exclude_key = self.zeus._agent_key(self.agent)
+        if self.zeus._is_agent_name_taken(new_name, exclude_key=exclude_key):
+            self.query_one("#rename-error", Label).update(
+                "Name already exists. Choose a unique Hippeus name."
+            )
+            self.query_one("#rename-input", Input).focus()
+            return
+
+        if self.zeus.do_rename_agent(self.agent, new_name):
+            self.dismiss()
 
 
 class RenameTmuxScreen(_ZeusScreenMixin, ModalScreen):

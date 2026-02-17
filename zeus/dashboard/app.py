@@ -2121,6 +2121,26 @@ class ZeusApp(App):
         return f"{agent.socket}:{agent.kitty_id}"
 
     @staticmethod
+    def _normalized_agent_name(name: str) -> str:
+        return name.strip().casefold()
+
+    def _is_agent_name_taken(
+        self,
+        name: str,
+        *,
+        exclude_key: str | None = None,
+    ) -> bool:
+        target = self._normalized_agent_name(name)
+        if not target:
+            return False
+        for agent in self.agents:
+            if exclude_key and self._agent_key(agent) == exclude_key:
+                continue
+            if self._normalized_agent_name(agent.name) == target:
+                return True
+        return False
+
+    @staticmethod
     def _agent_identity_key(agent: AgentWindow) -> str:
         return agent.agent_id or f"{agent.socket}:{agent.kitty_id}"
 
@@ -4001,11 +4021,16 @@ class ZeusApp(App):
         self.push_screen(SubAgentScreen(agent))
 
     def do_spawn_subagent(self, agent: AgentWindow, name: str) -> None:
+        clean_name = name.strip()
+        if self._is_agent_name_taken(clean_name):
+            self.notify(f"Name already exists: {clean_name}", timeout=3)
+            return
+
         result: str | None = spawn_subagent(
-            agent, name, workspace=agent.workspace
+            agent, clean_name, workspace=agent.workspace
         )
         if result:
-            self.notify(f"🧬 Spawned: {name}", timeout=3)
+            self.notify(f"🧬 Spawned: {clean_name}", timeout=3)
             self.set_timer(1.5, self.poll_and_update)
         else:
             self.notify(
@@ -4023,21 +4048,31 @@ class ZeusApp(App):
         if tmux:
             self.push_screen(RenameTmuxScreen(tmux))
 
-    def do_rename_agent(self, agent: AgentWindow, new_name: str) -> None:
+    def do_rename_agent(self, agent: AgentWindow, new_name: str) -> bool:
+        clean_name = new_name.strip()
         old_name = agent.name
+        key = self._agent_key(agent)
+
+        if not clean_name:
+            return False
+        if clean_name == old_name:
+            return False
+        if self._is_agent_name_taken(clean_name, exclude_key=key):
+            self.notify(f"Name already exists: {clean_name}", timeout=3)
+            return False
 
         overrides: dict[str, str] = load_names()
-        key: str = f"{agent.socket}:{agent.kitty_id}"
-        overrides[key] = new_name
+        overrides[key] = clean_name
         save_names(overrides)
 
         if old_name in self._agent_priorities:
             preserved_priority = self._agent_priorities.pop(old_name)
-            self._agent_priorities[new_name] = preserved_priority
+            self._agent_priorities[clean_name] = preserved_priority
             self._save_priorities()
 
-        self.notify(f"Renamed: {old_name} → {new_name}", timeout=3)
+        self.notify(f"Renamed: {old_name} → {clean_name}", timeout=3)
         self.poll_and_update()
+        return True
 
     def do_rename_tmux(self, sess: TmuxSession, new_name: str) -> None:
         try:
