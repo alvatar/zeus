@@ -37,7 +37,7 @@ def test_looks_like_pi_window_title_pi_symbol():
     assert _looks_like_pi_window(win) is True
 
 
-def _agent(session_path: str = "") -> AgentWindow:
+def _agent(session_path: str = "", agent_id: str = "parent-1") -> AgentWindow:
     return AgentWindow(
         kitty_id=1,
         socket="/tmp/kitty-1",
@@ -45,6 +45,7 @@ def _agent(session_path: str = "") -> AgentWindow:
         pid=100,
         kitty_pid=99,
         cwd="/tmp/project",
+        agent_id=agent_id,
         session_path=session_path,
     )
 
@@ -98,6 +99,20 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     assert popen_calls
     assert "--session" in popen_calls[0][-1]
     assert popen_env["ZEUS_AGENT_NAME"] == "child"
-    assert popen_env["ZEUS_PARENT"] == "agent"
+    assert popen_env["ZEUS_PARENT_ID"] == "parent-1"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-id"
     assert popen_env["ZEUS_ROLE"] == "hippeus"
+
+
+def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "parent.jsonl"
+    source.write_text('{"type":"session"}\n')
+
+    agent = _agent(session_path=str(source), agent_id="")
+
+    monkeypatch.setattr(kitty, "fork_session", lambda _src, _cwd: str(tmp_path / "child.jsonl"))
+    monkeypatch.setattr(kitty.subprocess, "Popen", lambda *_args, **_kwargs: None)
+
+    result = kitty.spawn_subagent(agent, "child", workspace="")
+
+    assert result is None

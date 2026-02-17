@@ -52,7 +52,7 @@ class AgentWindow:
     tokens_in: str = ""
     tokens_out: str = ""
     workspace: str = ""
-    parent_name: str = ""
+    parent_id: str = ""  # ZEUS_PARENT_ID for agent lineage
     role: str = ""  # ZEUS_ROLE for agent-level role (e.g. polemarch)
     session_path: str = ""
     tmux_sessions: list[TmuxSession] = field(default_factory=list)

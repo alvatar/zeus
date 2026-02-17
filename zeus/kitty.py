@@ -168,7 +168,7 @@ def discover_agents() -> list[AgentWindow]:
                         kitty_pid=kitty_pid,
                         cwd=win.get("cwd", ""),
                         agent_id=agent_id,
-                        parent_name=env.get("ZEUS_PARENT", ""),
+                        parent_id=(env.get("ZEUS_PARENT_ID") or "").strip(),
                         role=(env.get("ZEUS_ROLE") or "").strip().lower(),
                         session_path=env.get("ZEUS_SESSION_PATH", ""),
                     ))
@@ -182,17 +182,12 @@ def discover_agents() -> list[AgentWindow]:
     if ids_changed:
         save_agent_ids(ids)
 
-    # Apply name overrides and fix parent refs
+    # Apply name overrides (lineage uses parent_id, so no parent-name rewrites).
     overrides: dict[str, str] = load_names()
-    orig_to_new: dict[str, str] = {}
     for a in agents:
         agent_key: str = f"{a.socket}:{a.kitty_id}"
         if agent_key in overrides:
-            orig_to_new[a.name] = overrides[agent_key]
             a.name = overrides[agent_key]
-    for a in agents:
-        if a.parent_name and a.parent_name in orig_to_new:
-            a.parent_name = orig_to_new[a.parent_name]
     return agents
 
 
@@ -239,9 +234,13 @@ def spawn_subagent(
     forked: str | None = fork_session(source, cwd)
     if not forked:
         return None
+    parent_id = (agent.agent_id or "").strip()
+    if not parent_id:
+        return None
+
     env: dict[str, str] = os.environ.copy()
     env["ZEUS_AGENT_NAME"] = name
-    env["ZEUS_PARENT"] = agent.name
+    env["ZEUS_PARENT_ID"] = parent_id
     env["ZEUS_AGENT_ID"] = generate_agent_id()
     env["ZEUS_ROLE"] = "hippeus"
     env["ZEUS_SESSION_PATH"] = forked

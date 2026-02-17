@@ -1223,7 +1223,7 @@ class ZeusApp(App):
             return False
 
         # Separate top-level/sub-agent tree and blocked-dependency tree.
-        parent_names: set[str] = {a.name for a in self.agents}
+        parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
 
         blocked_by_key: dict[str, str] = {}
         blocked_of: dict[str, list[AgentWindow]] = {}
@@ -1245,15 +1245,15 @@ class ZeusApp(App):
         top_level: list[AgentWindow] = [
             a for a in self.agents
             if self._agent_key(a) not in blocked_by_key
-            and (not a.parent_name or a.parent_name not in parent_names)
+            and (not a.parent_id or a.parent_id not in parent_ids)
         ]
 
         children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
             if self._agent_key(a) in blocked_by_key:
                 continue
-            if a.parent_name and a.parent_name in parent_names:
-                children_of.setdefault(a.parent_name, []).append(a)
+            if a.parent_id and a.parent_id in parent_ids:
+                children_of.setdefault(a.parent_id, []).append(a)
 
         def _priority_sort_key(
             a: AgentWindow,
@@ -1604,7 +1604,7 @@ class ZeusApp(App):
             for blocked in blocked_of.get(akey, []):
                 _render_agent_branch(blocked, next_level, relation_icon="🔺")
 
-            for child in children_of.get(a.name, []):
+            for child in children_of.get(a.agent_id, []):
                 _render_agent_branch(child, next_level, relation_icon="🧬")
 
             _add_tmux_rows(a, indent_level=next_level)
@@ -1669,16 +1669,16 @@ class ZeusApp(App):
         }
 
 
-        parent_names: set[str] = {a.name for a in self.agents}
+        parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
         top_level: list[AgentWindow] = sorted(
             (a for a in self.agents
-             if not a.parent_name or a.parent_name not in parent_names),
+             if not a.parent_id or a.parent_id not in parent_ids),
             key=lambda a: self._get_priority(a.name),
         )
         children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
-            if a.parent_name and a.parent_name in parent_names:
-                children_of.setdefault(a.parent_name, []).append(a)
+            if a.parent_id and a.parent_id in parent_ids:
+                children_of.setdefault(a.parent_id, []).append(a)
         for kids in children_of.values():
             kids.sort(key=lambda a: self._get_priority(a.name))
 
@@ -1712,7 +1712,7 @@ class ZeusApp(App):
         # Build groups: list of (parent, [children])
         groups: list[tuple[AgentWindow, list[AgentWindow]]] = []
         for a in top_level:
-            groups.append((a, children_of.get(a.name, [])))
+            groups.append((a, children_of.get(a.agent_id, [])))
 
         # Render as box cards. Pack by available width and keep each card's
         # label directly under its marker row.
@@ -1824,12 +1824,12 @@ class ZeusApp(App):
             return
         widget.remove_class("hidden")
 
-        parent_names: set[str] = {a.name for a in self.agents}
+        parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
         ordered = sorted(
             self.agents,
             key=lambda a: (
                 self._get_priority(a.name),
-                0 if (not a.parent_name or a.parent_name not in parent_names) else 1,
+                0 if (not a.parent_id or a.parent_id not in parent_ids) else 1,
                 a.name,
             ),
         )
