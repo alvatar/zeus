@@ -2230,24 +2230,38 @@ class ZeusApp(App):
         source_dep_key = self._agent_dependency_key(source)
         return self._agent_dependencies.get(target_dep_key) == source_dep_key
 
-    def _clear_dependency_if_blocked_by_source_id(
+    def _clear_dependency_if_blocked_by_source(
         self,
         target: AgentWindow,
-        source_agent_id: str,
+        *,
+        source_agent_id: str = "",
+        source_name: str = "",
     ) -> bool:
-        """Clear target dependency only when it is blocked by source_agent_id."""
-        source_id = source_agent_id.strip()
-        if not source_id:
-            return False
-
+        """Clear target dependency only when it is blocked by the message source."""
         target_dep_key = self._agent_dependency_key(target)
         blocker_dep_key = self._agent_dependencies.get(target_dep_key)
         if not blocker_dep_key:
             return False
 
-        source = self._get_agent_by_id(source_id)
-        source_dep_key = self._agent_dependency_key(source) if source else source_id
-        if blocker_dep_key != source_dep_key:
+        source_candidates: set[str] = set()
+
+        source_id = source_agent_id.strip()
+        if source_id:
+            source_candidates.add(source_id)
+            source = self._get_agent_by_id(source_id)
+            if source is not None:
+                source_candidates.add(self._agent_dependency_key(source))
+                source_candidates.add(self._agent_key(source))
+
+        name = source_name.strip()
+        if name:
+            matches = [agent for agent in self.agents if agent.name == name]
+            if len(matches) == 1:
+                source = matches[0]
+                source_candidates.add(self._agent_dependency_key(source))
+                source_candidates.add(self._agent_key(source))
+
+        if blocker_dep_key not in source_candidates:
             return False
 
         self._agent_dependencies.pop(target_dep_key, None)
@@ -2723,11 +2737,13 @@ class ZeusApp(App):
         message: str,
         *,
         source_agent_id: str = "",
+        source_name: str = "",
     ) -> bool:
         if target.kind == "agent" and target.agent is not None:
-            dependency_cleared = self._clear_dependency_if_blocked_by_source_id(
+            dependency_cleared = self._clear_dependency_if_blocked_by_source(
                 target.agent,
-                source_agent_id,
+                source_agent_id=source_agent_id,
+                source_name=source_name,
             )
             if not dependency_cleared:
                 self._resume_agent_if_paused(target.agent)
@@ -2829,6 +2845,7 @@ class ZeusApp(App):
                         target,
                         claimed.message,
                         source_agent_id=claimed.source_agent_id,
+                        source_name=claimed.source_name,
                     )
                     if not delivered:
                         all_delivered = False
