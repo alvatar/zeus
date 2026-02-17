@@ -978,11 +978,11 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Polemarch"),
-    ("b", "Broadcast block between %%%% markers to active Hippeis"),
+    ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
     ("n", "Queue next task for selected Hippeus"),
     (
         "m",
-        "Send text between %%%% markers to selected target",
+        "Direct-send latest share payload (ZEUS_MSG_FILE or %%%% block)",
     ),
     ("", "─── Navigation ───"),
     ("Enter", "Focus interact input"),

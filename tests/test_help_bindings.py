@@ -31,10 +31,10 @@ def test_help_lists_text_area_navigation_commands() -> None:
         "Yank killed text (system clipboard, fallback local kill buffer)"
     )
     assert entries["b"] == (
-        "Broadcast block between %%%% markers to active Hippeis"
+        "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"
     )
     assert entries["m"] == (
-        "Send text between %%%% markers to selected target"
+        "Direct-send latest share payload (ZEUS_MSG_FILE or %%%% block)"
     )
     assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
     assert entries["z"] == "Invoke Hippeus / Polemarch"
@@ -90,10 +90,10 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
         ("d", "Set/remove blocking dependency for selected Hippeus"),
         ("h", "History for selected Hippeus"),
-        ("b", "Broadcast block between %%%% markers to active Hippeis"),
+        ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
         (
             "m",
-            "Send text between %%%% markers to selected target",
+            "Direct-send latest share payload (ZEUS_MSG_FILE or %%%% block)",
         ),
         ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ]
