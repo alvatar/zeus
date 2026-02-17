@@ -137,7 +137,7 @@ def test_render_agent_table_shows_literal_phalanx_label_for_polemarch(monkeypatc
     name_idx = cols.index("Name")
     name_cell = table.added_rows[0][name_idx]
     assert isinstance(name_cell, Text)
-    assert name_cell.plain == "🗡 polemarch [phalanx: 3]"
+    assert name_cell.plain == "⌁ polemarch [phalanx: 3]"
 
 
 def test_render_agent_table_requires_explicit_polemarch_role_for_label(monkeypatch) -> None:

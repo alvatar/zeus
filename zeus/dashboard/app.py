@@ -1417,8 +1417,8 @@ class ZeusApp(App):
             )
             agent_role = (a.role or "").strip().lower()
             is_polemarch_display = agent_role == "polemarch"
-            role_marker = "🗡 " if is_polemarch_display else ""
-            hidden_marker = "🔍 " if hidden else ""
+            role_marker = "⌁ " if is_polemarch_display else ""
+            hidden_marker = "⬡ " if hidden else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
             )

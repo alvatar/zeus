@@ -233,5 +233,5 @@ def test_hidden_agents_render_with_viewer_icon_and_gray_row(monkeypatch) -> None
     name_cell = table.row_cells[row_key][name_idx]
 
     assert isinstance(name_cell, Text)
-    assert name_cell.plain.startswith("🔍 shadow")
+    assert name_cell.plain.startswith("⬡ shadow")
     assert name_cell.style == "#666666"
