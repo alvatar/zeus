@@ -207,6 +207,7 @@ mkdir -p "\$PI_AGENT_DIR/sessions" \
          "\${HOME}/.local/bin" \
          "\${HOME}/.local/lib/node_modules" \
          "\${HOME}/.cargo" \
+         "\${HOME}/.rustup" \
          "\${HOME}/.codex" \
          "\${HOME}/.claude"
 touch "\$PI_AGENT_DIR/auth.json" \
@@ -256,6 +257,7 @@ for d in "\${HOME}" \
          "\${HOME}/.local/lib/node_modules" \
          "\${HOME}/.npm" \
          "\${HOME}/.cargo" \
+         "\${HOME}/.rustup" \
          "\${HOME}/.codex" \
          "\${HOME}/.claude"; do
     BWRAP_ARGS+=("--dir" "\$d")
@@ -283,6 +285,7 @@ bwrap_bind "\${HOME}/.local/bin"
 bwrap_bind "\${HOME}/.local/lib/node_modules"
 bwrap_bind "\${HOME}/.npm"
 bwrap_bind "\${HOME}/.cargo"
+bwrap_bind "\${HOME}/.rustup"
 bwrap_bind "\${HOME}/.codex"
 bwrap_bind "\${HOME}/.claude"
 

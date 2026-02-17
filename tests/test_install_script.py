@@ -83,14 +83,16 @@ def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     assert 'bwrap_bind "\\${HOME}/.local/lib/node_modules"' in text
     assert 'bwrap_bind "\\${HOME}/.npm"' in text
     assert 'bwrap_bind "\\${HOME}/.cargo"' in text
+    assert 'bwrap_bind "\\${HOME}/.rustup"' in text
     assert 'bwrap_bind "\\${HOME}/.codex"' in text
     assert 'bwrap_bind "\\${HOME}/.claude"' in text
 
 
-def test_generated_wrapper_precreates_cargo_codex_and_claude_dirs() -> None:
+def test_generated_wrapper_precreates_cargo_rustup_codex_and_claude_dirs() -> None:
     text = _read("install.sh")
 
     assert '"\\${HOME}/.cargo"' in text
+    assert '"\\${HOME}/.rustup"' in text
     assert '"\\${HOME}/.codex"' in text
     assert '"\\${HOME}/.claude"' in text
 
