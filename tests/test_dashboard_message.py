@@ -67,6 +67,40 @@ class _DummyInteractInput:
         self.text = ""
 
 
+class _DummyRichLog:
+    def __init__(self) -> None:
+        self.scrolled_to_end = False
+
+    def clear(self) -> None:
+        return
+
+    def write(self, _value) -> None:  # noqa: ANN001
+        return
+
+    def scroll_up(self, animate: bool = False) -> None:
+        return
+
+    def scroll_down(self, animate: bool = False) -> None:
+        return
+
+    def scroll_page_up(self, animate: bool = False) -> None:
+        return
+
+    def scroll_page_down(self, animate: bool = False) -> None:
+        return
+
+    def scroll_home(self, animate: bool = False) -> None:
+        return
+
+    def scroll_end(self, animate: bool = False) -> None:
+        self.scrolled_to_end = True
+
+
+class _ScreenStackAppStub:
+    def __init__(self, stack: list[object]) -> None:
+        self.screen_stack = stack
+
+
 def test_action_agent_message_pushes_message_screen(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
@@ -148,6 +182,42 @@ def test_should_ignore_table_action_allows_expanded_output_modal(monkeypatch) ->
     monkeypatch.setattr(ZeusApp, "screen", property(lambda self: message_modal))
 
     assert app._should_ignore_table_action() is True
+
+
+def test_expanded_output_apply_scrolls_to_bottom(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1))
+    stream = _DummyRichLog()
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: stream)
+
+    screen._apply_output("line 1\nline 2\n")
+
+    assert stream.scrolled_to_end is True
+
+
+def test_message_screen_scroll_actions_forward_to_expanded_output(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    message = AgentMessageScreen(agent)
+    expanded = ExpandedOutputScreen(agent)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        expanded,
+        "_scroll_stream_by_key",
+        lambda key: calls.append(key) or True,
+    )
+    app_stub = _ScreenStackAppStub([expanded, message])
+    monkeypatch.setattr(AgentMessageScreen, "app", property(lambda self: app_stub))
+
+    message.action_scroll_output_page_up()
+    message.action_scroll_output_page_down()
+    message.action_scroll_output_home()
+    message.action_scroll_output_end()
+    message.action_scroll_output_up()
+    message.action_scroll_output_down()
+
+    assert calls == ["pageup", "pagedown", "home", "end", "up", "down"]
 
 
 def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:
@@ -517,6 +587,12 @@ def test_do_prepend_agent_message_task_rejects_empty_text(monkeypatch) -> None:
 def test_message_screen_escape_binding_saves_via_cancel_action() -> None:
     bindings = {binding.key: binding.action for binding in AgentMessageScreen.BINDINGS}
     assert bindings["escape"] == "cancel"
+    assert bindings["pageup"] == "scroll_output_page_up"
+    assert bindings["pagedown"] == "scroll_output_page_down"
+    assert bindings["home"] == "scroll_output_home"
+    assert bindings["end"] == "scroll_output_end"
+    assert bindings["alt+up"] == "scroll_output_up"
+    assert bindings["alt+down"] == "scroll_output_down"
 
 
 def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:

@@ -202,6 +202,12 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "send", "Send", show=False),
         Binding("ctrl+w", "queue", "Queue", show=False),
+        Binding("pageup", "scroll_output_page_up", "Scroll output up", show=False),
+        Binding("pagedown", "scroll_output_page_down", "Scroll output down", show=False),
+        Binding("home", "scroll_output_home", "Scroll output home", show=False),
+        Binding("end", "scroll_output_end", "Scroll output end", show=False),
+        Binding("alt+up", "scroll_output_up", "Scroll output up", show=False),
+        Binding("alt+down", "scroll_output_down", "Scroll output down", show=False),
     ]
 
     def __init__(self, agent: AgentWindow, draft: str = "") -> None:
@@ -268,6 +274,39 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         self.zeus.do_save_agent_message_draft(self.agent, draft)
         self.dismiss()
 
+    def _expanded_output_underlay(self) -> ExpandedOutputScreen | None:
+        stack = list(self.app.screen_stack)
+        if len(stack) < 2:
+            return None
+        for screen in reversed(stack[:-1]):
+            if isinstance(screen, ExpandedOutputScreen):
+                return screen
+        return None
+
+    def _scroll_expanded_output(self, key: str) -> bool:
+        expanded = self._expanded_output_underlay()
+        if expanded is None:
+            return False
+        return expanded._scroll_stream_by_key(key)
+
+    def action_scroll_output_page_up(self) -> None:
+        self._scroll_expanded_output("pageup")
+
+    def action_scroll_output_page_down(self) -> None:
+        self._scroll_expanded_output("pagedown")
+
+    def action_scroll_output_home(self) -> None:
+        self._scroll_expanded_output("home")
+
+    def action_scroll_output_end(self) -> None:
+        self._scroll_expanded_output("end")
+
+    def action_scroll_output_up(self) -> None:
+        self._scroll_expanded_output("up")
+
+    def action_scroll_output_down(self) -> None:
+        self._scroll_expanded_output("down")
+
 
 class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
     CSS = EXPANDED_OUTPUT_CSS
@@ -327,21 +366,10 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             return
         raw = kitty_ansi_to_standard(content)
         stream.write(Text.from_ansi(raw))
+        stream.scroll_end(animate=False)
 
-    def action_refresh(self) -> None:
-        self._fetch_output()
-
-    def action_message(self) -> None:
-        self.zeus.push_screen(
-            AgentMessageScreen(
-                self.agent,
-                self.zeus._message_draft_for_agent(self.agent),
-            )
-        )
-
-    def on_key(self, event: events.Key) -> None:
+    def _scroll_stream_by_key(self, key: str) -> bool:
         stream = self.query_one("#expanded-output-stream", RichLog)
-        key = event.key
         if key == "up":
             stream.scroll_up(animate=False)
         elif key == "down":
@@ -355,6 +383,22 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         elif key == "end":
             stream.scroll_end(animate=False)
         else:
+            return False
+        return True
+
+    def action_refresh(self) -> None:
+        self._fetch_output()
+
+    def action_message(self) -> None:
+        self.zeus.push_screen(
+            AgentMessageScreen(
+                self.agent,
+                self.zeus._message_draft_for_agent(self.agent),
+            )
+        )
+
+    def on_key(self, event: events.Key) -> None:
+        if not self._scroll_stream_by_key(event.key):
             return
 
         event.stop()
