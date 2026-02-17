@@ -62,6 +62,34 @@ def test_extract_next_task_accepts_brackets_without_inner_space() -> None:
     assert updated.splitlines()[2] == "- [] second line"
 
 
+def test_extract_next_task_ignores_checkbox_marker_not_at_line_start() -> None:
+    note = (
+        "paragraph mentions - [ ] inline marker\n"
+        "- [ ] real task\n"
+    )
+
+    extracted = _extract_next_task(note)
+    assert extracted is not None
+    message, updated = extracted
+
+    assert message == "real task"
+    assert updated.splitlines() == [
+        "paragraph mentions - [ ] inline marker",
+        "- [x] real task",
+    ]
+
+
+def test_extract_next_task_falls_back_when_only_inline_checkbox_text_exists() -> None:
+    note = "paragraph mentions - [ ] inline marker only\n"
+
+    extracted = _extract_next_task(note)
+    assert extracted is not None
+    message, updated = extracted
+
+    assert message == "paragraph mentions - [ ] inline marker only"
+    assert updated == ""
+
+
 def test_extract_next_task_falls_back_to_first_non_empty_line() -> None:
     note = "\nplain next step\n- [x] done item\n"
 
