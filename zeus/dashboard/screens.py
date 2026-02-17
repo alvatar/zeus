@@ -901,10 +901,10 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Polemarch"),
-    ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
+    ("b", "Broadcast block between %%%% markers to active Hippeis"),
     ("n", "Queue next task for selected Hippeus"),
     (
-        "Ctrl+m",
+        "m",
         "Send text between %%%% markers to selected target",
     ),
     ("", "─── Navigation ───"),

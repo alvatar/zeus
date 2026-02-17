@@ -482,8 +482,8 @@ class ZeusApp(App):
 
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
-        Binding("ctrl+b", "broadcast_summary", "Broadcast", show=False, priority=True),
-        Binding("ctrl+m", "direct_summary", "Direct Summary", show=False, priority=True),
+        Binding("b", "broadcast_summary", "Broadcast", show=False),
+        Binding("m", "direct_summary", "Direct Summary", show=False),
 
         Binding("1", "toggle_interact_input", "Input", show=False, priority=True),
         Binding("2", "toggle_minimap", "Map", show=False, priority=True),
@@ -2374,8 +2374,8 @@ class ZeusApp(App):
         )
 
     def action_broadcast_summary(self) -> None:
-        """Ctrl+B: share marked block from selected agent to active peers."""
-        if self._has_blocking_modal_open():
+        """B: share marked block from selected agent to active peers."""
+        if self._should_ignore_table_action():
             return
 
         source = self._get_selected_agent()
@@ -2402,8 +2402,8 @@ class ZeusApp(App):
         )
 
     def action_direct_summary(self) -> None:
-        """Ctrl+M: share marked block from selected agent to one peer."""
-        if self._has_blocking_modal_open():
+        """M: share marked block from selected agent to one peer."""
+        if self._should_ignore_table_action():
             return
 
         source = self._get_selected_agent()

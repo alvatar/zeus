@@ -30,10 +30,10 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["Ctrl+y"] == (
         "Yank killed text (system clipboard, fallback local kill buffer)"
     )
-    assert entries["Ctrl+b"] == (
+    assert entries["b"] == (
         "Broadcast block between %%%% markers to active Hippeis"
     )
-    assert entries["Ctrl+m"] == (
+    assert entries["m"] == (
         "Send text between %%%% markers to selected target"
     )
     assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
@@ -46,7 +46,8 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
     assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
     assert "i" not in entries
-    assert "m" not in entries
+    assert "Ctrl+b" not in entries
+    assert "Ctrl+m" not in entries
     assert entries["1"] == "Toggle interact input area"
 
     up_down_desc = entries["↑/↓"]
@@ -85,9 +86,9 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
         ("d", "Set/remove blocking dependency for selected Hippeus"),
-        ("Ctrl+b", "Broadcast block between %%%% markers to active Hippeis"),
+        ("b", "Broadcast block between %%%% markers to active Hippeis"),
         (
-            "Ctrl+m",
+            "m",
             "Send text between %%%% markers to selected target",
         ),
         ("Ctrl+k (tmux row)", "Kill tmux session process"),
@@ -117,9 +118,9 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "k",
         "Ctrl+k (tmux row)",
         "z",
-        "Ctrl+b",
+        "b",
         "n",
-        "Ctrl+m",
+        "m",
     ]
 
 
@@ -147,8 +148,8 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "F5",
         "Ctrl+s",
         "Ctrl+w",
-        "Ctrl+b",
-        "Ctrl+m",
+        "b",
+        "m",
         "Ctrl+k (tmux row)",
         "1",
         "2",

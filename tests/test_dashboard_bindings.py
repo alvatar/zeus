@@ -11,14 +11,18 @@ def test_numeric_panel_toggles_are_priority_bindings() -> None:
         assert bindings[key].priority is True
 
 
-def test_agent_management_summary_bindings_are_priority() -> None:
+def test_agent_management_summary_bindings_use_plain_b_and_m() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
-    assert "ctrl+b" in bindings
-    assert bindings["ctrl+b"].priority is True
-    assert "ctrl+m" in bindings
-    assert bindings["ctrl+m"].priority is True
+    assert "b" in bindings
+    assert bindings["b"].action == "broadcast_summary"
+    assert bindings["b"].priority is False
+    assert "m" in bindings
+    assert bindings["m"].action == "direct_summary"
+    assert bindings["m"].priority is False
     assert "ctrl+t" in bindings
     assert bindings["ctrl+t"].priority is True
+    assert "ctrl+b" not in bindings
+    assert "ctrl+m" not in bindings
 
 
 def test_dependency_binding_uses_plain_d() -> None:
@@ -42,7 +46,7 @@ def test_kill_tmux_session_binding_action() -> None:
     assert bindings["ctrl+k"].action == "kill_tmux_session"
 
 
-def test_agent_management_keys_include_z_a_n_g_t_e_and_d() -> None:
+def test_agent_management_keys_include_z_a_n_g_t_e_d_b_and_m() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "z" in bindings
     assert bindings["z"].action == "new_agent"
@@ -58,8 +62,11 @@ def test_agent_management_keys_include_z_a_n_g_t_e_and_d() -> None:
     assert bindings["e"].action == "expand_output"
     assert "d" in bindings
     assert bindings["d"].action == "toggle_dependency"
+    assert "b" in bindings
+    assert bindings["b"].action == "broadcast_summary"
+    assert "m" in bindings
+    assert bindings["m"].action == "direct_summary"
     assert "i" not in bindings
-    assert "m" not in bindings
     assert "h" not in bindings
     assert "c" not in bindings
     assert "ctrl+q" not in bindings
