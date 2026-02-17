@@ -202,12 +202,6 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "send", "Send", show=False),
         Binding("ctrl+w", "queue", "Queue", show=False),
-        Binding("pageup", "scroll_output_page_up", "Scroll output up", show=False),
-        Binding("pagedown", "scroll_output_page_down", "Scroll output down", show=False),
-        Binding("home", "scroll_output_home", "Scroll output home", show=False),
-        Binding("end", "scroll_output_end", "Scroll output end", show=False),
-        Binding("alt+up", "scroll_output_up", "Scroll output up", show=False),
-        Binding("alt+down", "scroll_output_down", "Scroll output down", show=False),
     ]
 
     def __init__(self, agent: AgentWindow, draft: str = "") -> None:
@@ -289,23 +283,28 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
             return False
         return expanded._scroll_stream_by_key(key)
 
-    def action_scroll_output_page_up(self) -> None:
-        self._scroll_expanded_output("pageup")
+    def _pointer_inside_dialog(self, screen_x: int, screen_y: int) -> bool:
+        dialog = self.query_one("#agent-message-dialog", Vertical)
+        return dialog.region.contains(screen_x, screen_y)
 
-    def action_scroll_output_page_down(self) -> None:
-        self._scroll_expanded_output("pagedown")
+    def _forward_scroll_to_expanded_output(
+        self,
+        key: str,
+        event: events.MouseEvent,
+    ) -> bool:
+        if self._pointer_inside_dialog(event.screen_x, event.screen_y):
+            return False
+        if not self._scroll_expanded_output(key):
+            return False
+        event.stop()
+        event.prevent_default()
+        return True
 
-    def action_scroll_output_home(self) -> None:
-        self._scroll_expanded_output("home")
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self._forward_scroll_to_expanded_output("up", event)
 
-    def action_scroll_output_end(self) -> None:
-        self._scroll_expanded_output("end")
-
-    def action_scroll_output_up(self) -> None:
-        self._scroll_expanded_output("up")
-
-    def action_scroll_output_down(self) -> None:
-        self._scroll_expanded_output("down")
+    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        self._forward_scroll_to_expanded_output("down", event)
 
 
 class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):

@@ -101,6 +101,33 @@ class _ScreenStackAppStub:
         self.screen_stack = stack
 
 
+class _DummyRegion:
+    def __init__(self, contains_result: bool) -> None:
+        self.contains_result = contains_result
+
+    def contains(self, _x: int, _y: int) -> bool:
+        return self.contains_result
+
+
+class _DummyDialog:
+    def __init__(self, contains_result: bool) -> None:
+        self.region = _DummyRegion(contains_result)
+
+
+class _DummyMouseEvent:
+    def __init__(self, screen_x: int = 1, screen_y: int = 1) -> None:
+        self.screen_x = screen_x
+        self.screen_y = screen_y
+        self.prevented = False
+        self.stopped = False
+
+    def prevent_default(self) -> None:
+        self.prevented = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 def test_action_agent_message_pushes_message_screen(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1)
@@ -196,7 +223,9 @@ def test_expanded_output_apply_scrolls_to_bottom(monkeypatch) -> None:
     assert stream.scrolled_to_end is True
 
 
-def test_message_screen_scroll_actions_forward_to_expanded_output(monkeypatch) -> None:
+def test_message_screen_mouse_scroll_forwards_to_expanded_output_when_outside_dialog(
+    monkeypatch,
+) -> None:
     agent = _agent("alpha", 1)
     message = AgentMessageScreen(agent)
     expanded = ExpandedOutputScreen(agent)
@@ -209,15 +238,41 @@ def test_message_screen_scroll_actions_forward_to_expanded_output(monkeypatch) -
     )
     app_stub = _ScreenStackAppStub([expanded, message])
     monkeypatch.setattr(AgentMessageScreen, "app", property(lambda self: app_stub))
+    monkeypatch.setattr(message, "query_one", lambda _selector, _cls=None: _DummyDialog(False))
 
-    message.action_scroll_output_page_up()
-    message.action_scroll_output_page_down()
-    message.action_scroll_output_home()
-    message.action_scroll_output_end()
-    message.action_scroll_output_up()
-    message.action_scroll_output_down()
+    up_event = _DummyMouseEvent()
+    down_event = _DummyMouseEvent()
+    message.on_mouse_scroll_up(up_event)  # type: ignore[arg-type]
+    message.on_mouse_scroll_down(down_event)  # type: ignore[arg-type]
 
-    assert calls == ["pageup", "pagedown", "home", "end", "up", "down"]
+    assert calls == ["up", "down"]
+    assert up_event.prevented is True
+    assert up_event.stopped is True
+    assert down_event.prevented is True
+    assert down_event.stopped is True
+
+
+def test_message_screen_mouse_scroll_does_not_forward_inside_dialog(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    message = AgentMessageScreen(agent)
+    expanded = ExpandedOutputScreen(agent)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        expanded,
+        "_scroll_stream_by_key",
+        lambda key: calls.append(key) or True,
+    )
+    app_stub = _ScreenStackAppStub([expanded, message])
+    monkeypatch.setattr(AgentMessageScreen, "app", property(lambda self: app_stub))
+    monkeypatch.setattr(message, "query_one", lambda _selector, _cls=None: _DummyDialog(True))
+
+    event = _DummyMouseEvent()
+    message.on_mouse_scroll_up(event)  # type: ignore[arg-type]
+
+    assert calls == []
+    assert event.prevented is False
+    assert event.stopped is False
 
 
 def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:
@@ -587,12 +642,12 @@ def test_do_prepend_agent_message_task_rejects_empty_text(monkeypatch) -> None:
 def test_message_screen_escape_binding_saves_via_cancel_action() -> None:
     bindings = {binding.key: binding.action for binding in AgentMessageScreen.BINDINGS}
     assert bindings["escape"] == "cancel"
-    assert bindings["pageup"] == "scroll_output_page_up"
-    assert bindings["pagedown"] == "scroll_output_page_down"
-    assert bindings["home"] == "scroll_output_home"
-    assert bindings["end"] == "scroll_output_end"
-    assert bindings["alt+up"] == "scroll_output_up"
-    assert bindings["alt+down"] == "scroll_output_down"
+    assert "pageup" not in bindings
+    assert "pagedown" not in bindings
+    assert "home" not in bindings
+    assert "end" not in bindings
+    assert "alt+up" not in bindings
+    assert "alt+down" not in bindings
 
 
 def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:
