@@ -79,6 +79,17 @@ bindsym $mod+Return exec PATH="$HOME/.local/bin:$PATH" zeus-launch
 ```
 Then reload sway (`swaymsg reload`) and restart kitty.
 
+### pi system-prompt appendix copy
+
+To use the Zeus system-prompt appendix in pi, copy this repo file into the pi agent path:
+
+```bash
+mkdir -p ~/.pi/agent
+cp "$PWD/prompts/APPEND_SYSTEM.md" ~/.pi/agent/APPEND_SYSTEM.md
+```
+
+Run the command from the Zeus repo root (where `prompts/APPEND_SYSTEM.md` exists).
+
 ## Usage
 
 ```bash
