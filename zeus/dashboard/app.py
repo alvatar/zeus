@@ -1534,9 +1534,14 @@ class ZeusApp(App):
                     tmux_name = Text(f"{prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(age_str, style=dim)
-                    cpu_t = Text(str(cpu_t), style=dim) if str(cpu_t) else ""
+
+                    # Keep CPU/GPU heat colors visible even for detached sessions;
+                    # only dim plain fallback text when no metric style is present.
+                    if isinstance(cpu_t, str):
+                        cpu_t = Text(cpu_t, style=dim) if cpu_t else ""
                     ram_t = Text(str(ram_t), style=dim) if str(ram_t) else ""
-                    gpu_t = Text(str(gpu_t), style=dim) if str(gpu_t) else ""
+                    if isinstance(gpu_t, str):
+                        gpu_t = Text(gpu_t, style=dim) if gpu_t else ""
                     net_t = Text(str(net_t), style=dim) if str(net_t) else ""
 
                 tmux_key: str = f"tmux:{sess.name}"
