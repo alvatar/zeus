@@ -107,6 +107,43 @@ cp "$PWD/prompts/APPEND_SYSTEM.md" ~/.pi/agent/APPEND_SYSTEM.md
 
 Run the command from the Zeus repo root (where `prompts/APPEND_SYSTEM.md` exists).
 
+## Security model
+
+Zeus uses a **layered model**:
+
+1. **OS-level isolation (enforced)** via `bwrap` in the generated `pi` wrapper.
+2. **Agent policy constraints (prompt-level)** via `APPEND_SYSTEM.md`.
+
+The first layer is the hard boundary; the second layer is defense-in-depth.
+
+### 1) OS-level isolation (`bwrap` wrapper)
+
+Enabled when installed with `bash install.sh --wrap-pi` (unless disabled with `--no-bwrap`, or per-run `--no-sandbox`).
+
+Sandbox behavior is **deny-by-default**:
+- Zeus creates a dedicated mount namespace for each wrapped `pi` run.
+- Only explicitly allowed writable roots are exposed (user-configured paths plus a minimal runtime set required for operation).
+- System/runtime dependencies are mounted read-only.
+- Home is hardened; sensitive locations (e.g. SSH key material) are not mounted by default.
+
+Git-over-SSH is supported via ssh-agent socket passthrough and wrapper-provided SSH environment, so authentication can work without exposing private key files inside the sandbox.
+
+Implementation details are intentionally centralized in the generated wrapper logic in `install.sh`.
+
+### 2) Prompt-level policy (`APPEND_SYSTEM.md`)
+
+The appended system prompt defines operational rules (path approvals, messaging protocol, sandbox-escape command handling, etc.).
+This complements the OS sandbox but does not replace it.
+
+### Escape hatches (explicit)
+
+- Disable sandbox generation in wrapper:
+  - `bash install.sh --wrap-pi --no-bwrap`
+- Bypass sandbox for one run:
+  - `pi --no-sandbox ...`
+
+Use these only when strictly necessary.
+
 ## Usage
 
 ```bash
@@ -122,29 +159,7 @@ zeus kill fix-auth                   # Close a Hippeus window
 
 ### Dashboard keybindings
 
-| Key | Action |
-|-----|--------|
-| `↑` `↓` | Navigate Hippeis |
-| `Enter` | Focus interact input |
-| `Esc` | Return focus to Hippeis table |
-| `Ctrl+Enter` | Teleport to selected Hippeus / open tmux client |
-| `Ctrl+S` | Send interact input |
-| `Ctrl+W` | Queue interact input (Alt+Enter in pi) |
-| `Ctrl+Y` | Paste clipboard text; if image, save temp file and insert path |
-| `q` | Stop selected Hippeus (send ESC) |
-| `Ctrl+Q` | Stop selected Hippeus from any focus (including input) |
-| `k` | Kill selected Hippeus / tmux session (with confirmation) |
-| `n` | Launch new tracked Hippeus |
-| `a` | Toggle Aegis for selected Hippeus |
-| `r` | Rename selected Hippeus / tmux session |
-| `F4` | Toggle sort |
-| `F5` | Force refresh |
-| `F6` | Toggle split layout |
-| `F7` | Toggle AI summaries |
-| `F8` | Toggle interact panel |
-| `F10` | Quit dashboard |
-
-In the interact input, when the input is empty, `↑` / `↓` browse the last 10 sent/queued messages for the selected Hippeus.
+Use in-app Help (`H`) for the current keybinding list and modal-specific shortcuts.
 
 ### Sway launcher (`zeus-launch`)
 
