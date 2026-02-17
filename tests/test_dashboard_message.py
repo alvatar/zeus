@@ -206,18 +206,24 @@ def test_action_last_sent_message_requires_selected_agent(monkeypatch) -> None:
     assert notices[-1] == "Select a Hippeus row to show last sent message"
 
 
-def test_action_last_sent_message_notifies_when_no_message(monkeypatch) -> None:
+def test_action_last_sent_message_opens_placeholder_when_no_message(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1, agent_id="agent-1")
     notices = capture_notify(app, monkeypatch)
+    pushed: list[object] = []
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
     monkeypatch.setattr("zeus.dashboard.app.load_history", lambda _key: [])
 
     app.action_last_sent_message()
 
-    assert notices[-1] == "No sent message recorded for alpha"
+    assert notices == []
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, LastSentMessageScreen)
+    assert screen.message == "(no sent message recorded yet)"
 
 
 def test_action_expand_output_pushes_expanded_output_screen(monkeypatch) -> None:
@@ -522,6 +528,11 @@ def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
     app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     sent = capture_kitty_cmd(monkeypatch)
+    history_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.append_history",
+        lambda key, text: history_calls.append((key, text)) or [text],
+    )
 
     ok = app.do_send_agent_message(agent, "hello")
 
@@ -529,6 +540,7 @@ def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
     assert sent == [
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello\r"))
     ]
+    assert history_calls == [("agent:alpha", "hello")]
     assert app._agent_message_drafts == {}
 
 
@@ -539,6 +551,11 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
     app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
     sent = capture_kitty_cmd(monkeypatch)
+    history_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.append_history",
+        lambda key, text: history_calls.append((key, text)) or [text],
+    )
 
     ok = app.do_queue_agent_message(agent, "hello")
 
@@ -549,6 +566,7 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
     ]
+    assert history_calls == [("agent:alpha", "hello")]
     assert app._agent_message_drafts == {}
 
 
@@ -566,6 +584,11 @@ def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     monkeypatch.setattr(app, "_append_interact_history", lambda _text: None)
 
     sent = capture_kitty_cmd(monkeypatch)
+    history_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.append_history",
+        lambda key, text: history_calls.append((key, text)) or [text],
+    )
 
     app.action_send_interact()
 
@@ -573,6 +596,7 @@ def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     assert sent == [
         (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
     ]
+    assert history_calls == [("agent:paused", "hello")]
 
 
 def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
@@ -590,6 +614,11 @@ def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(m
 
     sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
+    history_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.append_history",
+        lambda key, text: history_calls.append((key, text)) or [text],
+    )
 
     assert app.do_send_agent_message(paused, "hello") is True
     assert app._agent_priorities.get(paused.name, 3) == 3
@@ -600,6 +629,7 @@ def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(m
     assert sent == [
         (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
     ]
+    assert history_calls == [("agent:paused", "hello")]
 
 
 def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:

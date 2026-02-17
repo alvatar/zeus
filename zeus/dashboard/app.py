@@ -3792,11 +3792,8 @@ class ZeusApp(App):
             return
 
         entries = load_history(self._history_key_for_agent(agent))
-        if not entries:
-            self.notify(f"No sent message recorded for {agent.name}", timeout=2)
-            return
-
-        self.push_screen(LastSentMessageScreen(agent, entries[-1]))
+        message = entries[-1] if entries else "(no sent message recorded yet)"
+        self.push_screen(LastSentMessageScreen(agent, message))
 
     def action_go_ahead(self) -> None:
         """G: queue fixed 'go ahead' message for selected Hippeus."""
@@ -4425,15 +4422,16 @@ class ZeusApp(App):
         match = f"id:{agent.kitty_id}"
 
         if queue_sequence is None:
-            return bool(
-                kitty_cmd(
-                    agent.socket,
-                    "send-text",
-                    "--match",
-                    match,
-                    clean + "\r",
-                )
+            result = kitty_cmd(
+                agent.socket,
+                "send-text",
+                "--match",
+                match,
+                clean + "\r",
             )
+            if result is not None:
+                append_history(self._history_key_for_agent(agent), clean)
+            return bool(result)
 
         if kitty_cmd(agent.socket, "send-text", "--match", match, clean) is None:
             return False
@@ -4442,6 +4440,7 @@ class ZeusApp(App):
             if kitty_cmd(agent.socket, "send-text", "--match", match, key) is None:
                 return False
 
+        append_history(self._history_key_for_agent(agent), clean)
         return True
 
     def _dispatch_tmux_text(
