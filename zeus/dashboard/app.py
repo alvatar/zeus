@@ -92,6 +92,7 @@ from .screens import (
     NewAgentScreen,
     AgentTasksScreen,
     AgentMessageScreen,
+    LastSentMessageScreen,
     ExpandedOutputScreen,
     DependencySelectScreen,
     SubAgentScreen,
@@ -476,6 +477,7 @@ class ZeusApp(App):
         Binding("d", "toggle_dependency", "Dependency", show=False),
         Binding("s", "spawn_subagent", "Sub-Hippeus"),
         Binding("k", "kill_agent", "Kill Hippeus"),
+        Binding("l", "last_sent_message", "Last message", show=False),
         Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
@@ -547,6 +549,7 @@ class ZeusApp(App):
     _prepare_target_selection: dict[int, str] = {}
     _agent_tasks: dict[str, str] = {}
     _agent_message_drafts: dict[str, str] = {}
+    _last_sent_messages: dict[str, str] = {}
     _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
     _dependency_missing_polls: dict[str, int] = {}
@@ -2164,6 +2167,15 @@ class ZeusApp(App):
     def do_clear_agent_message_draft(self, agent: AgentWindow) -> None:
         self._agent_message_drafts.pop(self._agent_message_draft_key(agent), None)
 
+    def _remember_last_sent_message(self, agent: AgentWindow, text: str) -> None:
+        clean = text.rstrip()
+        if not clean.strip():
+            return
+        self._last_sent_messages[self._agent_identity_key(agent)] = clean
+
+    def _last_sent_message_for_agent(self, agent: AgentWindow) -> str:
+        return self._last_sent_messages.get(self._agent_identity_key(agent), "")
+
     def _agent_dependency_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
 
@@ -3777,6 +3789,21 @@ class ZeusApp(App):
             return
         self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
 
+    def action_last_sent_message(self) -> None:
+        if self._should_ignore_table_action():
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to show last sent message", timeout=2)
+            return
+
+        last = self._last_sent_message_for_agent(agent)
+        if not last.strip():
+            self.notify(f"No sent message recorded for {agent.name}", timeout=2)
+            return
+
+        self.push_screen(LastSentMessageScreen(agent, last))
+
     def action_go_ahead(self) -> None:
         """G: queue fixed 'go ahead' message for selected Hippeus."""
         if self._should_ignore_table_action():
@@ -4404,15 +4431,16 @@ class ZeusApp(App):
         match = f"id:{agent.kitty_id}"
 
         if queue_sequence is None:
-            return bool(
-                kitty_cmd(
-                    agent.socket,
-                    "send-text",
-                    "--match",
-                    match,
-                    clean + "\r",
-                )
+            result = kitty_cmd(
+                agent.socket,
+                "send-text",
+                "--match",
+                match,
+                clean + "\r",
             )
+            if result is not None:
+                self._remember_last_sent_message(agent, clean)
+            return bool(result)
 
         if kitty_cmd(agent.socket, "send-text", "--match", match, clean) is None:
             return False
@@ -4421,6 +4449,7 @@ class ZeusApp(App):
             if kitty_cmd(agent.socket, "send-text", "--match", match, key) is None:
                 return False
 
+        self._remember_last_sent_message(agent, clean)
         return True
 
     def _dispatch_tmux_text(

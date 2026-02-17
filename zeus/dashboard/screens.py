@@ -31,6 +31,7 @@ from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
     AGENT_MESSAGE_CSS,
+    LAST_SENT_MESSAGE_CSS,
     EXPANDED_OUTPUT_CSS,
     DEPENDENCY_SELECT_CSS,
     SUBAGENT_CSS,
@@ -315,6 +316,41 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
         self._forward_scroll_to_expanded_output("down", event)
+
+
+class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = LAST_SENT_MESSAGE_CSS
+    BINDINGS = [Binding("escape", "dismiss", "Close", show=False)]
+
+    def __init__(self, agent: AgentWindow, message: str) -> None:
+        super().__init__()
+        self.agent = agent
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="last-sent-message-dialog"):
+            with Horizontal(id="last-sent-message-title-row"):
+                yield Label(
+                    f"Last message sent to [bold]{self.agent.name}[/bold]",
+                    id="last-sent-message-title",
+                )
+                yield Label("", id="last-sent-message-title-spacer")
+                yield Label("(Esc close)", id="last-sent-message-shortcuts-hint")
+            yield RichLog(
+                id="last-sent-message-body",
+                wrap=True,
+                markup=False,
+                auto_scroll=False,
+            )
+
+    def on_mount(self) -> None:
+        body = self.query_one("#last-sent-message-body", RichLog)
+        body.can_focus = True
+        body.focus()
+        if not self.message.strip():
+            body.write("(no message)")
+            return
+        body.write(Text(self.message))
 
 
 class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
@@ -899,6 +935,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
     ("k", "Kill Hippeus / tmux session"),
+    ("l", "Show last sent message for selected Hippeus"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Polemarch"),
     ("b", "Broadcast block between %%%% markers to active Hippeis"),

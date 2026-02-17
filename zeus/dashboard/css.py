@@ -370,6 +370,55 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
 )}
 """
 
+LAST_SENT_MESSAGE_CSS = """
+LastSentMessageScreen {
+    align: center middle;
+    background: transparent;
+}
+
+#last-sent-message-dialog {
+    width: 110;
+    height: auto;
+    max-height: 40;
+    border: thick #00d7d7;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#last-sent-message-title-row {
+    width: 100%;
+    height: 1;
+    align: left middle;
+    margin: 0 0 1 0;
+}
+
+#last-sent-message-title,
+#last-sent-message-title-spacer,
+#last-sent-message-shortcuts-hint {
+    margin: 0;
+    height: 1;
+}
+
+#last-sent-message-title-spacer {
+    width: 1fr;
+}
+
+#last-sent-message-shortcuts-hint {
+    color: #66a6a6;
+    content-align: right middle;
+}
+
+#last-sent-message-body {
+    height: 1fr;
+    border: solid #1a5050;
+    background: #041418;
+    color: #dddddd;
+    padding: 0 1;
+    overflow-y: auto;
+    scrollbar-size: 0 1;
+}
+"""
+
 EXPANDED_OUTPUT_CSS = """
 ExpandedOutputScreen {
     align: center middle;

@@ -42,6 +42,7 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.NEW_AGENT_CSS,
         css.AGENT_TASKS_CSS,
         css.AGENT_MESSAGE_CSS,
+        css.LAST_SENT_MESSAGE_CSS,
         css.DEPENDENCY_SELECT_CSS,
         css.SUBAGENT_CSS,
         css.RENAME_CSS,
@@ -94,6 +95,16 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "max-height: 30;" in css.AGENT_MESSAGE_CSS
     assert "AgentMessageScreen.from-expanded-output #agent-message-input {" in css.AGENT_MESSAGE_CSS
     assert "height: 12;" in css.AGENT_MESSAGE_CSS
+
+
+def test_last_sent_message_dialog_css_uses_cyan_shell_without_buttons() -> None:
+    assert "LastSentMessageScreen {" in css.LAST_SENT_MESSAGE_CSS
+    assert "background: transparent;" in css.LAST_SENT_MESSAGE_CSS
+    assert "#last-sent-message-dialog {" in css.LAST_SENT_MESSAGE_CSS
+    assert "border: thick #00d7d7;" in css.LAST_SENT_MESSAGE_CSS
+    assert "#last-sent-message-body {" in css.LAST_SENT_MESSAGE_CSS
+    assert "scrollbar-size: 0 1;" in css.LAST_SENT_MESSAGE_CSS
+    assert "#last-sent-message-buttons" not in css.LAST_SENT_MESSAGE_CSS
 
 
 def test_expanded_output_hides_horizontal_scrollbar() -> None:
