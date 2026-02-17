@@ -155,6 +155,45 @@ def test_capture_and_send_hidden_tmux_commands(monkeypatch) -> None:
     assert commands[2] == ["tmux", "send-keys", "-t", "hidden-agent", "Escape"]
 
 
+def test_resolve_hidden_session_path_prefers_tmux_option(monkeypatch) -> None:
+    def _run(command: list[str], **_kwargs):
+        if command[:4] == ["tmux", "show-options", "-t", "hidden-agent"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="/tmp/option-session.jsonl\n",
+                stderr="",
+            )
+        raise AssertionError("must not query pane command when option exists")
+
+    monkeypatch.setattr(hidden_backend.subprocess, "run", _run)
+
+    path = hidden_backend.resolve_hidden_session_path("hidden-agent")
+    assert path == "/tmp/option-session.jsonl"
+
+
+def test_resolve_hidden_session_path_falls_back_to_start_command(monkeypatch) -> None:
+    def _run(command: list[str], **_kwargs):
+        if command[:4] == ["tmux", "show-options", "-t", "hidden-agent"]:
+            return subprocess.CompletedProcess(command, 0, stdout="\n", stderr="")
+        if command[:4] == ["tmux", "list-panes", "-t", "hidden-agent"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    "ZEUS_AGENT_NAME=shadow ZEUS_SESSION_PATH=/tmp/fallback.jsonl "
+                    "exec pi --session /tmp/fallback.jsonl\n"
+                ),
+                stderr="",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(hidden_backend.subprocess, "run", _run)
+
+    path = hidden_backend.resolve_hidden_session_path("hidden-agent")
+    assert path == "/tmp/fallback.jsonl"
+
+
 def test_app_agent_key_and_dispatch_for_hidden_backend(monkeypatch) -> None:
     app = ZeusApp()
     agent = _hidden_agent()

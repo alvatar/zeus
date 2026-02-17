@@ -79,6 +79,7 @@ from ..hidden_hippeus import (
     hidden_agent_row_key,
     is_hidden_tmux_session,
     kill_hidden_session,
+    resolve_hidden_session_path,
     send_hidden_escape,
     send_hidden_text,
 )
@@ -4256,6 +4257,11 @@ class ZeusApp(App):
         if not agent:
             self.notify("No Hippeus selected", timeout=2)
             return
+
+        if self._is_hidden_agent(agent) and not agent.session_path:
+            recovered = resolve_hidden_session_path(agent.tmux_session)
+            if recovered:
+                agent.session_path = recovered
 
         if not agent.session_path:
             same_cwd = [a for a in self.agents if a.cwd == agent.cwd]

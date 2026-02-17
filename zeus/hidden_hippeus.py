@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import os
+import re
 import shlex
 import subprocess
 
@@ -52,6 +53,41 @@ def _tmux_error_detail(result: subprocess.CompletedProcess[str] | None) -> str:
         return "tmux unavailable"
     detail = (result.stderr or result.stdout or "").strip()
     return detail or f"exit={result.returncode}"
+
+
+def _extract_session_path_from_start_command(command: str) -> str:
+    if not command.strip():
+        return ""
+    match = re.search(r"(?:^|\s)ZEUS_SESSION_PATH=([^\s]+)(?:\s|$)", command)
+    if not match:
+        return ""
+    return match.group(1).strip().strip('"\'')
+
+
+def resolve_hidden_session_path(session_name: str) -> str:
+    """Resolve hidden Hippeus session path from tmux metadata."""
+    name = session_name.strip()
+    if not name:
+        return ""
+
+    option = _run_tmux(
+        ["tmux", "show-options", "-t", name, "-qv", "@zeus_session_path"],
+        timeout=2,
+    )
+    if option is not None and option.returncode == 0:
+        value = option.stdout.strip()
+        if value:
+            return value
+
+    pane = _run_tmux(
+        ["tmux", "list-panes", "-t", name, "-F", "#{pane_start_command}"],
+        timeout=2,
+    )
+    if pane is None or pane.returncode != 0:
+        return ""
+
+    first = pane.stdout.splitlines()[0].strip() if pane.stdout else ""
+    return _extract_session_path_from_start_command(first)
 
 
 def launch_hidden_hippeus(

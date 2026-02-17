@@ -1,6 +1,7 @@
 """Tests for rename behavior in dashboard actions."""
 
 from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.screens import SubAgentScreen
 from zeus.models import AgentWindow
 
 
@@ -119,6 +120,46 @@ def test_do_spawn_subagent_rejects_duplicate_name(monkeypatch) -> None:
     app.do_spawn_subagent(parent, "taken")
 
     assert notices[-1] == "Name already exists: taken"
+
+
+def test_action_spawn_subagent_recovers_hidden_session_path(monkeypatch) -> None:
+    app = ZeusApp()
+    hidden = AgentWindow(
+        kitty_id=0,
+        socket="",
+        name="shadow",
+        pid=101,
+        kitty_pid=0,
+        cwd="/tmp/project",
+        agent_id="agent-hidden",
+        backend="tmux-hidden",
+        tmux_session="hidden-agent",
+    )
+    app.agents = [hidden]
+
+    pushed: list[object] = []
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: hidden)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_hidden_session_path",
+        lambda _sess: "/tmp/hidden-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path",
+        lambda agent: agent.session_path,
+    )
+    monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda path: path == "/tmp/hidden-session.jsonl")
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert hidden.session_path == "/tmp/hidden-session.jsonl"
+    assert pushed
+    assert isinstance(pushed[0], SubAgentScreen)
+    assert notices == []
 
 
 def test_name_uniqueness_checks_are_case_insensitive() -> None:
