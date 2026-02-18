@@ -65,6 +65,7 @@ def test_resolve_agent_session_path_prefers_runtime_sync(monkeypatch) -> None:
 def test_resolve_agent_session_path_prefers_explicit_agent_session(monkeypatch) -> None:
     agent = _agent(session_path="/tmp/explicit.jsonl")
     monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
+    monkeypatch.setattr(kitty.os.path, "isfile", lambda path: path == "/tmp/explicit.jsonl")
 
     assert kitty.resolve_agent_session_path(agent) == "/tmp/explicit.jsonl"
 
@@ -88,6 +89,18 @@ def test_resolve_agent_session_path_with_source_marks_runtime(monkeypatch) -> No
     assert kitty.resolve_agent_session_path_with_source(agent) == (
         "/tmp/runtime.jsonl",
         "runtime",
+    )
+
+
+def test_resolve_agent_session_path_with_source_falls_back_when_env_stale(monkeypatch) -> None:
+    agent = _agent(session_path="/tmp/stale.jsonl")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
+    monkeypatch.setattr(kitty.os.path, "isfile", lambda _path: False)
+    monkeypatch.setattr(kitty, "find_current_session", lambda _cwd: "/tmp/fallback.jsonl")
+
+    assert kitty.resolve_agent_session_path_with_source(agent) == (
+        "/tmp/fallback.jsonl",
+        "cwd",
     )
 
 

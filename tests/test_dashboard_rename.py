@@ -230,6 +230,30 @@ def test_action_spawn_subagent_blocks_cwd_fallback_when_cwd_shared(monkeypatch) 
     assert notices[-1].startswith("Cannot reliably fork this legacy Hippeus")
 
 
+def test_action_spawn_subagent_reports_stale_pinned_session(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+    app.agents = [parent]
+
+    pushed: list[object] = []
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: parent)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/stale-session.jsonl", "env"),
+    )
+    monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda _path: False)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert pushed == []
+    assert notices[-1].startswith("Pinned session path is stale for")
+
+
 def test_name_uniqueness_checks_are_case_insensitive() -> None:
     app = ZeusApp()
     app.agents = [

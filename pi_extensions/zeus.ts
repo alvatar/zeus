@@ -63,8 +63,18 @@ function writeJsonAtomic(filePath: string, payload: SessionSyncPayload): void {
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random()
     .toString(16)
     .slice(2)}`;
-  fs.writeFileSync(tempPath, JSON.stringify(payload));
-  fs.renameSync(tempPath, filePath);
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(payload));
+    fs.renameSync(tempPath, filePath);
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {
+        // Ignore cleanup failure.
+      }
+    }
+  }
 }
 
 function removeMapFile(filePath: string): void {

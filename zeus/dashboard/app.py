@@ -4278,9 +4278,16 @@ class ZeusApp(App):
                 return
 
         if not session or not os.path.isfile(session):
-            self.notify(
-                f"No session found for {agent.name}", timeout=3
-            )
+            if source == "env":
+                self.notify(
+                    f"Pinned session path is stale for {agent.name}. "
+                    "Run /reload in that Hippeus, then retry.",
+                    timeout=4,
+                )
+            else:
+                self.notify(
+                    f"No session found for {agent.name}", timeout=3
+                )
             return
 
         if source == "runtime" and not agent.session_path:

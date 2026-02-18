@@ -223,6 +223,10 @@ def resolve_agent_session_path_with_source(agent: AgentWindow) -> tuple[str | No
       - ``env``: launch-time ZEUS_SESSION_PATH
       - ``cwd``: newest session in agent cwd (heuristic fallback)
       - ``none``: no candidate found
+
+    If ZEUS_SESSION_PATH is present but points to a missing file, we treat it as
+    stale and attempt cwd fallback. The caller still decides whether cwd fallback
+    is safe (e.g. shared cwd ambiguity).
     """
     runtime_path = read_runtime_session_path(agent.agent_id)
     if runtime_path:
@@ -230,6 +234,11 @@ def resolve_agent_session_path_with_source(agent: AgentWindow) -> tuple[str | No
 
     explicit = (agent.session_path or "").strip()
     if explicit:
+        if os.path.isfile(explicit):
+            return explicit, "env"
+        fallback = find_current_session(agent.cwd)
+        if fallback and fallback != explicit:
+            return fallback, "cwd"
         return explicit, "env"
 
     fallback = find_current_session(agent.cwd)
