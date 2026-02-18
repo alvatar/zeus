@@ -155,6 +155,10 @@ def test_aegis_state_bg_uses_bright_and_dim_variants() -> None:
     assert app._aegis_state_bg(key) == app._AEGIS_ROW_BG_DIM
 
 
+def test_aegis_halted_color_uses_bland_yellow() -> None:
+    assert ZeusApp._AEGIS_ROW_BG_DIM == "#8a8450"
+
+
 def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
     app = _new_app()
     hippeus = _agent("alpha", 1)

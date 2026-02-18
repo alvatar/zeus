@@ -531,7 +531,7 @@ class ZeusApp(App):
     _AEGIS_DELAY_S = 5.0
     _AEGIS_CHECK_S = 20.0
     _AEGIS_ROW_BG = "#ff69b4"
-    _AEGIS_ROW_BG_DIM = "#a35c82"
+    _AEGIS_ROW_BG_DIM = "#8a8450"
     _BLOCKED_ROW_FG = "#f2e6a7"
     _BLOCKED_NON_STATE_FG = "#666666"
     _AEGIS_PROMPT = (
