@@ -125,6 +125,62 @@ def test_launch_hidden_hippeus_creates_tmux_session_and_sets_metadata(monkeypatc
     ]
 
 
+def test_promote_hoplite_to_hidden_hippeus_sets_expected_tmux_options(monkeypatch) -> None:
+    commands: list[list[str]] = []
+
+    def _run(command: list[str], **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(hidden_backend.subprocess, "run", _run)
+
+    sess = TmuxSession(
+        name="hoplite-a",
+        command="",
+        cwd="/tmp/project",
+        owner_id="polemarch-1",
+        role="hoplite",
+        phalanx_id="phalanx-polemarch-1",
+        agent_id="hoplite-1",
+        session_path="/tmp/hoplite-session.jsonl",
+    )
+
+    ok, detail = hidden_backend.promote_hoplite_to_hidden_hippeus(sess)
+
+    assert ok is True
+    assert detail == ""
+    assert commands == [
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_backend", "hidden-hippeus"],
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_agent", "hoplite-1"],
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_role", "hippeus"],
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_name", "hoplite-a"],
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_owner", ""],
+        ["tmux", "set-option", "-t", "hoplite-a", "@zeus_phalanx", ""],
+        [
+            "tmux",
+            "set-option",
+            "-t",
+            "hoplite-a",
+            "@zeus_session_path",
+            "/tmp/hoplite-session.jsonl",
+        ],
+    ]
+
+
+def test_promote_hoplite_to_hidden_hippeus_requires_agent_id() -> None:
+    sess = TmuxSession(
+        name="hoplite-a",
+        command="",
+        cwd="/tmp/project",
+        role="hoplite",
+    )
+
+    ok, detail = hidden_backend.promote_hoplite_to_hidden_hippeus(sess)
+
+    assert ok is False
+    assert detail == "missing hoplite agent id"
+
+
 def test_capture_and_send_hidden_tmux_commands(monkeypatch) -> None:
     commands: list[list[str]] = []
 

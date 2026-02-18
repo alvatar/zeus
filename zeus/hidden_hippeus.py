@@ -152,6 +152,40 @@ def launch_hidden_hippeus(
     return session_name, session_path
 
 
+def promote_hoplite_to_hidden_hippeus(session: TmuxSession) -> tuple[bool, str]:
+    """Promote a Hoplite tmux session to hidden-Hippeus metadata."""
+    session_name = (session.name or "").strip()
+    if not session_name:
+        return False, "missing tmux session name"
+
+    agent_id = (session.agent_id or session.env_agent_id or "").strip()
+    if not agent_id:
+        return False, "missing hoplite agent id"
+
+    display_name = (session.display_name or "").strip() or session.name
+
+    option_values = [
+        ("@zeus_backend", HIDDEN_TMUX_BACKEND_TAG),
+        ("@zeus_agent", agent_id),
+        ("@zeus_role", "hippeus"),
+        ("@zeus_name", display_name),
+        ("@zeus_owner", ""),
+        ("@zeus_phalanx", ""),
+    ]
+    if (session.session_path or "").strip():
+        option_values.append(("@zeus_session_path", session.session_path.strip()))
+
+    for option, value in option_values:
+        result = _run_tmux(
+            ["tmux", "set-option", "-t", session_name, option, value],
+            timeout=3,
+        )
+        if result is None or result.returncode != 0:
+            return False, f"set-option {option} failed: {_tmux_error_detail(result)}"
+
+    return True, ""
+
+
 def discover_hidden_agents(
     tmux_sessions: list[TmuxSession],
     *,

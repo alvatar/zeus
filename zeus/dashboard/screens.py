@@ -788,6 +788,64 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
 
 
+class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = CONFIRM_KILL_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("y", "confirm", "Yes", show=False),
+        Binding("n", "dismiss", "No", show=False),
+    ]
+
+    def __init__(
+        self,
+        *,
+        agent: AgentWindow | None = None,
+        sess: TmuxSession | None = None,
+    ) -> None:
+        super().__init__()
+        if (agent is None) == (sess is None):
+            raise ValueError("provide exactly one promotion target")
+        self.agent = agent
+        self.sess = sess
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-kill-dialog"):
+            if self.agent is not None:
+                prompt = (
+                    f"Promote sub-Hippeus [bold]{self.agent.name}[/bold] "
+                    "to Hippeus?"
+                )
+            elif self.sess is not None:
+                prompt = (
+                    f"Promote Hoplite [bold]{self.sess.name}[/bold] "
+                    "to Hidden Hippeus?"
+                )
+            else:
+                prompt = "Promote selected target?"
+
+            yield Label(prompt)
+            with Horizontal(id="confirm-kill-buttons"):
+                yield Button("Yes, promote", variant="warning", id="yes-btn")
+                yield Button("No", variant="default", id="no-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#yes-btn", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "yes-btn":
+            self.action_confirm()
+            return
+        self.dismiss()
+        event.stop()
+
+    def action_confirm(self) -> None:
+        if self.agent is not None:
+            self.zeus.do_promote_sub_hippeus(self.agent)
+        elif self.sess is not None:
+            self.zeus.do_promote_hoplite_tmux(self.sess)
+        self.dismiss()
+
+
 class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):
     CSS = BROADCAST_PREPARING_CSS
     BINDINGS = [Binding("escape", "cancel", "Cancel", show=False)]
@@ -1025,6 +1083,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("a", "Bring Hippeus under the Aegis"),
     ("s", "Spawn sub-Hippeus"),
+    ("Ctrl+p", "Promote selected sub-Hippeus / Hoplite"),
     ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
     ("h", "History for selected Hippeus"),

@@ -36,9 +36,9 @@ def test_toggle_interact_input_binding_action() -> None:
     assert bindings["1"].action == "toggle_interact_input"
 
 
-def test_ctrl_p_is_bound_to_noop_to_disable_default_palette() -> None:
+def test_ctrl_p_is_bound_to_promote_selected_and_disables_default_palette() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
-    assert bindings["ctrl+p"].action == "noop"
+    assert bindings["ctrl+p"].action == "promote_selected"
     assert bindings["ctrl+p"].priority is True
 
 

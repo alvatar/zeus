@@ -34,6 +34,7 @@ class SortMode(Enum):
 from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE
 from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
+from ..promotions import load_promoted_sub_hippeis, save_promoted_sub_hippeis
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
@@ -80,6 +81,7 @@ from ..hidden_hippeus import (
     hidden_agent_row_key,
     is_hidden_tmux_session,
     kill_hidden_session,
+    promote_hoplite_to_hidden_hippeus,
     resolve_hidden_session_path,
     send_hidden_escape,
     send_hidden_text,
@@ -110,7 +112,7 @@ from .screens import (
     SubAgentScreen,
     RenameScreen,
     RenameTmuxScreen,
-    ConfirmKillScreen, ConfirmKillTmuxScreen,
+    ConfirmKillScreen, ConfirmKillTmuxScreen, ConfirmPromoteScreen,
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
@@ -476,7 +478,7 @@ class ZeusApp(App):
         Binding("q", "stop_agent", "Stop Hippeus"),
         Binding("f10", "quit", "Quit"),
         Binding("tab", "toggle_focus", "Switch focus", show=False),
-        Binding("ctrl+p", "noop", "Disable command palette", show=False, priority=True),
+        Binding("ctrl+p", "promote_selected", "Promote", show=False, priority=True),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("z", "new_agent", "Invoke"),
@@ -565,6 +567,7 @@ class ZeusApp(App):
     _agent_message_drafts: dict[str, str] = {}
     _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
+    _promoted_sub_hippeis: set[str] = set()
     _dependency_missing_polls: dict[str, int] = {}
     _message_queue_draining: bool = False
     _message_queue_inflight_lease_s: float = 30.0
@@ -654,6 +657,7 @@ class ZeusApp(App):
         self._load_priorities()
         self._load_agent_tasks()
         self._load_agent_dependencies()
+        self._load_promoted_sub_hippeis()
         self._load_panel_visibility()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -1303,18 +1307,21 @@ class ZeusApp(App):
             blocked_by_key[blocked_row_key] = blocker_row_key
             blocked_of.setdefault(blocker_row_key, []).append(a)
 
-        top_level: list[AgentWindow] = [
-            a for a in self.agents
-            if self._agent_key(a) not in blocked_by_key
-            and (not a.parent_id or a.parent_id not in parent_ids)
-        ]
+        top_level: list[AgentWindow] = []
+        for agent in self.agents:
+            if self._agent_key(agent) in blocked_by_key:
+                continue
+            parent_id = self._effective_parent_id(agent)
+            if (not parent_id) or (parent_id not in parent_ids):
+                top_level.append(agent)
 
         children_of: dict[str, list[AgentWindow]] = {}
         for a in self.agents:
             if self._agent_key(a) in blocked_by_key:
                 continue
-            if a.parent_id and a.parent_id in parent_ids:
-                children_of.setdefault(a.parent_id, []).append(a)
+            parent_id = self._effective_parent_id(a)
+            if parent_id and parent_id in parent_ids:
+                children_of.setdefault(parent_id, []).append(a)
 
         def _priority_sort_key(
             a: AgentWindow,
@@ -1736,15 +1743,16 @@ class ZeusApp(App):
 
 
         parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
-        top_level: list[AgentWindow] = sorted(
-            (a for a in self.agents
-             if not a.parent_id or a.parent_id not in parent_ids),
-            key=lambda a: self._get_priority(a.name),
-        )
+        top_level: list[AgentWindow] = []
         children_of: dict[str, list[AgentWindow]] = {}
-        for a in self.agents:
-            if a.parent_id and a.parent_id in parent_ids:
-                children_of.setdefault(a.parent_id, []).append(a)
+        for agent in self.agents:
+            parent_id = self._effective_parent_id(agent)
+            if parent_id and parent_id in parent_ids:
+                children_of.setdefault(parent_id, []).append(agent)
+            else:
+                top_level.append(agent)
+
+        top_level.sort(key=lambda a: self._get_priority(a.name))
         for kids in children_of.values():
             kids.sort(key=lambda a: self._get_priority(a.name))
 
@@ -1891,11 +1899,17 @@ class ZeusApp(App):
         widget.remove_class("hidden")
 
         parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
+        def _sparkline_parent_sort_key(agent: AgentWindow) -> int:
+            parent_id = self._effective_parent_id(agent)
+            if (not parent_id) or (parent_id not in parent_ids):
+                return 0
+            return 1
+
         ordered = sorted(
             self.agents,
             key=lambda a: (
                 self._get_priority(a.name),
-                0 if (not a.parent_id or a.parent_id not in parent_ids) else 1,
+                _sparkline_parent_sort_key(a),
                 a.name,
             ),
         )
@@ -2326,6 +2340,22 @@ class ZeusApp(App):
             if self._agent_dependency_key(agent) == dep_key:
                 return agent
         return None
+
+    def _effective_parent_id(self, agent: AgentWindow) -> str:
+        """Return effective parent id with promotion overrides applied."""
+        parent_id = (agent.parent_id or "").strip()
+        if not parent_id:
+            return ""
+        agent_id = (agent.agent_id or "").strip()
+        if agent_id and agent_id in self._promoted_sub_hippeis:
+            return ""
+        return parent_id
+
+    def _has_promotable_parent(self, agent: AgentWindow) -> bool:
+        """Return True when a sub-Hippeus can be promoted to top-level."""
+        if not (agent.agent_id or "").strip():
+            return False
+        return bool(self._effective_parent_id(agent))
 
     def _task_text_for_agent(self, agent: AgentWindow) -> str:
         return self._agent_tasks.get(self._agent_tasks_key(agent), "")
@@ -3530,6 +3560,14 @@ class ZeusApp(App):
         """Persist priorities to disk."""
         self._write_json_dict(PRIORITIES_FILE, self._agent_priorities)
 
+    def _load_promoted_sub_hippeis(self) -> None:
+        """Load promoted sub-Hippeus ids from disk."""
+        self._promoted_sub_hippeis = load_promoted_sub_hippeis()
+
+    def _save_promoted_sub_hippeis(self) -> None:
+        """Persist promoted sub-Hippeus ids to disk."""
+        save_promoted_sub_hippeis(self._promoted_sub_hippeis)
+
     # ── Panel visibility ───────────────────────────────────────────
 
     def _load_panel_visibility(self) -> None:
@@ -4281,6 +4319,69 @@ class ZeusApp(App):
         self.poll_and_update()
         if self._interact_visible:
             self._refresh_interact_panel()
+
+    def action_promote_selected(self) -> None:
+        if self._should_ignore_table_action():
+            return
+
+        tmux = self._get_selected_tmux()
+        if tmux is not None:
+            parent = self._get_parent_agent_for_tmux(tmux)
+            if parent is None or not self._is_hoplite_session_for(parent, tmux):
+                self.notify("Select a Hoplite tmux row to promote", timeout=3)
+                return
+            self.push_screen(ConfirmPromoteScreen(sess=tmux))
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("No Hippeus selected", timeout=2)
+            return
+
+        if self._is_hidden_agent(agent):
+            self.notify(f"{agent.name} is already a Hidden Hippeus", timeout=3)
+            return
+
+        if not self._has_promotable_parent(agent):
+            self.notify(f"{agent.name} is already a top-level Hippeus", timeout=3)
+            return
+
+        self.push_screen(ConfirmPromoteScreen(agent=agent))
+
+    def do_promote_sub_hippeus(self, agent: AgentWindow) -> bool:
+        agent_id = (agent.agent_id or "").strip()
+        if not agent_id:
+            self.notify(f"Cannot promote {agent.name}: missing agent id", timeout=3)
+            return False
+
+        if not self._has_promotable_parent(agent):
+            self.notify(f"{agent.name} is already a top-level Hippeus", timeout=3)
+            return False
+
+        self._promoted_sub_hippeis.add(agent_id)
+        self._save_promoted_sub_hippeis()
+        self.notify(f"Promoted sub-Hippeus to Hippeus: {agent.name}", timeout=3)
+        self.poll_and_update()
+        if self._interact_visible:
+            self._refresh_interact_panel()
+        return True
+
+    def do_promote_hoplite_tmux(self, sess: TmuxSession) -> bool:
+        parent = self._get_parent_agent_for_tmux(sess)
+        if parent is None or not self._is_hoplite_session_for(parent, sess):
+            self.notify("Selected tmux row is not a Hoplite", timeout=3)
+            return False
+
+        ok, detail = promote_hoplite_to_hidden_hippeus(sess)
+        if not ok:
+            self.notify(f"Promote failed for {sess.name}: {detail}", timeout=3)
+            return False
+
+        self.notify(f"Promoted Hoplite to Hidden Hippeus: {sess.name}", timeout=3)
+        self.poll_and_update()
+        if self._interact_visible:
+            self._refresh_interact_panel()
+        return True
 
     def action_spawn_subagent(self) -> None:
         if self._should_ignore_table_action():

@@ -45,6 +45,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["y"] == "Yank block between %%%% markers for selected Hippeus"
     assert entries["e"] == "Expand output for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
+    assert entries["Ctrl+p"] == "Promote selected sub-Hippeus / Hoplite"
     assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
     assert entries["h"] == "History for selected Hippeus"
     assert "i" not in entries
@@ -88,6 +89,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("y", "Yank block between %%%% markers for selected Hippeus"),
         ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
+        ("Ctrl+p", "Promote selected sub-Hippeus / Hoplite"),
         ("d", "Set/remove blocking dependency for selected Hippeus"),
         ("h", "History for selected Hippeus"),
         ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
@@ -118,6 +120,7 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "p",
         "a",
         "s",
+        "Ctrl+p",
         "d",
         "g",
         "h",
@@ -137,6 +140,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "q",
         "F10",
         "Tab",
+        "Ctrl+p",
         "Ctrl+Enter",
         "Ctrl+o",
         "z",
