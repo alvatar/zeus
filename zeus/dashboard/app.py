@@ -536,7 +536,7 @@ class ZeusApp(App):
     _BLOCKED_NON_STATE_FG = "#666666"
     _AEGIS_PROMPT = (
         "Continue now unless there is a decision here for me to make. "
-        "If you decide to continue, save a report in /reports, with an "
+        "If you decide to continue, report with an "
         "explanation of why you stopped in first place, and why you "
         "decided to continue without my input on this matter."
     )
