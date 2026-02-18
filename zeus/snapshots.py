@@ -48,6 +48,9 @@ class RestoreSnapshotResult:
     warnings: list[str] = field(default_factory=list)
     restored_count: int = 0
     skipped_count: int = 0
+    working_total: int = 0
+    working_restored: int = 0
+    working_skipped: int = 0
 
 
 def default_snapshot_name() -> str:
@@ -158,18 +161,25 @@ def restore_snapshot(
         )
 
     entries: list[dict[str, Any]] = [entry for entry in entries_raw if isinstance(entry, dict)]
+    working_ids: set[str] = {
+        str(raw).strip()
+        for raw in payload.get("working_agent_ids", [])
+        if isinstance(raw, str) and str(raw).strip()
+    }
 
     if workspace_mode not in {"original", "current"}:
         return RestoreSnapshotResult(
             ok=False,
             errors=[f"Invalid workspace mode: {workspace_mode}"],
             path=snapshot_path,
+            working_total=len(working_ids),
         )
     if if_running not in {"error", "skip", "replace"}:
         return RestoreSnapshotResult(
             ok=False,
             errors=[f"Invalid if-running policy: {if_running}"],
             path=snapshot_path,
+            working_total=len(working_ids),
         )
 
     live_agents = discover_agents()
@@ -178,11 +188,11 @@ def restore_snapshot(
     live_agent_ids: set[str] = {
         (agent.agent_id or "").strip() for agent in live_agents if (agent.agent_id or "").strip()
     }
-    live_tmux_agent_ids: set[str] = {
-        (sess.agent_id or sess.env_agent_id or "").strip()
-        for sess in live_tmux
-        if (sess.agent_id or sess.env_agent_id or "").strip()
-    }
+    live_tmux_agent_ids: set[str] = set()
+    for sess in live_tmux:
+        sess_agent_id = _tmux_agent_id_for_restore(sess)
+        if sess_agent_id:
+            live_tmux_agent_ids.add(sess_agent_id)
     live_ids = live_agent_ids | live_tmux_agent_ids
     live_tmux_names: set[str] = {sess.name for sess in live_tmux if sess.name}
 
@@ -199,17 +209,17 @@ def restore_snapshot(
                 + ", ".join(conflicts)
             ],
             path=snapshot_path,
+            working_total=len(working_ids),
         )
 
     warnings: list[str] = []
-    if if_running == "replace":
-        for agent_id in conflicts:
-            warnings.extend(_close_live_agent_id(agent_id, live_agents, live_tmux))
-            live_ids.discard(agent_id)
+    replaced_ids: set[str] = set()
 
     restored_count = 0
     skipped_count = 0
     errors: list[str] = []
+    working_restored = 0
+    working_skipped = 0
 
     for entry in entries:
         kind = str(entry.get("kind", "")).strip().lower()
@@ -218,10 +228,19 @@ def restore_snapshot(
         if agent_id and agent_id in live_ids:
             if if_running == "skip":
                 skipped_count += 1
+                if agent_id in working_ids:
+                    working_skipped += 1
                 continue
-            if if_running == "replace":
-                warnings.extend(_close_live_agent_id(agent_id, live_agents, live_tmux))
+            if if_running == "replace" and agent_id not in replaced_ids:
+                close_warnings, closed_tmux_names = _close_live_agent_id(
+                    agent_id,
+                    live_agents,
+                    live_tmux,
+                )
+                warnings.extend(close_warnings)
+                live_tmux_names.difference_update(closed_tmux_names)
                 live_ids.discard(agent_id)
+                replaced_ids.add(agent_id)
 
         if kind in {"stygian", "hoplite"}:
             sess_name = str(entry.get("tmux_session", "")).strip()
@@ -231,6 +250,8 @@ def restore_snapshot(
                     continue
                 if if_running == "skip":
                     skipped_count += 1
+                    if agent_id in working_ids:
+                        working_skipped += 1
                     continue
                 if if_running == "replace":
                     if not _kill_tmux_session(sess_name):
@@ -257,6 +278,8 @@ def restore_snapshot(
             restored_count += 1
             if agent_id:
                 live_ids.add(agent_id)
+                if agent_id in working_ids:
+                    working_restored += 1
             sess_name = str(entry.get("tmux_session", "")).strip()
             if sess_name:
                 live_tmux_names.add(sess_name)
@@ -270,6 +293,9 @@ def restore_snapshot(
         warnings=warnings,
         restored_count=restored_count,
         skipped_count=skipped_count,
+        working_total=len(working_ids),
+        working_restored=working_restored,
+        working_skipped=working_skipped,
     )
 
 
@@ -477,25 +503,36 @@ def _kill_tmux_session(session_name: str) -> bool:
     return result is not None and result.returncode == 0
 
 
+def _tmux_agent_id_for_restore(sess: TmuxSession) -> str:
+    """Return deterministic tmux agent id usable for restore conflict checks."""
+    source = (sess.agent_id_source or "").strip().lower()
+    if source not in {"option", "start-command"}:
+        return ""
+    return (sess.agent_id or "").strip()
+
+
 def _close_live_agent_id(
     agent_id: str,
     live_agents: list[AgentWindow],
     live_tmux: list[TmuxSession],
-) -> list[str]:
+) -> tuple[list[str], set[str]]:
     warnings: list[str] = []
+    closed_tmux_names: set[str] = set()
 
     for agent in live_agents:
         if (agent.agent_id or "").strip() == agent_id:
             close_window(agent)
 
     for sess in live_tmux:
-        sess_agent_id = (sess.agent_id or sess.env_agent_id or "").strip()
+        sess_agent_id = _tmux_agent_id_for_restore(sess)
         if sess_agent_id != agent_id:
             continue
-        if not _kill_tmux_session(sess.name):
-            warnings.append(f"Failed to replace tmux session: {sess.name}")
+        if _kill_tmux_session(sess.name):
+            closed_tmux_names.add(sess.name)
+            continue
+        warnings.append(f"Failed to replace tmux session: {sess.name}")
 
-    return warnings
+    return warnings, closed_tmux_names
 
 
 def _restore_kitty_entry(entry: dict[str, Any], *, workspace_mode: str) -> tuple[bool, str]:

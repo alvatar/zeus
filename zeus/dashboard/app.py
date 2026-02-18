@@ -4626,6 +4626,13 @@ class ZeusApp(App):
         if result.skipped_count:
             msg += f", {result.skipped_count} skipped"
         msg += ")"
+        if result.working_total:
+            msg += (
+                f"; previously WORKING: {result.working_restored}/"
+                f"{result.working_total} restored"
+            )
+            if result.working_skipped:
+                msg += f", {result.working_skipped} skipped"
         self.notify_force(msg, timeout=4)
 
         if result.warnings:

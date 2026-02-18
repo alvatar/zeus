@@ -261,3 +261,197 @@ def test_restore_snapshot_hoplite_sets_tmux_metadata(
         and call[5] == "phalanx-polemarch-1"
         for call in tmux_calls
     )
+
+
+def test_restore_snapshot_replace_does_not_double_kill_tmux(monkeypatch, tmp_path: Path) -> None:
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text('{"type":"session"}\n', encoding="utf-8")
+
+    snapshot_file = tmp_path / "snapshot-replace.json"
+    snapshot_file.write_text(
+        json.dumps(
+            {
+                "schema_version": snapshots.SNAPSHOT_SCHEMA_VERSION,
+                "entries": [
+                    {
+                        "kind": "hoplite",
+                        "name": "hoplite-a",
+                        "agent_id": "hoplite-1",
+                        "role": "hoplite",
+                        "cwd": "/tmp/project",
+                        "tmux_session": "hoplite-1",
+                        "session_path": str(session_file),
+                        "owner_id": "polemarch-1",
+                        "phalanx_id": "phalanx-polemarch-1",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live = TmuxSession(
+        name="hoplite-1",
+        command="ZEUS_AGENT_ID=hoplite-1 exec pi",
+        cwd="/tmp/project",
+        agent_id="hoplite-1",
+        agent_id_source="option",
+        role="hoplite",
+        owner_id="polemarch-1",
+        phalanx_id="phalanx-polemarch-1",
+    )
+
+    monkeypatch.setattr(snapshots, "discover_agents", lambda: [])
+    monkeypatch.setattr(snapshots, "discover_tmux_sessions", lambda: [live])
+
+    tmux_calls: list[list[str]] = []
+
+    def _fake_run_tmux(command: list[str], *, timeout: float):
+        tmux_calls.append(list(command))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(snapshots, "_run_tmux", _fake_run_tmux)
+
+    result = snapshots.restore_snapshot(
+        snapshot_path=str(snapshot_file),
+        workspace_mode="original",
+        if_running="replace",
+    )
+
+    assert result.ok is True
+    kill_calls = [
+        call
+        for call in tmux_calls
+        if call[:4] == ["tmux", "kill-session", "-t", "hoplite-1"]
+    ]
+    assert len(kill_calls) == 1
+
+
+def test_restore_snapshot_ignores_env_only_tmux_agent_identity(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text('{"type":"session"}\n', encoding="utf-8")
+
+    snapshot_file = tmp_path / "snapshot-env-only.json"
+    snapshot_file.write_text(
+        json.dumps(
+            {
+                "schema_version": snapshots.SNAPSHOT_SCHEMA_VERSION,
+                "entries": [
+                    {
+                        "kind": "kitty",
+                        "name": "alpha",
+                        "agent_id": "agent-alpha",
+                        "role": "hippeus",
+                        "cwd": "/tmp/project",
+                        "workspace": "DP-1:3",
+                        "session_path": str(session_file),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    live_tmux = TmuxSession(
+        name="viewer",
+        command="",
+        cwd="/tmp/project",
+        agent_id="agent-alpha",
+        agent_id_source="env",
+    )
+
+    monkeypatch.setattr(snapshots, "discover_agents", lambda: [])
+    monkeypatch.setattr(snapshots, "discover_tmux_sessions", lambda: [live_tmux])
+
+    class _DummyProc:
+        pid = 999
+
+    monkeypatch.setattr(snapshots.subprocess, "Popen", lambda *_args, **_kwargs: _DummyProc())
+    monkeypatch.setattr(
+        snapshots,
+        "move_pid_to_workspace_and_focus_later",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = snapshots.restore_snapshot(
+        snapshot_path=str(snapshot_file),
+        workspace_mode="current",
+        if_running="error",
+    )
+
+    assert result.ok is True
+    assert result.restored_count == 1
+
+
+def test_restore_snapshot_reports_working_restore_and_skip_counts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_a = tmp_path / "session-a.jsonl"
+    session_a.write_text('{"type":"session"}\n', encoding="utf-8")
+    session_b = tmp_path / "session-b.jsonl"
+    session_b.write_text('{"type":"session"}\n', encoding="utf-8")
+
+    snapshot_file = tmp_path / "snapshot-working.json"
+    snapshot_file.write_text(
+        json.dumps(
+            {
+                "schema_version": snapshots.SNAPSHOT_SCHEMA_VERSION,
+                "working_agent_ids": ["agent-a", "agent-b"],
+                "entries": [
+                    {
+                        "kind": "kitty",
+                        "name": "a",
+                        "agent_id": "agent-a",
+                        "role": "hippeus",
+                        "cwd": "/tmp/project",
+                        "workspace": "DP-1:3",
+                        "session_path": str(session_a),
+                    },
+                    {
+                        "kind": "kitty",
+                        "name": "b",
+                        "agent_id": "agent-b",
+                        "role": "hippeus",
+                        "cwd": "/tmp/project",
+                        "workspace": "DP-1:3",
+                        "session_path": str(session_b),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        snapshots,
+        "discover_agents",
+        lambda: [_agent("live-b", agent_id="agent-b")],
+    )
+    monkeypatch.setattr(snapshots, "discover_tmux_sessions", lambda: [])
+
+    class _DummyProc:
+        pid = 1001
+
+    monkeypatch.setattr(snapshots.subprocess, "Popen", lambda *_args, **_kwargs: _DummyProc())
+    monkeypatch.setattr(
+        snapshots,
+        "move_pid_to_workspace_and_focus_later",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = snapshots.restore_snapshot(
+        snapshot_path=str(snapshot_file),
+        workspace_mode="current",
+        if_running="skip",
+    )
+
+    assert result.ok is True
+    assert result.restored_count == 1
+    assert result.skipped_count == 1
+    assert result.working_total == 2
+    assert result.working_restored == 1
+    assert result.working_skipped == 1

@@ -113,3 +113,35 @@ def test_do_restore_snapshot_reports_success(monkeypatch) -> None:
     assert ok is True
     assert notices[-1] == "Restored snapshot: snap.json (3 restored, 1 skipped)"
     assert timers == [0.7]
+
+
+def test_do_restore_snapshot_reports_working_state_recovery(monkeypatch) -> None:
+    app = ZeusApp()
+    notices: list[str] = []
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.restore_snapshot",
+        lambda **_kwargs: RestoreSnapshotResult(
+            ok=True,
+            path="/tmp/snap.json",
+            restored_count=2,
+            skipped_count=0,
+            working_total=3,
+            working_restored=2,
+            working_skipped=1,
+        ),
+    )
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "set_timer", lambda _delay, _cb: None)
+
+    ok = app.do_restore_snapshot(
+        "/tmp/snap.json",
+        workspace_mode="original",
+        if_running="error",
+    )
+
+    assert ok is True
+    assert (
+        notices[-1]
+        == "Restored snapshot: snap.json (2 restored); previously WORKING: 2/3 restored, 1 skipped"
+    )

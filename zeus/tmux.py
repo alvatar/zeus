@@ -188,13 +188,21 @@ def discover_tmux_sessions() -> list[TmuxSession]:
         backend = _read_tmux_backend(name)
         display_name = _read_tmux_display_name(name)
         session_path = _read_tmux_session_path(name)
-        option_agent_id = _read_tmux_agent_id(name)
-        start_cmd_agent_id = _extract_start_command_agent_id(cmd_str)
-        session_agent_id = (
-            option_agent_id.strip()
-            or start_cmd_agent_id.strip()
-            or env_agent_id.strip()
-        )
+        option_agent_id = _read_tmux_agent_id(name).strip()
+        start_cmd_agent_id = _extract_start_command_agent_id(cmd_str).strip()
+        env_agent_id = env_agent_id.strip()
+
+        session_agent_id = ""
+        session_agent_id_source = ""
+        if option_agent_id:
+            session_agent_id = option_agent_id
+            session_agent_id_source = "option"
+        elif start_cmd_agent_id:
+            session_agent_id = start_cmd_agent_id
+            session_agent_id_source = "start-command"
+        elif env_agent_id:
+            session_agent_id = env_agent_id
+            session_agent_id_source = "env"
 
         sessions.append(
             TmuxSession(
@@ -207,6 +215,7 @@ def discover_tmux_sessions() -> list[TmuxSession]:
                 owner_id=owner_id,
                 env_agent_id=env_agent_id,
                 agent_id=session_agent_id,
+                agent_id_source=session_agent_id_source,
                 role=role,
                 phalanx_id=phalanx_id,
                 backend=backend,

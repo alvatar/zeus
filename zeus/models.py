@@ -21,6 +21,7 @@ class TmuxSession:
     owner_id: str = ""        # tmux @zeus_owner (deterministic owner)
     env_agent_id: str = ""    # ZEUS_AGENT_ID from tmux session env (often inherited)
     agent_id: str = ""        # hoplite/pane agent id (@zeus_agent or startup cmd)
+    agent_id_source: str = "" # option | start-command | env
     role: str = ""            # tmux @zeus_role (e.g. hoplite)
     phalanx_id: str = ""      # tmux @zeus_phalanx
     backend: str = ""         # tmux @zeus_backend tag
