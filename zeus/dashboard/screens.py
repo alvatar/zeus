@@ -1100,7 +1100,7 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
                 RadioButton("No", value=True, id="snapshot-save-close-no"),
                 RadioButton("Yes", id="snapshot-save-close-yes"),
                 id="snapshot-save-close-all",
-                compact=True,
+                compact=False,
             )
             with Horizontal(id="snapshot-save-buttons"):
                 yield Button("Cancel", variant="default", id="snapshot-save-cancel")

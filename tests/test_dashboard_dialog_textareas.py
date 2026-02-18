@@ -142,6 +142,7 @@ def test_snapshot_save_dialog_uses_radio_options_for_close_all() -> None:
     assert "snapshot-save-close-no" in source
     assert "snapshot-save-close-yes" in source
     assert "snapshot-save-close-all" in source
+    assert "compact=False" in source
     assert "Select(" not in source
 
 
