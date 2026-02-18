@@ -27,6 +27,7 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
     assert "#confirm-promote-buttons {" in css.CONFIRM_PROMOTE_CSS
     assert "#snapshot-save-buttons {" in css.SNAPSHOT_SAVE_CSS
+    assert "#snapshot-save-close-all RadioButton {" in css.SNAPSHOT_SAVE_CSS
     assert "#snapshot-restore-buttons {" in css.SNAPSHOT_RESTORE_CSS
 
 

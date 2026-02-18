@@ -13,6 +13,7 @@ from zeus.dashboard.screens import (
     NewAgentScreen,
     RenameScreen,
     RenameTmuxScreen,
+    SaveSnapshotScreen,
 )
 
 _PLAIN_TEXTAREA_CALL_RE = re.compile(r"(?<!Zeus)TextArea\(")
@@ -133,6 +134,15 @@ def test_rename_tmux_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
 
     bindings = {binding.key: binding.action for binding in RenameTmuxScreen.BINDINGS}
     assert bindings["escape"] == "dismiss"
+
+
+def test_snapshot_save_dialog_uses_radio_options_for_close_all() -> None:
+    source = _compose_source(SaveSnapshotScreen)
+    assert "RadioSet(" in source
+    assert "snapshot-save-close-no" in source
+    assert "snapshot-save-close-yes" in source
+    assert "snapshot-save-close-all" in source
+    assert "Select(" not in source
 
 
 class _InputStub:

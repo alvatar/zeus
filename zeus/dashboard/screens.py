@@ -1096,11 +1096,11 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             yield Label("Snapshot name:")
             yield Input(value=self.default_name, id="snapshot-save-name")
             yield Label("Close all agents after saving:")
-            yield Select(
-                [("No", "no"), ("Yes", "yes")],
-                allow_blank=False,
-                value="no",
+            yield RadioSet(
+                RadioButton("No", value=True, id="snapshot-save-close-no"),
+                RadioButton("Yes", id="snapshot-save-close-yes"),
                 id="snapshot-save-close-all",
+                compact=True,
             )
             with Horizontal(id="snapshot-save-buttons"):
                 yield Button("Cancel", variant="default", id="snapshot-save-cancel")
@@ -1112,8 +1112,9 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
         inp.action_select_all()
 
     def _close_all_value(self) -> bool:
-        value = self.query_one("#snapshot-save-close-all", Select).value
-        return value is not Select.BLANK and str(value) == "yes"
+        close_set = self.query_one("#snapshot-save-close-all", RadioSet)
+        pressed = close_set.pressed_button
+        return pressed is not None and pressed.id == "snapshot-save-close-yes"
 
     def _name_value(self) -> str:
         return self.query_one("#snapshot-save-name", Input).value.strip()
