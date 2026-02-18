@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import shlex
 import subprocess
 from typing import TYPE_CHECKING
@@ -41,6 +42,8 @@ from .css import (
     RENAME_CSS,
     CONFIRM_KILL_CSS,
     CONFIRM_PROMOTE_CSS,
+    SNAPSHOT_SAVE_CSS,
+    SNAPSHOT_RESTORE_CSS,
     BROADCAST_PREPARING_CSS,
     BROADCAST_CONFIRM_CSS,
     DIRECT_MESSAGE_CONFIRM_CSS,
@@ -1071,6 +1074,151 @@ class ConfirmDirectMessageScreen(_ZeusScreenMixin, ModalScreen):
         self.dismiss()
 
 
+class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = SNAPSHOT_SAVE_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("enter", "confirm", "Save", show=False),
+    ]
+
+    def __init__(self, *, default_name: str) -> None:
+        super().__init__()
+        self.default_name = default_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="snapshot-save-dialog"):
+            yield Label("Save snapshot")
+            yield Label("Snapshot name:")
+            yield Input(value=self.default_name, id="snapshot-save-name")
+            yield Label("Close all agents after saving:")
+            yield Select(
+                [("No", "no"), ("Yes", "yes")],
+                allow_blank=False,
+                value="no",
+                id="snapshot-save-close-all",
+            )
+            with Horizontal(id="snapshot-save-buttons"):
+                yield Button("Cancel", variant="default", id="snapshot-save-cancel")
+                yield Button("Save", variant="primary", id="snapshot-save-confirm")
+
+    def on_mount(self) -> None:
+        inp = self.query_one("#snapshot-save-name", Input)
+        inp.focus()
+        inp.action_select_all()
+
+    def _close_all_value(self) -> bool:
+        value = self.query_one("#snapshot-save-close-all", Select).value
+        return value is not Select.BLANK and str(value) == "yes"
+
+    def _name_value(self) -> str:
+        return self.query_one("#snapshot-save-name", Input).value.strip()
+
+    def action_confirm(self) -> None:
+        name = self._name_value()
+        if not name:
+            self.zeus.notify_force("Snapshot name cannot be empty", timeout=3)
+            self.query_one("#snapshot-save-name", Input).focus()
+            return
+
+        ok = self.zeus.do_save_snapshot(name, close_all=self._close_all_value())
+        if ok:
+            self.dismiss()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "snapshot-save-confirm":
+            self.action_confirm()
+            event.stop()
+            return
+
+        self.dismiss()
+        event.stop()
+
+
+class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = SNAPSHOT_RESTORE_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("enter", "confirm", "Restore", show=False),
+    ]
+
+    def __init__(self, *, snapshot_files: list[Path]) -> None:
+        super().__init__()
+        self.snapshot_files = snapshot_files
+
+    def compose(self) -> ComposeResult:
+        options = [(path.name, str(path)) for path in self.snapshot_files]
+        default_snapshot = options[0][1] if options else Select.BLANK
+
+        with Vertical(id="snapshot-restore-dialog"):
+            yield Label("Restore snapshot")
+            yield Label("Snapshot file:")
+            yield Select(
+                options,
+                allow_blank=False,
+                value=default_snapshot,
+                id="snapshot-restore-file",
+            )
+            yield Label("Workspace placement:")
+            yield Select(
+                [
+                    ("Original workspaces", "original"),
+                    ("Current workspace", "current"),
+                ],
+                allow_blank=False,
+                value="original",
+                id="snapshot-restore-workspace",
+            )
+            yield Label("If agent id already running:")
+            yield Select(
+                [
+                    ("Error", "error"),
+                    ("Skip", "skip"),
+                    ("Replace", "replace"),
+                ],
+                allow_blank=False,
+                value="error",
+                id="snapshot-restore-running",
+            )
+            with Horizontal(id="snapshot-restore-buttons"):
+                yield Button("Cancel", variant="default", id="snapshot-restore-cancel")
+                yield Button("Restore", variant="warning", id="snapshot-restore-confirm")
+
+    def on_mount(self) -> None:
+        self.query_one("#snapshot-restore-file", Select).focus()
+
+    def _selected_value(self, selector: str) -> str | None:
+        value = self.query_one(selector, Select).value
+        if value is Select.BLANK:
+            return None
+        return str(value)
+
+    def action_confirm(self) -> None:
+        snapshot_path = self._selected_value("#snapshot-restore-file")
+        workspace_mode = self._selected_value("#snapshot-restore-workspace")
+        if_running = self._selected_value("#snapshot-restore-running")
+
+        if not snapshot_path or not workspace_mode or not if_running:
+            self.zeus.notify_force("Restore settings are incomplete", timeout=3)
+            return
+
+        ok = self.zeus.do_restore_snapshot(
+            snapshot_path,
+            workspace_mode=workspace_mode,
+            if_running=if_running,
+        )
+        if ok:
+            self.dismiss()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "snapshot-restore-confirm":
+            self.action_confirm()
+            event.stop()
+            return
+
+        self.dismiss()
+        event.stop()
+
+
 # ── Help ──────────────────────────────────────────────────────────────
 
 _HELP_BINDINGS: list[tuple[str, str]] = [
@@ -1091,6 +1239,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Stygian Hippeus / Polemarch"),
+    ("Ctrl+s", "Save snapshot of all restorable agents"),
+    ("Ctrl+r", "Restore snapshot"),
     ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
     ("n", "Queue next task for selected Hippeus"),
     (
@@ -1104,7 +1254,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+Enter", "Teleport to Hippeus / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected target directory"),
     ("", "─── Interact Panel ───"),
-    ("Ctrl+s", "Send message to Hippeus / tmux"),
+    ("Ctrl+Shift+s", "Send message to Hippeus / tmux"),
     ("Ctrl+w", "Queue message (Alt+Enter in pi)"),
     ("Ctrl+k", "Kill to end-of-line (or delete line if empty)"),
     ("Ctrl+u", "Clear input"),

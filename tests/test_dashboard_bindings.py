@@ -47,6 +47,16 @@ def test_clear_done_tasks_binding_action() -> None:
     assert bindings["ctrl+t"].action == "clear_done_tasks"
 
 
+def test_snapshot_and_interact_send_bindings() -> None:
+    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
+    assert bindings["ctrl+s"].action == "save_snapshot"
+    assert bindings["ctrl+s"].priority is True
+    assert bindings["ctrl+r"].action == "restore_snapshot"
+    assert bindings["ctrl+r"].priority is True
+    assert bindings["ctrl+shift+s"].action == "send_interact"
+    assert bindings["ctrl+shift+s"].priority is True
+
+
 def test_kill_tmux_session_binding_action() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert bindings["ctrl+k"].action == "kill_tmux_session"

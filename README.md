@@ -14,6 +14,7 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 - **Deterministic tmux ownership** — sessions are matched by `ZEUS_AGENT_ID` / `@zeus_owner` first, with cwd/screen-text fallback for legacy sessions
 - **Hippeus launcher** — `$mod+Return` opens a bemenu prompt: name it to track, or leave empty for a regular terminal
 - **Autonomous queue CLI** — `zeus-msg send` lets Polemarch/Hoplite sessions enqueue filesystem-backed messages without Oracle mediation
+- **Snapshot save/restore** — save all restorable agents to disk, optionally close all, and restore sessions/windows later
 
 ## Terminology
 
@@ -29,6 +30,7 @@ TUI dashboard to monitor and manage multiple [pi](https://github.com/mariozechne
 Canonical naming rules live in `docs/specs/terminology.md`.
 
 Filesystem messaging flow and delivery guarantees are documented in `docs/guides/filesystem-messaging.md`.
+Snapshot payload format and restore policy contract are documented in `docs/interfaces/snapshot-v1.md`.
 
 ## Requirements
 

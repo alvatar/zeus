@@ -685,6 +685,65 @@ CONFIRM_PROMOTE_CSS = _confirm_dialog_css(
     border_color="#ffb000",
 )
 
+SNAPSHOT_SAVE_CSS = f"""
+SaveSnapshotScreen {{
+    align: center middle;
+    background: transparent;
+}}
+
+#snapshot-save-dialog {{
+    width: 78;
+    height: auto;
+    border: thick #00d7d7;
+    background: #0a0a0a;
+    padding: 2 3;
+}}
+
+#snapshot-save-dialog Label {{
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}}
+
+#snapshot-save-name,
+#snapshot-save-close-all {{
+    width: 100%;
+    margin: 0 0 1 0;
+}}
+
+{_button_row_css("snapshot-save-buttons", align="right middle")}
+"""
+
+SNAPSHOT_RESTORE_CSS = f"""
+RestoreSnapshotScreen {{
+    align: center middle;
+    background: transparent;
+}}
+
+#snapshot-restore-dialog {{
+    width: 86;
+    height: auto;
+    border: thick #d78700;
+    background: #0a0a0a;
+    padding: 2 3;
+}}
+
+#snapshot-restore-dialog Label {{
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}}
+
+#snapshot-restore-file,
+#snapshot-restore-workspace,
+#snapshot-restore-running {{
+    width: 100%;
+    margin: 0 0 1 0;
+}}
+
+{_button_row_css("snapshot-restore-buttons", align="right middle")}
+"""
+
 BROADCAST_PREPARING_CSS = f"""
 BroadcastPreparingScreen {{
     align: center middle;

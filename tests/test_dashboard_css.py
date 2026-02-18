@@ -26,6 +26,8 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#direct-buttons {" in css.DIRECT_MESSAGE_CONFIRM_CSS
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
     assert "#confirm-promote-buttons {" in css.CONFIRM_PROMOTE_CSS
+    assert "#snapshot-save-buttons {" in css.SNAPSHOT_SAVE_CSS
+    assert "#snapshot-restore-buttons {" in css.SNAPSHOT_RESTORE_CSS
 
 
 def test_confirm_promote_css_uses_distinct_border_color() -> None:
@@ -55,6 +57,8 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.HELP_CSS,
         css.CONFIRM_KILL_CSS,
         css.CONFIRM_PROMOTE_CSS,
+        css.SNAPSHOT_SAVE_CSS,
+        css.SNAPSHOT_RESTORE_CSS,
         css.BROADCAST_PREPARING_CSS,
         css.BROADCAST_CONFIRM_CSS,
         css.DIRECT_MESSAGE_CONFIRM_CSS,

@@ -94,6 +94,12 @@ from ..windowing import (
     kill_pid,
     move_pid_to_workspace_and_focus_later,
 )
+from ..snapshots import (
+    default_snapshot_name,
+    list_snapshot_files,
+    restore_snapshot,
+    save_snapshot_from_dashboard,
+)
 
 from .css import APP_CSS
 from .stream import (
@@ -116,6 +122,8 @@ from .screens import (
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
+    SaveSnapshotScreen,
+    RestoreSnapshotScreen,
     HelpScreen,
 )
 
@@ -496,8 +504,10 @@ class ZeusApp(App):
         Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
+        Binding("ctrl+s", "save_snapshot", "Save snapshot", show=False, priority=True),
+        Binding("ctrl+r", "restore_snapshot", "Restore snapshot", show=False, priority=True),
 
-        Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
+        Binding("ctrl+shift+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
         Binding("b", "broadcast_summary", "Broadcast", show=False),
         Binding("m", "direct_summary", "Direct Summary", show=False),
@@ -4551,6 +4561,79 @@ class ZeusApp(App):
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
             self.notify(f"Rename failed: {e}", timeout=3)
 
+    def action_save_snapshot(self) -> None:
+        if self._has_blocking_modal_open():
+            return
+        self.push_screen(SaveSnapshotScreen(default_name=default_snapshot_name()))
+
+    def action_restore_snapshot(self) -> None:
+        if self._has_blocking_modal_open():
+            return
+        snapshot_files = list_snapshot_files()
+        if not snapshot_files:
+            self.notify_force("No snapshots found", timeout=3)
+            return
+        self.push_screen(RestoreSnapshotScreen(snapshot_files=snapshot_files))
+
+    def do_save_snapshot(self, name: str, *, close_all: bool) -> bool:
+        result = save_snapshot_from_dashboard(
+            name=name,
+            agents=list(self.agents),
+            close_all=close_all,
+        )
+
+        if not result.ok:
+            detail = result.errors[0] if result.errors else "unknown error"
+            self.notify_force(f"Snapshot save failed: {detail}", timeout=5)
+            return False
+
+        msg = (
+            f"Saved snapshot: {Path(result.path).name} "
+            f"({result.entry_count} entries, {result.working_count} working)"
+        )
+        if close_all:
+            msg += f"; closed {result.closed_count}"
+        self.notify_force(msg, timeout=4)
+
+        if result.warnings:
+            self.notify_force(f"Snapshot warnings: {result.warnings[0]}", timeout=4)
+
+        self.set_timer(0.7, self.poll_and_update)
+        return True
+
+    def do_restore_snapshot(
+        self,
+        snapshot_path: str,
+        *,
+        workspace_mode: str,
+        if_running: str,
+    ) -> bool:
+        result = restore_snapshot(
+            snapshot_path=snapshot_path,
+            workspace_mode=workspace_mode,
+            if_running=if_running,
+        )
+
+        if not result.ok:
+            detail = result.errors[0] if result.errors else "unknown error"
+            self.notify_force(f"Snapshot restore failed: {detail}", timeout=5)
+            return False
+
+        msg = (
+            f"Restored snapshot: {Path(result.path).name} "
+            f"({result.restored_count} restored"
+        )
+        if result.skipped_count:
+            msg += f", {result.skipped_count} skipped"
+        msg += ")"
+        self.notify_force(msg, timeout=4)
+
+        if result.warnings:
+            self.notify_force(f"Restore warnings: {result.warnings[0]}", timeout=4)
+
+        self.set_timer(0.7, self.poll_and_update)
+        return True
+
     # ── Log panel ─────────────────────────────────────────────────────
 
     def action_show_help(self) -> None:
@@ -4874,7 +4957,7 @@ class ZeusApp(App):
         )
 
     def action_send_interact(self) -> None:
-        """Send text from interact input to the agent/tmux (Ctrl+s)."""
+        """Send text from interact input to the agent/tmux (Ctrl+Shift+s)."""
         if self._has_modal_open():
             modal = self.screen
             if isinstance(modal, AgentMessageScreen):
