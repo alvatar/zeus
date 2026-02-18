@@ -40,6 +40,7 @@ from .css import (
     SUBAGENT_CSS,
     RENAME_CSS,
     CONFIRM_KILL_CSS,
+    CONFIRM_PROMOTE_CSS,
     BROADCAST_PREPARING_CSS,
     BROADCAST_CONFIRM_CSS,
     DIRECT_MESSAGE_CONFIRM_CSS,
@@ -789,7 +790,7 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
 
 
 class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
-    CSS = CONFIRM_KILL_CSS
+    CSS = CONFIRM_PROMOTE_CSS
     BINDINGS = [
         Binding("escape", "dismiss", "Cancel", show=False),
         Binding("y", "confirm", "Yes", show=False),
@@ -809,7 +810,7 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
         self.sess = sess
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-kill-dialog"):
+        with Vertical(id="confirm-promote-dialog"):
             if self.agent is not None:
                 prompt = (
                     f"Promote sub-Hippeus [bold]{self.agent.name}[/bold] "
@@ -824,7 +825,7 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
                 prompt = "Promote selected target?"
 
             yield Label(prompt)
-            with Horizontal(id="confirm-kill-buttons"):
+            with Horizontal(id="confirm-promote-buttons"):
                 yield Button("Yes, promote", variant="warning", id="yes-btn")
                 yield Button("No", variant="default", id="no-btn")
 

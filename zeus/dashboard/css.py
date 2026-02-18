@@ -24,6 +24,39 @@ def _button_row_css(
     )
 
 
+def _confirm_dialog_css(
+    screen_selectors: str,
+    *,
+    dialog_id: str,
+    buttons_id: str,
+    border_color: str,
+) -> str:
+    return f"""
+{screen_selectors} {{
+    align: center middle;
+    background: transparent;
+}}
+
+#{dialog_id} {{
+    width: 60;
+    height: auto;
+    max-height: 12;
+    border: thick {border_color};
+    background: #0a0a0a;
+    padding: 2 3;
+}}
+
+#{dialog_id} Label {{
+    width: 100%;
+    content-align: center middle;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}}
+
+{_button_row_css(buttons_id, align="center middle", button_margin="0 1")}
+"""
+
+
 APP_CSS = """
 Screen {
     background: #000000;
@@ -638,30 +671,19 @@ HelpScreen {
 }
 """
 
-CONFIRM_KILL_CSS = f"""
-ConfirmKillScreen, ConfirmKillTmuxScreen {{
-    align: center middle;
-    background: transparent;
-}}
+CONFIRM_KILL_CSS = _confirm_dialog_css(
+    "ConfirmKillScreen, ConfirmKillTmuxScreen",
+    dialog_id="confirm-kill-dialog",
+    buttons_id="confirm-kill-buttons",
+    border_color="#ff3366",
+)
 
-#confirm-kill-dialog {{
-    width: 60;
-    height: auto;
-    max-height: 12;
-    border: thick #ff3366;
-    background: #0a0a0a;
-    padding: 2 3;
-}}
-
-#confirm-kill-dialog Label {{
-    width: 100%;
-    content-align: center middle;
-    margin: 0 0 1 0;
-    color: #cccccc;
-}}
-
-{_button_row_css("confirm-kill-buttons", align="center middle", button_margin="0 1")}
-"""
+CONFIRM_PROMOTE_CSS = _confirm_dialog_css(
+    "ConfirmPromoteScreen",
+    dialog_id="confirm-promote-dialog",
+    buttons_id="confirm-promote-buttons",
+    border_color="#ffb000",
+)
 
 BROADCAST_PREPARING_CSS = f"""
 BroadcastPreparingScreen {{

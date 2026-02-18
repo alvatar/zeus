@@ -25,6 +25,12 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#broadcast-buttons Button {" in css.BROADCAST_CONFIRM_CSS
     assert "#direct-buttons {" in css.DIRECT_MESSAGE_CONFIRM_CSS
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
+    assert "#confirm-promote-buttons {" in css.CONFIRM_PROMOTE_CSS
+
+
+def test_confirm_promote_css_uses_distinct_border_color() -> None:
+    assert "border: thick #ff3366;" in css.CONFIRM_KILL_CSS
+    assert "border: thick #ffb000;" in css.CONFIRM_PROMOTE_CSS
 
 
 def test_app_css_can_hide_interact_input() -> None:
@@ -48,6 +54,7 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.RENAME_CSS,
         css.HELP_CSS,
         css.CONFIRM_KILL_CSS,
+        css.CONFIRM_PROMOTE_CSS,
         css.BROADCAST_PREPARING_CSS,
         css.BROADCAST_CONFIRM_CSS,
         css.DIRECT_MESSAGE_CONFIRM_CSS,
