@@ -1,5 +1,6 @@
 """Tests for broadcast/direct share helpers."""
 
+import subprocess
 from pathlib import Path
 
 from zeus.dashboard.app import ZeusApp, _extract_share_file_path, _extract_share_payload
@@ -306,4 +307,43 @@ def test_action_yank_summary_payload_uses_force_notify_when_clipboard_missing(
     app.action_yank_summary_payload()
 
     assert notices == []
-    assert forced[-1] == "wl-copy unavailable; could not yank payload"
+    assert forced[-1] == "Could not copy payload to clipboard (wl-copy)"
+
+
+def test_copy_text_to_system_clipboard_returns_false_when_wl_copy_missing(monkeypatch) -> None:
+    app = ZeusApp()
+    monkeypatch.setattr("zeus.dashboard.app.shutil.which", lambda _name: None)
+
+    assert app._copy_text_to_system_clipboard("payload") is False
+
+
+def test_copy_text_to_system_clipboard_treats_timeout_as_success(monkeypatch) -> None:
+    app = ZeusApp()
+
+    class _DummyStdin:
+        def __init__(self) -> None:
+            self.writes: list[str] = []
+            self.closed = False
+
+        def write(self, text: str) -> None:
+            self.writes.append(text)
+
+        def close(self) -> None:
+            self.closed = True
+
+    stdin = _DummyStdin()
+
+    class _DummyProc:
+        def __init__(self) -> None:
+            self.stdin = stdin
+            self.returncode = 0
+
+        def wait(self, timeout: float = 0.0) -> int:
+            raise subprocess.TimeoutExpired(cmd=["wl-copy"], timeout=timeout)
+
+    monkeypatch.setattr("zeus.dashboard.app.shutil.which", lambda _name: "/usr/bin/wl-copy")
+    monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", lambda *args, **kwargs: _DummyProc())
+
+    assert app._copy_text_to_system_clipboard("payload") is True
+    assert stdin.writes == ["payload"]
+    assert stdin.closed is True

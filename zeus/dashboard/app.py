@@ -797,20 +797,45 @@ class ZeusApp(App):
 
     @staticmethod
     def _copy_text_to_system_clipboard(text: str) -> bool:
-        """Best-effort clipboard copy via wl-copy."""
+        """Best-effort clipboard copy via wl-copy.
+
+        Some wl-copy setups daemonize and can outlive the caller. We treat a
+        short timeout while waiting as success after stdin is written.
+        """
         if shutil.which("wl-copy") is None:
             return False
+
         try:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 ["wl-copy"],
-                input=text,
-                capture_output=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 text=True,
-                timeout=2,
+                start_new_session=True,
             )
-        except (subprocess.TimeoutExpired, OSError):
+        except OSError:
             return False
-        return result.returncode == 0
+
+        if proc.stdin is None:
+            return False
+
+        try:
+            proc.stdin.write(text)
+            proc.stdin.close()
+        except (OSError, ValueError):
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            return False
+
+        try:
+            proc.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            return True
+
+        return proc.returncode == 0
 
     def _pulse_widget(self, selector: str, low_opacity: float) -> None:
         """Run a clearly-visible single-beat opacity pulse on a widget."""
@@ -2638,7 +2663,7 @@ class ZeusApp(App):
 
         if not self._copy_text_to_system_clipboard(payload):
             self.notify_force(
-                "wl-copy unavailable; could not yank payload",
+                "Could not copy payload to clipboard (wl-copy)",
                 timeout=3,
             )
             return

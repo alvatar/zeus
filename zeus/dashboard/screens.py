@@ -434,7 +434,7 @@ class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
         entry = self._current_history_entry()
         if not self.zeus._copy_text_to_system_clipboard(entry):
             self.zeus.notify_force(
-                "wl-copy unavailable; could not yank history entry",
+                "Could not copy history entry to clipboard (wl-copy)",
                 timeout=3,
             )
             return

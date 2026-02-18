@@ -336,7 +336,7 @@ def test_history_screen_yank_notifies_when_clipboard_unavailable(monkeypatch) ->
 
     screen.action_yank()
 
-    assert notices[-1] == "wl-copy unavailable; could not yank history entry"
+    assert notices[-1] == "Could not copy history entry to clipboard (wl-copy)"
 
 
 def test_action_expand_output_pushes_expanded_output_screen(monkeypatch) -> None:
