@@ -217,6 +217,10 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
 
     monkeypatch.setattr(screen, "query_one", _query_one)
     monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-1")
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.make_new_session_path",
+        lambda _cwd: "/tmp/invoke-agent-1.jsonl",
+    )
 
     schedule_calls: list[tuple[str, str]] = []
     notices: list[str] = []
@@ -241,11 +245,13 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
 
     popen_env: dict[str, str] = {}
+    popen_cmd: list[str] = []
 
     class _DummyProc:
         pid = 123
 
-    def _fake_popen(_cmd, **kwargs):  # noqa: ANN001
+    def _fake_popen(cmd, **kwargs):  # noqa: ANN001
+        popen_cmd[:] = list(cmd)
         popen_env.update(kwargs.get("env", {}))
         return _DummyProc()
 
@@ -259,7 +265,9 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_AGENT_NAME"] == "alpha"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-1"
     assert popen_env["ZEUS_ROLE"] == "hippeus"
+    assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-1.jsonl"
     assert "ZEUS_PHALANX_ID" not in popen_env
+    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-1.jsonl"
     assert schedule_calls == []
     assert notices[-1] == "Invoked Hippeus: alpha"
     assert timers == [1.5]
@@ -282,6 +290,10 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
 
     monkeypatch.setattr(screen, "query_one", _query_one)
     monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-2")
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.make_new_session_path",
+        lambda _cwd: "/tmp/invoke-agent-2.jsonl",
+    )
 
     schedule_calls: list[tuple[str, str]] = []
     notices: list[str] = []
@@ -305,11 +317,13 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
 
     popen_env: dict[str, str] = {}
+    popen_cmd: list[str] = []
 
     class _DummyProc:
         pid = 123
 
-    def _fake_popen(_cmd, **kwargs):  # noqa: ANN001
+    def _fake_popen(cmd, **kwargs):  # noqa: ANN001
+        popen_cmd[:] = list(cmd)
         popen_env.update(kwargs.get("env", {}))
         return _DummyProc()
 
@@ -321,7 +335,9 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_AGENT_NAME"] == "planner"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-2"
     assert popen_env["ZEUS_ROLE"] == "polemarch"
+    assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-2.jsonl"
     assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
+    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-2.jsonl"
     assert schedule_calls == [("agent-2", "planner")]
     assert notices[-1] == "Invoked Polemarch: planner"
 

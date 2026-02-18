@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -28,6 +29,7 @@ from ..kitty import generate_agent_id
 from ..hidden_hippeus import launch_hidden_hippeus
 from ..models import AgentWindow, TmuxSession
 from ..notes import clear_done_tasks
+from ..sessions import make_new_session_path
 from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
@@ -138,18 +140,30 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.set_timer(1.5, self.zeus.poll_and_update)
             return
 
+        session_path = make_new_session_path(directory)
+
         env: dict[str, str] = os.environ.copy()
         env["ZEUS_AGENT_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
         env["ZEUS_ROLE"] = role
+        env["ZEUS_SESSION_PATH"] = session_path
         if role == "polemarch":
             env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
 
         subprocess.Popen(
-            ["kitty", "--directory", directory, "--hold",
-             "bash", "-lc", "pi"],
-            env=env, start_new_session=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [
+                "kitty",
+                "--directory",
+                directory,
+                "--hold",
+                "bash",
+                "-lc",
+                f"pi --session {shlex.quote(session_path)}",
+            ],
+            env=env,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         if role == "polemarch":
             self.zeus.schedule_polemarch_bootstrap(agent_id, name)
