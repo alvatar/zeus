@@ -1,5 +1,6 @@
 """Tests for table-triggered Hippeus message dialog helpers."""
 
+import inspect
 from types import SimpleNamespace
 
 from textual.widgets import DataTable
@@ -276,6 +277,66 @@ def test_history_screen_up_down_navigates_from_latest_to_previous(monkeypatch) -
     screen.action_newer()
     assert body.writes == ["second"]
     assert "2/3" in pos.text
+
+
+def test_history_screen_includes_yank_binding() -> None:
+    bindings = {binding.key: binding.action for binding in LastSentMessageScreen.BINDINGS}
+
+    assert bindings["y"] == "yank"
+
+
+def test_history_screen_hint_mentions_yank_shortcut() -> None:
+    source = inspect.getsource(LastSentMessageScreen.compose)
+
+    assert "(↑ older | ↓ newer | y yank | Esc close)" in source
+
+
+def test_history_screen_yank_copies_current_entry(monkeypatch) -> None:
+    screen = LastSentMessageScreen(_agent("alpha", 1), ["first", "second", "third"])
+
+    copied: list[str] = []
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _copy_text_to_system_clipboard(self, text: str) -> bool:
+            copied.append(text)
+            return True
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def notify_force(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+    monkeypatch.setattr(LastSentMessageScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.history_offset = 1
+    screen.action_yank()
+
+    assert copied == ["second"]
+    assert notices[-1] == "Yanked history: alpha"
+
+
+def test_history_screen_yank_notifies_when_clipboard_unavailable(monkeypatch) -> None:
+    screen = LastSentMessageScreen(_agent("alpha", 1), ["entry"])
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _copy_text_to_system_clipboard(self, _text: str) -> bool:
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def notify_force(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+    monkeypatch.setattr(LastSentMessageScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.action_yank()
+
+    assert notices[-1] == "wl-copy unavailable; could not yank history entry"
 
 
 def test_action_expand_output_pushes_expanded_output_screen(monkeypatch) -> None:

@@ -362,6 +362,7 @@ class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "dismiss", "Close", show=False),
         Binding("up", "older", "Older", show=False),
         Binding("down", "newer", "Newer", show=False),
+        Binding("y", "yank", "Yank", show=False),
     ]
 
     def __init__(self, agent: AgentWindow, history_entries: list[str]) -> None:
@@ -380,7 +381,7 @@ class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
                 )
                 yield Label("", id="last-sent-message-title-spacer")
                 yield Label(
-                    "(↑ older | ↓ newer | Esc close)",
+                    "(↑ older | ↓ newer | y yank | Esc close)",
                     id="last-sent-message-shortcuts-hint",
                 )
             yield Label("", id="last-sent-message-position")
@@ -428,6 +429,16 @@ class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
             return
         self.history_offset -= 1
         self._render_history_entry()
+
+    def action_yank(self) -> None:
+        entry = self._current_history_entry()
+        if not self.zeus._copy_text_to_system_clipboard(entry):
+            self.zeus.notify_force(
+                "wl-copy unavailable; could not yank history entry",
+                timeout=3,
+            )
+            return
+        self.zeus.notify(f"Yanked history: {self.agent.name}", timeout=2)
 
 
 class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
