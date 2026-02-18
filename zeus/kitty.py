@@ -14,6 +14,7 @@ import uuid
 from .config import AGENT_IDS_FILE, NAMES_FILE
 from .models import AgentWindow
 from .sessions import find_current_session, fork_session
+from .session_runtime import read_runtime_session_path
 from .windowing import focus_pid, move_pid_to_workspace_and_focus_later
 
 
@@ -160,6 +161,9 @@ def discover_agents() -> list[AgentWindow]:
                         ids[key] = agent_id
                         ids_changed = True
 
+                    runtime_session_path = read_runtime_session_path(agent_id)
+                    env_session_path = (env.get("ZEUS_SESSION_PATH") or "").strip()
+
                     agents.append(AgentWindow(
                         kitty_id=win_id,
                         socket=socket,
@@ -170,7 +174,7 @@ def discover_agents() -> list[AgentWindow]:
                         agent_id=agent_id,
                         parent_id=(env.get("ZEUS_PARENT_ID") or "").strip(),
                         role=(env.get("ZEUS_ROLE") or "").strip().lower(),
-                        session_path=env.get("ZEUS_SESSION_PATH", ""),
+                        session_path=runtime_session_path or env_session_path,
                     ))
 
     stale_keys = [k for k in ids if k not in live_keys]
@@ -211,16 +215,33 @@ def close_window(agent: AgentWindow) -> None:
     kitty_cmd(agent.socket, "close-window", "--match", f"id:{agent.kitty_id}")
 
 
-def resolve_agent_session_path(agent: AgentWindow) -> str | None:
-    """Resolve the best-known pi session file for an agent.
+def resolve_agent_session_path_with_source(agent: AgentWindow) -> tuple[str | None, str]:
+    """Resolve session path with provenance for reliability decisions.
 
-    Prefer explicit ZEUS_SESSION_PATH (deterministic per-window), then
-    fallback to newest session for the working directory.
+    Returns ``(path, source)`` where source is one of:
+      - ``runtime``: runtime sync from Zeus pi extension
+      - ``env``: launch-time ZEUS_SESSION_PATH
+      - ``cwd``: newest session in agent cwd (heuristic fallback)
+      - ``none``: no candidate found
     """
+    runtime_path = read_runtime_session_path(agent.agent_id)
+    if runtime_path:
+        return runtime_path, "runtime"
+
     explicit = (agent.session_path or "").strip()
     if explicit:
-        return explicit
-    return find_current_session(agent.cwd)
+        return explicit, "env"
+
+    fallback = find_current_session(agent.cwd)
+    if fallback:
+        return fallback, "cwd"
+    return None, "none"
+
+
+def resolve_agent_session_path(agent: AgentWindow) -> str | None:
+    """Resolve the best-known pi session file for an agent."""
+    path, _source = resolve_agent_session_path_with_source(agent)
+    return path
 
 
 def spawn_subagent(

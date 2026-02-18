@@ -85,10 +85,11 @@ bash install.sh --wrap-pi --no-bwrap
 
 The installer:
 1. Copies `zeus` and `zeus-launch` to `~/.local/bin/`
-2. (Optional `--wrap-pi`) wraps `~/.local/bin/pi` and stores backup at `~/.local/bin/pi.zeus-orig`
-3. (Optional sandbox mode) seeds `~/.config/zeus/sandbox-paths.conf` if missing
-4. Patches `~/.config/kitty/kitty.conf` to enable remote control
-5. Prints instructions for the sway keybinding
+2. Installs Zeus pi extension bundle at `~/.pi/agent/extensions/zeus.ts`
+3. (Optional `--wrap-pi`) wraps `~/.local/bin/pi` and stores backup at `~/.local/bin/pi.zeus-orig`
+4. (Optional sandbox mode) seeds `~/.config/zeus/sandbox-paths.conf` if possible
+5. Patches `~/.config/kitty/kitty.conf` to enable remote control
+6. Prints instructions for the sway keybinding
 
 After installing, add this to `~/.config/sway/config`:
 ```

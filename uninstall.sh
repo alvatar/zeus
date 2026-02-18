@@ -5,12 +5,22 @@ BIN_DIR="${HOME}/.local/bin"
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 PI_BIN="$BIN_DIR/pi"
 PI_ORIG="$BIN_DIR/pi.zeus-orig"
+PI_EXTENSION_FILE="${HOME}/.pi/agent/extensions/zeus.ts"
 
 echo "=== Zeus uninstaller ==="
 
 # Remove binaries
 rm -f "$BIN_DIR/zeus" "$BIN_DIR/zeus-msg" "$BIN_DIR/zeus-launch"
 echo "✓ Removed zeus, zeus-msg and zeus-launch from $BIN_DIR"
+
+# Remove Zeus pi extension bundle
+if [ -e "$PI_EXTENSION_FILE" ] || [ -L "$PI_EXTENSION_FILE" ]; then
+    if rm -f "$PI_EXTENSION_FILE" 2>/dev/null; then
+        echo "✓ Removed Zeus pi extension from $PI_EXTENSION_FILE"
+    else
+        echo "⚠ Could not remove Zeus pi extension at $PI_EXTENSION_FILE" >&2
+    fi
+fi
 
 # Restore pi if Zeus wrapper is present
 if [ -f "$PI_BIN" ] && grep -q "Zeus pi wrapper" "$PI_BIN" 2>/dev/null; then

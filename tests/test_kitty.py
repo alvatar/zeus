@@ -1,5 +1,6 @@
 """Tests for kitty window detection heuristics."""
 
+import json
 import subprocess
 
 import zeus.kitty as kitty
@@ -50,17 +51,90 @@ def _agent(session_path: str = "", agent_id: str = "parent-1") -> AgentWindow:
     )
 
 
-def test_resolve_agent_session_path_prefers_explicit_agent_session() -> None:
+def test_resolve_agent_session_path_prefers_runtime_sync(monkeypatch) -> None:
     agent = _agent(session_path="/tmp/explicit.jsonl")
+    monkeypatch.setattr(
+        kitty,
+        "read_runtime_session_path",
+        lambda _agent_id: "/tmp/runtime.jsonl",
+    )
+
+    assert kitty.resolve_agent_session_path(agent) == "/tmp/runtime.jsonl"
+
+
+def test_resolve_agent_session_path_prefers_explicit_agent_session(monkeypatch) -> None:
+    agent = _agent(session_path="/tmp/explicit.jsonl")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
 
     assert kitty.resolve_agent_session_path(agent) == "/tmp/explicit.jsonl"
 
 
 def test_resolve_agent_session_path_falls_back_to_cwd_lookup(monkeypatch) -> None:
     agent = _agent(session_path="")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
     monkeypatch.setattr(kitty, "find_current_session", lambda cwd: "/tmp/fallback.jsonl")
 
     assert kitty.resolve_agent_session_path(agent) == "/tmp/fallback.jsonl"
+
+
+def test_resolve_agent_session_path_with_source_marks_runtime(monkeypatch) -> None:
+    agent = _agent(session_path="/tmp/explicit.jsonl")
+    monkeypatch.setattr(
+        kitty,
+        "read_runtime_session_path",
+        lambda _agent_id: "/tmp/runtime.jsonl",
+    )
+
+    assert kitty.resolve_agent_session_path_with_source(agent) == (
+        "/tmp/runtime.jsonl",
+        "runtime",
+    )
+
+
+def test_discover_agents_uses_runtime_session_path_when_env_missing(monkeypatch) -> None:
+    socket = "/tmp/kitty-4242"
+    windows = [
+        {
+            "tabs": [
+                {
+                    "windows": [
+                        {
+                            "id": 1,
+                            "pid": 123,
+                            "cwd": "/tmp/project",
+                            "env": {
+                                "ZEUS_AGENT_NAME": "alpha",
+                                "ZEUS_AGENT_ID": "agent-1",
+                                "ZEUS_ROLE": "hippeus",
+                            },
+                            "cmdline": ["bash", "-lc", "pi"],
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket])
+    monkeypatch.setattr(
+        kitty,
+        "kitty_cmd",
+        lambda _socket, *_args, **_kwargs: json.dumps(windows),
+    )
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(
+        kitty,
+        "read_runtime_session_path",
+        lambda agent_id: "/tmp/runtime.jsonl" if agent_id == "agent-1" else None,
+    )
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 1
+    assert agents[0].name == "alpha"
+    assert agents[0].session_path == "/tmp/runtime.jsonl"
 
 
 def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path) -> None:
@@ -91,6 +165,7 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     monkeypatch.setattr(kitty, "fork_session", fake_fork_session)
     monkeypatch.setattr(kitty.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(kitty, "generate_agent_id", lambda: "agent-id")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
 
     result = kitty.spawn_subagent(agent, "child", workspace="")
 
@@ -112,6 +187,7 @@ def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(kitty, "fork_session", lambda _src, _cwd: str(tmp_path / "child.jsonl"))
     monkeypatch.setattr(kitty.subprocess, "Popen", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
 
     result = kitty.spawn_subagent(agent, "child", workspace="")
 

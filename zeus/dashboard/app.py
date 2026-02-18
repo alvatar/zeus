@@ -43,6 +43,7 @@ from ..process import fmt_bytes, read_process_metrics
 from ..kitty import (
     discover_agents, get_screen_text, focus_window, close_window,
     resolve_agent_session_path,
+    resolve_agent_session_path_with_source,
     spawn_subagent, load_names, save_names, kitty_cmd,
 )
 from ..sessions import read_session_text, read_session_user_text
@@ -4263,7 +4264,9 @@ class ZeusApp(App):
             if recovered:
                 agent.session_path = recovered
 
-        if not agent.session_path:
+        session, source = resolve_agent_session_path_with_source(agent)
+
+        if source == "cwd":
             same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
             if len(same_cwd) > 1:
                 self.notify(
@@ -4274,12 +4277,15 @@ class ZeusApp(App):
                 )
                 return
 
-        session: str | None = resolve_agent_session_path(agent)
         if not session or not os.path.isfile(session):
             self.notify(
                 f"No session found for {agent.name}", timeout=3
             )
             return
+
+        if source == "runtime" and not agent.session_path:
+            agent.session_path = session
+
         self.push_screen(SubAgentScreen(agent))
 
     def do_spawn_subagent(self, agent: AgentWindow, name: str) -> None:

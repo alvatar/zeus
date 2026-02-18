@@ -91,7 +91,34 @@ if [ -f "$SCRIPT_DIR/bin/zeus-launch" ]; then
     fi
 fi
 
-# 3. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
+# 3. Install Zeus pi extension bundle (shared runtime sync hooks)
+ZEUS_PI_EXTENSION_SRC="$SCRIPT_DIR/pi_extensions/zeus.ts"
+ZEUS_PI_EXTENSION_DIR="${HOME}/.pi/agent/extensions"
+ZEUS_PI_EXTENSION_DEST="${ZEUS_PI_EXTENSION_DIR}/zeus.ts"
+
+if [ -f "$ZEUS_PI_EXTENSION_SRC" ]; then
+    if mkdir -p "$ZEUS_PI_EXTENSION_DIR" 2>/dev/null; then
+        if $DEV_MODE; then
+            if ln -sf "$ZEUS_PI_EXTENSION_SRC" "$ZEUS_PI_EXTENSION_DEST" 2>/dev/null; then
+                echo "✓ Symlinked Zeus pi extension: $ZEUS_PI_EXTENSION_DEST → $ZEUS_PI_EXTENSION_SRC"
+            else
+                echo "⚠ Could not install Zeus pi extension at $ZEUS_PI_EXTENSION_DEST (permission denied); skipped" >&2
+            fi
+        else
+            if cp "$ZEUS_PI_EXTENSION_SRC" "$ZEUS_PI_EXTENSION_DEST" 2>/dev/null; then
+                echo "✓ Installed Zeus pi extension at $ZEUS_PI_EXTENSION_DEST"
+            else
+                echo "⚠ Could not install Zeus pi extension at $ZEUS_PI_EXTENSION_DEST (permission denied); skipped" >&2
+            fi
+        fi
+    else
+        echo "⚠ Could not create $ZEUS_PI_EXTENSION_DIR (permission denied); skipped" >&2
+    fi
+else
+    echo "⚠ Zeus pi extension source missing: $ZEUS_PI_EXTENSION_SRC" >&2
+fi
+
+# 4. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
 if $WRAP_PI; then
     PI_BIN="$BIN_DIR/pi"
     PI_ORIG="$BIN_DIR/pi.zeus-orig"
@@ -328,7 +355,7 @@ EOF
     fi
 fi
 
-# 4. Patch kitty.conf (idempotent)
+# 5. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 KITTY_CONF_DIR="$(dirname "$KITTY_CONF")"
 if mkdir -p "$KITTY_CONF_DIR" 2>/dev/null; then
@@ -356,7 +383,7 @@ else
     echo "⚠ Could not create $KITTY_CONF_DIR (permission denied); skipped" >&2
 fi
 
-# 5. Sway config (just show instructions)
+# 6. Sway config (just show instructions)
 echo ""
 echo "── Manual step: Sway config ──"
 echo "Edit ~/.config/sway/config and change your terminal keybinding:"
@@ -369,7 +396,7 @@ echo ""
 echo "Then reload sway: swaymsg reload"
 echo ""
 
-# 6. Verify
+# 7. Verify
 echo "── Status ──"
 if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"

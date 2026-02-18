@@ -29,6 +29,16 @@ def test_install_seeds_sandbox_config_with_defaults() -> None:
     assert "/tmp" in text
 
 
+def test_install_deploys_zeus_pi_extension_bundle() -> None:
+    text = _read("install.sh")
+
+    assert 'ZEUS_PI_EXTENSION_SRC="$SCRIPT_DIR/pi_extensions/zeus.ts"' in text
+    assert 'ZEUS_PI_EXTENSION_DIR="${HOME}/.pi/agent/extensions"' in text
+    assert 'ZEUS_PI_EXTENSION_DEST="${ZEUS_PI_EXTENSION_DIR}/zeus.ts"' in text
+    assert 'ln -sf "$ZEUS_PI_EXTENSION_SRC" "$ZEUS_PI_EXTENSION_DEST"' in text
+    assert 'cp "$ZEUS_PI_EXTENSION_SRC" "$ZEUS_PI_EXTENSION_DEST"' in text
+
+
 def test_generated_wrapper_uses_bwrap_and_supports_no_sandbox_flag() -> None:
     text = _read("install.sh")
 
@@ -118,6 +128,13 @@ def test_generated_wrapper_avoids_broad_home_mounts() -> None:
 
     assert 'bwrap_ro "\\${HOME}/.config"' not in text
     assert 'bwrap_ro "\\${HOME}/.npm"' not in text
+
+
+def test_uninstall_removes_zeus_pi_extension_bundle() -> None:
+    text = _read("uninstall.sh")
+
+    assert 'PI_EXTENSION_FILE="${HOME}/.pi/agent/extensions/zeus.ts"' in text
+    assert "Removed Zeus pi extension" in text
 
 
 def test_uninstall_preserves_sandbox_config_notice() -> None:

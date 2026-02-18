@@ -147,8 +147,8 @@ def test_action_spawn_subagent_recovers_hidden_session_path(monkeypatch) -> None
         lambda _sess: "/tmp/hidden-session.jsonl",
     )
     monkeypatch.setattr(
-        "zeus.dashboard.app.resolve_agent_session_path",
-        lambda agent: agent.session_path,
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda agent: (agent.session_path, "env"),
     )
     monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda path: path == "/tmp/hidden-session.jsonl")
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
@@ -160,6 +160,74 @@ def test_action_spawn_subagent_recovers_hidden_session_path(monkeypatch) -> None
     assert pushed
     assert isinstance(pushed[0], SubAgentScreen)
     assert notices == []
+
+
+def test_action_spawn_subagent_uses_runtime_source_even_when_cwd_shared(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+    sibling = AgentWindow(
+        kitty_id=2,
+        socket="/tmp/kitty-1",
+        name="sibling",
+        pid=102,
+        kitty_pid=202,
+        cwd="/tmp/project",
+    )
+    app.agents = [parent, sibling]
+
+    pushed: list[object] = []
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: parent)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/runtime-session.jsonl", "runtime"),
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.os.path.isfile",
+        lambda path: path == "/tmp/runtime-session.jsonl",
+    )
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert pushed
+    assert isinstance(pushed[0], SubAgentScreen)
+    assert parent.session_path == "/tmp/runtime-session.jsonl"
+    assert notices == []
+
+
+def test_action_spawn_subagent_blocks_cwd_fallback_when_cwd_shared(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+    sibling = AgentWindow(
+        kitty_id=2,
+        socket="/tmp/kitty-1",
+        name="sibling",
+        pid=102,
+        kitty_pid=202,
+        cwd="/tmp/project",
+    )
+    app.agents = [parent, sibling]
+
+    pushed: list[object] = []
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: parent)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/fallback-session.jsonl", "cwd"),
+    )
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert pushed == []
+    assert notices[-1].startswith("Cannot reliably fork this legacy Hippeus")
 
 
 def test_name_uniqueness_checks_are_case_insensitive() -> None:
