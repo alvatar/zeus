@@ -504,10 +504,10 @@ class ZeusApp(App):
         Binding("p", "cycle_priority", "Priority"),
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
-        Binding("ctrl+s", "save_snapshot", "Save snapshot", show=False, priority=True),
-        Binding("ctrl+r", "restore_snapshot", "Restore snapshot", show=False, priority=True),
+        Binding("ctrl+r", "save_snapshot", "Save snapshot", show=False, priority=True),
+        Binding("ctrl+shift+r", "restore_snapshot", "Restore snapshot", show=False, priority=True),
 
-        Binding("ctrl+shift+s", "send_interact", "Send", show=False, priority=True),
+        Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
         Binding("b", "broadcast_summary", "Broadcast", show=False),
         Binding("m", "direct_summary", "Direct Summary", show=False),
@@ -4957,7 +4957,7 @@ class ZeusApp(App):
         )
 
     def action_send_interact(self) -> None:
-        """Send text from interact input to the agent/tmux (Ctrl+Shift+s)."""
+        """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if self._has_modal_open():
             modal = self.screen
             if isinstance(modal, AgentMessageScreen):
