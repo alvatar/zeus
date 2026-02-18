@@ -123,9 +123,9 @@ if $WRAP_PI; then
             if [ "$WRAPPER_BWRAP_ENABLED" = "1" ]; then
                 ZEUS_CONF_DIR="${HOME}/.config/zeus"
                 SANDBOX_CONF="${ZEUS_CONF_DIR}/sandbox-paths.conf"
-                mkdir -p "$ZEUS_CONF_DIR"
-                if [ ! -f "$SANDBOX_CONF" ]; then
-                    cat > "$SANDBOX_CONF" <<'SCONF'
+                if mkdir -p "$ZEUS_CONF_DIR" 2>/dev/null; then
+                    if [ ! -f "$SANDBOX_CONF" ]; then
+                        cat > "$SANDBOX_CONF" <<'SCONF'
 # Writable paths for pi sandbox, one per line.
 # ~ is expanded to $HOME. Lines starting with # are ignored.
 # Each absolute path listed here is mounted read-write if it exists.
@@ -133,9 +133,12 @@ if $WRAP_PI; then
 ~/code
 /tmp
 SCONF
-                    echo "✓ Created default sandbox config: $SANDBOX_CONF"
+                        echo "✓ Created default sandbox config: $SANDBOX_CONF"
+                    else
+                        echo "✓ Sandbox config already exists: $SANDBOX_CONF (preserved)"
+                    fi
                 else
-                    echo "✓ Sandbox config already exists: $SANDBOX_CONF (preserved)"
+                    echo "⚠ Could not create $ZEUS_CONF_DIR; skipping sandbox config seed" >&2
                 fi
             fi
 
@@ -327,18 +330,30 @@ fi
 
 # 4. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
-if [ -f "$KITTY_CONF" ]; then
-    if grep -q "Zeus agent monitor" "$KITTY_CONF" 2>/dev/null; then
-        echo "✓ kitty.conf already patched"
+KITTY_CONF_DIR="$(dirname "$KITTY_CONF")"
+if mkdir -p "$KITTY_CONF_DIR" 2>/dev/null; then
+    if [ -f "$KITTY_CONF" ]; then
+        if grep -q "Zeus agent monitor" "$KITTY_CONF" 2>/dev/null; then
+            echo "✓ kitty.conf already patched"
+        else
+            if {
+                echo "" >> "$KITTY_CONF"
+                cat "$SCRIPT_DIR/config/kitty.conf.snippet" >> "$KITTY_CONF"
+            } 2>/dev/null; then
+                echo "✓ Patched $KITTY_CONF"
+            else
+                echo "⚠ Could not patch $KITTY_CONF (permission denied); skipped" >&2
+            fi
+        fi
     else
-        echo "" >> "$KITTY_CONF"
-        cat "$SCRIPT_DIR/config/kitty.conf.snippet" >> "$KITTY_CONF"
-        echo "✓ Patched $KITTY_CONF"
+        if cat "$SCRIPT_DIR/config/kitty.conf.snippet" > "$KITTY_CONF" 2>/dev/null; then
+            echo "✓ Created $KITTY_CONF"
+        else
+            echo "⚠ Could not create $KITTY_CONF (permission denied); skipped" >&2
+        fi
     fi
 else
-    mkdir -p "$(dirname "$KITTY_CONF")"
-    cat "$SCRIPT_DIR/config/kitty.conf.snippet" > "$KITTY_CONF"
-    echo "✓ Created $KITTY_CONF"
+    echo "⚠ Could not create $KITTY_CONF_DIR (permission denied); skipped" >&2
 fi
 
 # 5. Sway config (just show instructions)
