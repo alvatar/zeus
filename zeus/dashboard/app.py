@@ -541,6 +541,7 @@ class ZeusApp(App):
         "decided to continue without my input on this matter."
     )
     _CELEBRATION_COOLDOWN_S = 3600.0
+    _CELEBRATION_MIN_ACTIVE_AGENTS = 4
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
@@ -1879,11 +1880,14 @@ class ZeusApp(App):
     def _mark_celebration_cooldown(self) -> None:
         self._celebration_cooldown_started_at = time.time()
 
-    def _maybe_trigger_celebration(self, eff_pct: float) -> None:
+    def _maybe_trigger_celebration(self, eff_pct: float, active_agents: int) -> None:
         if eff_pct < 80:
             self._steady_armed = True
         if eff_pct < 60:
             self._dopamine_armed = True
+
+        if active_agents < self._CELEBRATION_MIN_ACTIVE_AGENTS:
+            return
 
         if not self._celebration_ready():
             return
@@ -1931,12 +1935,14 @@ class ZeusApp(App):
         raw_working = 0
         raw_waiting = 0
         raw_total = 0
+        active_agent_count = 0
         for agent in self.agents:
             if self._is_input_blocked(agent):
                 continue
             samples = self._sparkline_samples.get(agent.name, [])
             if not samples:
                 continue
+            active_agent_count += 1
             w = _pri_weight.get(self._get_priority(agent.name), 1)
             nw = sum(1 for s in samples if s == "WORKING")
             nwait = sum(1 for s in samples if s == "WAITING")
@@ -1953,7 +1959,7 @@ class ZeusApp(App):
             wait_pct = raw_waiting / total * 100
             idle_pct = (total - raw_working - raw_waiting) / total * 100
 
-            self._maybe_trigger_celebration(eff_pct)
+            self._maybe_trigger_celebration(eff_pct, active_agent_count)
 
             header = (
                 f"[#888888]Efficiency: {eff_pct:.0f}%[/]  │  "

@@ -21,7 +21,7 @@ def test_maybe_trigger_celebration_blocked_by_cooldown(monkeypatch) -> None:
 
     app._steady_armed = True
     app._dopamine_armed = True
-    app._maybe_trigger_celebration(85.0)
+    app._maybe_trigger_celebration(85.0, 4)
 
     assert calls == []
 
@@ -36,7 +36,7 @@ def test_maybe_trigger_celebration_prefers_steady_when_ready(monkeypatch) -> Non
 
     app._steady_armed = True
     app._dopamine_armed = True
-    app._maybe_trigger_celebration(85.0)
+    app._maybe_trigger_celebration(85.0, 4)
 
     assert calls == ["steady"]
     assert app._steady_armed is False
@@ -49,7 +49,25 @@ def test_maybe_trigger_celebration_rearms_when_efficiency_drops(monkeypatch) -> 
     app._steady_armed = False
     app._dopamine_armed = False
 
-    app._maybe_trigger_celebration(50.0)
+    app._maybe_trigger_celebration(50.0, 4)
 
+    assert app._steady_armed is True
+    assert app._dopamine_armed is True
+
+
+def test_maybe_trigger_celebration_requires_min_active_agents(monkeypatch) -> None:
+    app = ZeusApp()
+    calls: list[str] = []
+
+    monkeypatch.setattr(app, "_celebration_ready", lambda: True)
+    monkeypatch.setattr(app, "_show_steady_lad", lambda eff: calls.append("steady") or True)
+    monkeypatch.setattr(app, "_show_dopamine_hit", lambda eff: calls.append("dopamine") or True)
+
+    app._steady_armed = True
+    app._dopamine_armed = True
+
+    app._maybe_trigger_celebration(85.0, 3)
+
+    assert calls == []
     assert app._steady_armed is True
     assert app._dopamine_armed is True
