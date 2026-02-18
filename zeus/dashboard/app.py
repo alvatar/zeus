@@ -1596,7 +1596,7 @@ class ZeusApp(App):
                     tmux_cmd = cleaned_cmd
                     tmux_age = age_str
                 else:
-                    dim: str = "#555555"
+                    dim: str = "#777777"
                     tmux_name = Text(f"{prefix}{sess.name}", style=dim)
                     tmux_cmd = Text(cleaned_cmd, style=dim)
                     tmux_age = Text(age_str, style=dim)
