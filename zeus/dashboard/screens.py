@@ -16,6 +16,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
+    Checkbox,
     Input,
     Label,
     RadioButton,
@@ -1095,10 +1096,9 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             yield Label("Save snapshot")
             yield Label("Snapshot name:")
             yield Input(value=self.default_name, id="snapshot-save-name")
-            yield Label("Close all agents after saving:")
-            yield RadioSet(
-                RadioButton("No", value=True, id="snapshot-save-close-no"),
-                RadioButton("Yes", id="snapshot-save-close-yes"),
+            yield Checkbox(
+                "Close all agents after saving",
+                value=False,
                 id="snapshot-save-close-all",
                 compact=False,
             )
@@ -1112,9 +1112,7 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
         inp.action_select_all()
 
     def _close_all_value(self) -> bool:
-        close_set = self.query_one("#snapshot-save-close-all", RadioSet)
-        pressed = close_set.pressed_button
-        return pressed is not None and pressed.id == "snapshot-save-close-yes"
+        return self.query_one("#snapshot-save-close-all", Checkbox).value
 
     def _name_value(self) -> str:
         return self.query_one("#snapshot-save-name", Input).value.strip()

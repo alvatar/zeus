@@ -711,9 +711,8 @@ SaveSnapshotScreen {{
     margin: 0 0 1 0;
 }}
 
-#snapshot-save-close-all RadioButton {{
+#snapshot-save-close-all {{
     color: #cccccc;
-    margin: 1 0;
 }}
 
 {_button_row_css("snapshot-save-buttons", align="right middle")}

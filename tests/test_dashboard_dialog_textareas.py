@@ -136,13 +136,13 @@ def test_rename_tmux_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
     assert bindings["escape"] == "dismiss"
 
 
-def test_snapshot_save_dialog_uses_radio_options_for_close_all() -> None:
+def test_snapshot_save_dialog_uses_checkbox_for_close_all() -> None:
     source = _compose_source(SaveSnapshotScreen)
-    assert "RadioSet(" in source
-    assert "snapshot-save-close-no" in source
-    assert "snapshot-save-close-yes" in source
+    assert "Checkbox(" in source
     assert "snapshot-save-close-all" in source
+    assert "value=False" in source
     assert "compact=False" in source
+    assert "RadioSet(" not in source
     assert "Select(" not in source
 
 
