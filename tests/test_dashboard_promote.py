@@ -1,5 +1,7 @@
 """Tests for Ctrl+P promotion flow in dashboard actions."""
 
+from types import SimpleNamespace
+
 from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import ConfirmPromoteScreen
 from zeus.models import AgentWindow, TmuxSession
@@ -66,7 +68,7 @@ def test_action_promote_selected_pushes_confirm_for_sub_hippeus(monkeypatch) -> 
     assert pushed[0].agent is child
 
 
-def test_do_promote_sub_hippeus_persists_override(monkeypatch) -> None:
+def test_do_promote_sub_hippeus_relaunches_as_top_level_hippeus(monkeypatch) -> None:
     app = ZeusApp()
     app._interact_visible = False
     child = _agent(
@@ -75,42 +77,84 @@ def test_do_promote_sub_hippeus_persists_override(monkeypatch) -> None:
         agent_id="child-1",
         parent_id="parent-1",
     )
+    child.workspace = "3"
 
     notices: list[str] = []
-    saved: list[set[str]] = []
-    polled: list[bool] = []
+    closed: list[str] = []
+    timers: list[tuple[float, object]] = []
+    popen_calls: list[tuple[list[str], dict[str, str]]] = []
+    moved: list[tuple[int, str, float]] = []
 
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "set_timer", lambda delay, cb: timers.append((delay, cb)))
     monkeypatch.setattr(
-        app,
-        "_save_promoted_sub_hippeis",
-        lambda: saved.append(set(app._promoted_sub_hippeis)),
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/child-session.jsonl", "env"),
     )
-    monkeypatch.setattr(app, "poll_and_update", lambda: polled.append(True))
+    monkeypatch.setattr(
+        "zeus.dashboard.app.os.path.isfile",
+        lambda path: path == "/tmp/child-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.close_window",
+        lambda agent: closed.append(f"{agent.socket}:{agent.kitty_id}"),
+    )
+
+    def _popen(cmd, **kwargs):  # noqa: ANN001
+        popen_calls.append((list(cmd), dict(kwargs["env"])))
+        return SimpleNamespace(pid=999)
+
+    monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", _popen)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.move_pid_to_workspace_and_focus_later",
+        lambda pid, ws, delay: moved.append((pid, ws, delay)),
+    )
 
     ok = app.do_promote_sub_hippeus(child)
 
     assert ok is True
-    assert app._promoted_sub_hippeis == {"child-1"}
-    assert saved[-1] == {"child-1"}
+    assert closed == ["/tmp/kitty-1:2"]
+
+    assert popen_calls
+    cmd, env = popen_calls[-1]
+    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert env["ZEUS_AGENT_NAME"] == "child"
+    assert env["ZEUS_AGENT_ID"] == "child-1"
+    assert env["ZEUS_ROLE"] == "hippeus"
+    assert env["ZEUS_SESSION_PATH"] == "/tmp/child-session.jsonl"
+    assert "ZEUS_PARENT_ID" not in env
+    assert "ZEUS_PHALANX_ID" not in env
+
+    assert moved == [(999, "3", 0.5)]
     assert notices[-1] == "Promoted sub-Hippeus to Hippeus: child"
-    assert polled == [True]
+    assert timers and timers[-1][0] == 1.0
 
 
-def test_effective_parent_id_ignores_promoted_sub_hippeus() -> None:
+def test_do_promote_sub_hippeus_rejects_ambiguous_cwd_fallback(monkeypatch) -> None:
     app = ZeusApp()
+    parent = _agent("parent", kitty_id=1, agent_id="parent-1")
     child = _agent(
         "child",
         kitty_id=2,
         agent_id="child-1",
         parent_id="parent-1",
     )
+    sibling = _agent("sibling", kitty_id=3, agent_id="sibling-1")
+    sibling.cwd = child.cwd
+    app.agents = [parent, child, sibling]
 
-    assert app._effective_parent_id(child) == "parent-1"
+    notices: list[str] = []
 
-    app._promoted_sub_hippeis = {"child-1"}
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/fallback-session.jsonl", "cwd"),
+    )
 
-    assert app._effective_parent_id(child) == ""
+    ok = app.do_promote_sub_hippeus(child)
+
+    assert ok is False
+    assert notices[-1].startswith("Cannot reliably promote this legacy sub-Hippeus")
 
 
 def test_action_promote_selected_pushes_confirm_for_hoplite_tmux(monkeypatch) -> None:

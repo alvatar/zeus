@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import textwrap
@@ -34,7 +35,6 @@ class SortMode(Enum):
 from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE
 from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
-from ..promotions import load_promoted_sub_hippeis, save_promoted_sub_hippeis
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
@@ -567,7 +567,6 @@ class ZeusApp(App):
     _agent_message_drafts: dict[str, str] = {}
     _pending_polemarch_bootstraps: dict[str, str] = {}
     _agent_dependencies: dict[str, str] = {}
-    _promoted_sub_hippeis: set[str] = set()
     _dependency_missing_polls: dict[str, int] = {}
     _message_queue_draining: bool = False
     _message_queue_inflight_lease_s: float = 30.0
@@ -657,7 +656,6 @@ class ZeusApp(App):
         self._load_priorities()
         self._load_agent_tasks()
         self._load_agent_dependencies()
-        self._load_promoted_sub_hippeis()
         self._load_panel_visibility()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -1311,17 +1309,17 @@ class ZeusApp(App):
         for agent in self.agents:
             if self._agent_key(agent) in blocked_by_key:
                 continue
-            parent_id = self._effective_parent_id(agent)
+            parent_id = (agent.parent_id or "").strip()
             if (not parent_id) or (parent_id not in parent_ids):
                 top_level.append(agent)
 
         children_of: dict[str, list[AgentWindow]] = {}
-        for a in self.agents:
-            if self._agent_key(a) in blocked_by_key:
+        for agent in self.agents:
+            if self._agent_key(agent) in blocked_by_key:
                 continue
-            parent_id = self._effective_parent_id(a)
+            parent_id = (agent.parent_id or "").strip()
             if parent_id and parent_id in parent_ids:
-                children_of.setdefault(parent_id, []).append(a)
+                children_of.setdefault(parent_id, []).append(agent)
 
         def _priority_sort_key(
             a: AgentWindow,
@@ -1746,7 +1744,7 @@ class ZeusApp(App):
         top_level: list[AgentWindow] = []
         children_of: dict[str, list[AgentWindow]] = {}
         for agent in self.agents:
-            parent_id = self._effective_parent_id(agent)
+            parent_id = (agent.parent_id or "").strip()
             if parent_id and parent_id in parent_ids:
                 children_of.setdefault(parent_id, []).append(agent)
             else:
@@ -1899,8 +1897,9 @@ class ZeusApp(App):
         widget.remove_class("hidden")
 
         parent_ids: set[str] = {a.agent_id for a in self.agents if a.agent_id}
+
         def _sparkline_parent_sort_key(agent: AgentWindow) -> int:
-            parent_id = self._effective_parent_id(agent)
+            parent_id = (agent.parent_id or "").strip()
             if (not parent_id) or (parent_id not in parent_ids):
                 return 0
             return 1
@@ -2341,22 +2340,11 @@ class ZeusApp(App):
                 return agent
         return None
 
-    def _effective_parent_id(self, agent: AgentWindow) -> str:
-        """Return effective parent id with promotion overrides applied."""
-        parent_id = (agent.parent_id or "").strip()
-        if not parent_id:
-            return ""
-        promoted = self.__dict__.get("_promoted_sub_hippeis", set())
-        agent_id = (agent.agent_id or "").strip()
-        if agent_id and agent_id in promoted:
-            return ""
-        return parent_id
-
     def _has_promotable_parent(self, agent: AgentWindow) -> bool:
         """Return True when a sub-Hippeus can be promoted to top-level."""
         if not (agent.agent_id or "").strip():
             return False
-        return bool(self._effective_parent_id(agent))
+        return bool((agent.parent_id or "").strip())
 
     def _task_text_for_agent(self, agent: AgentWindow) -> str:
         return self._agent_tasks.get(self._agent_tasks_key(agent), "")
@@ -3561,16 +3549,6 @@ class ZeusApp(App):
         """Persist priorities to disk."""
         self._write_json_dict(PRIORITIES_FILE, self._agent_priorities)
 
-    def _load_promoted_sub_hippeis(self) -> None:
-        """Load promoted sub-Hippeus ids from disk."""
-        self._promoted_sub_hippeis = load_promoted_sub_hippeis()
-
-    def _save_promoted_sub_hippeis(self) -> None:
-        """Persist promoted sub-Hippeus ids to disk."""
-        save_promoted_sub_hippeis(
-            set(self.__dict__.get("_promoted_sub_hippeis", set()))
-        )
-
     # ── Panel visibility ───────────────────────────────────────────
 
     def _load_panel_visibility(self) -> None:
@@ -4361,12 +4339,69 @@ class ZeusApp(App):
             self.notify(f"{agent.name} is already a top-level Hippeus", timeout=3)
             return False
 
-        if "_promoted_sub_hippeis" not in self.__dict__:
-            self._promoted_sub_hippeis = set()
-        self._promoted_sub_hippeis.add(agent_id)
-        self._save_promoted_sub_hippeis()
+        session_path, source = resolve_agent_session_path_with_source(agent)
+
+        if source == "cwd":
+            same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
+            if len(same_cwd) > 1:
+                self.notify(
+                    "Cannot reliably promote this legacy sub-Hippeus: multiple "
+                    "Hippeis share the same cwd without pinned sessions. "
+                    "Restart the sub-Hippeus and try again.",
+                    timeout=4,
+                )
+                return False
+
+        if not session_path or not os.path.isfile(session_path):
+            if source == "env":
+                self.notify(
+                    f"Pinned session path is stale for {agent.name}. "
+                    "Run /reload in that Hippeus, then retry.",
+                    timeout=4,
+                )
+            else:
+                self.notify(f"No session found for {agent.name}", timeout=3)
+            return False
+
+        close_window(agent)
+
+        env: dict[str, str] = os.environ.copy()
+        env["ZEUS_AGENT_NAME"] = agent.name
+        env["ZEUS_AGENT_ID"] = agent_id
+        env["ZEUS_ROLE"] = "hippeus"
+        env["ZEUS_SESSION_PATH"] = session_path
+        env.pop("ZEUS_PARENT_ID", None)
+        env.pop("ZEUS_PHALANX_ID", None)
+
+        try:
+            proc = subprocess.Popen(
+                [
+                    "kitty",
+                    "--directory",
+                    agent.cwd,
+                    "--hold",
+                    "bash",
+                    "-lc",
+                    f"pi --session {shlex.quote(session_path)}",
+                ],
+                env=env,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (FileNotFoundError, OSError) as exc:
+            self.notify(f"Promote failed for {agent.name}: {exc}", timeout=3)
+            return False
+
+        if agent.workspace and agent.workspace != "?":
+            move_pid_to_workspace_and_focus_later(
+                proc.pid,
+                agent.workspace,
+                delay=0.5,
+            )
+
         self.notify(f"Promoted sub-Hippeus to Hippeus: {agent.name}", timeout=3)
-        self.poll_and_update()
+        self.set_timer(1.0, self.poll_and_update)
         if self._interact_visible:
             self._refresh_interact_panel()
         return True
