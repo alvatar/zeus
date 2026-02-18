@@ -21,7 +21,8 @@ def test_install_parser_supports_no_bwrap_flag() -> None:
 def test_install_seeds_sandbox_config_with_defaults() -> None:
     text = _read("install.sh")
 
-    assert 'SANDBOX_CONF="${HOME}/.zeus/sandbox-paths.conf"' in text
+    assert 'ZEUS_HOME_DIR="${HOME}/.zeus"' in text
+    assert 'SANDBOX_CONF="${ZEUS_HOME_DIR}/sandbox-paths.conf"' in text
     assert 'SANDBOX_CONF="\\${HOME}/.zeus/sandbox-paths.conf"' in text
     assert "sandbox-paths.conf" in text
     assert "Writable paths for pi sandbox" in text

@@ -2346,8 +2346,9 @@ class ZeusApp(App):
         parent_id = (agent.parent_id or "").strip()
         if not parent_id:
             return ""
+        promoted = self.__dict__.get("_promoted_sub_hippeis", set())
         agent_id = (agent.agent_id or "").strip()
-        if agent_id and agent_id in self._promoted_sub_hippeis:
+        if agent_id and agent_id in promoted:
             return ""
         return parent_id
 
@@ -3566,7 +3567,9 @@ class ZeusApp(App):
 
     def _save_promoted_sub_hippeis(self) -> None:
         """Persist promoted sub-Hippeus ids to disk."""
-        save_promoted_sub_hippeis(self._promoted_sub_hippeis)
+        save_promoted_sub_hippeis(
+            set(self.__dict__.get("_promoted_sub_hippeis", set()))
+        )
 
     # ── Panel visibility ───────────────────────────────────────────
 
@@ -4358,6 +4361,8 @@ class ZeusApp(App):
             self.notify(f"{agent.name} is already a top-level Hippeus", timeout=3)
             return False
 
+        if "_promoted_sub_hippeis" not in self.__dict__:
+            self._promoted_sub_hippeis = set()
         self._promoted_sub_hippeis.add(agent_id)
         self._save_promoted_sub_hippeis()
         self.notify(f"Promoted sub-Hippeus to Hippeus: {agent.name}", timeout=3)
