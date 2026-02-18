@@ -733,6 +733,33 @@ def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     assert history_calls == [("agent:paused", "hello")]
 
 
+def test_resume_agent_if_paused_refreshes_ui_when_running(monkeypatch) -> None:
+    app = _new_app()
+    paused = _agent("paused", 1)
+    app.agents = [paused]
+    app._agent_priorities[paused.name] = 4
+    app._interact_visible = True
+
+    saves: list[bool] = []
+    renders: list[bool] = []
+    refreshes: list[bool] = []
+
+    monkeypatch.setattr(app, "_save_priorities", lambda: saves.append(True))
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True),
+    )
+    monkeypatch.setattr(app, "_refresh_interact_panel", lambda: refreshes.append(True))
+    monkeypatch.setattr(ZeusApp, "is_running", property(lambda _self: True))
+
+    assert app._resume_agent_if_paused(paused) is True
+    assert app._agent_priorities.get(paused.name, 3) == 3
+    assert saves == [True]
+    assert renders == [True]
+    assert refreshes == [True]
+
+
 def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
     app = _new_app()
     source = _agent("source", 1)

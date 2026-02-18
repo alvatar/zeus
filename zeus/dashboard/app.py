@@ -4057,8 +4057,15 @@ class ZeusApp(App):
         """Set paused agents back to default priority (3)."""
         if not self._is_paused(agent):
             return False
+
         self._agent_priorities.pop(agent.name, None)
         self._save_priorities()
+
+        if self.is_running:
+            self._render_agent_table_and_status()
+            if self._interact_visible:
+                self._refresh_interact_panel()
+
         return True
 
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
