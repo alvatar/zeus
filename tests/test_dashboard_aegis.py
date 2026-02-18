@@ -34,6 +34,10 @@ def _new_app() -> ZeusApp:
     return app
 
 
+def test_aegis_post_check_delay_is_20_seconds() -> None:
+    assert ZeusApp._AEGIS_CHECK_S == 20.0
+
+
 def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None:
     app = _new_app()
     hippeus = _agent("alpha", 1)

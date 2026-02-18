@@ -529,7 +529,7 @@ class ZeusApp(App):
     _AEGIS_MODE_POST_CHECK = "POST_CHECK"
     _AEGIS_MODE_HALTED = "HALTED"
     _AEGIS_DELAY_S = 5.0
-    _AEGIS_CHECK_S = 60.0
+    _AEGIS_CHECK_S = 20.0
     _AEGIS_ROW_BG = "#ff69b4"
     _AEGIS_ROW_BG_DIM = "#a35c82"
     _BLOCKED_ROW_FG = "#f2e6a7"
