@@ -110,7 +110,7 @@ def test_do_spawn_subagent_rejects_duplicate_name(monkeypatch) -> None:
     app.agents = [parent, taken]
 
     notices: list[str] = []
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     def _spawn_fail(*_args, **_kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("must not spawn")
@@ -222,7 +222,7 @@ def test_action_spawn_subagent_blocks_cwd_fallback_when_cwd_shared(monkeypatch) 
         lambda _agent: ("/tmp/fallback-session.jsonl", "cwd"),
     )
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     app.action_spawn_subagent()
 
@@ -247,7 +247,7 @@ def test_action_spawn_subagent_reports_stale_pinned_session(monkeypatch) -> None
     )
     monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda _path: False)
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     app.action_spawn_subagent()
 
@@ -262,7 +262,7 @@ def test_action_spawn_subagent_explains_when_input_is_focused(monkeypatch) -> No
 
     monkeypatch.setattr(app, "_is_text_input_focused", lambda: True)
     monkeypatch.setattr(app, "_has_blocking_modal_open", lambda: False)
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     app.action_spawn_subagent()
 
@@ -279,7 +279,7 @@ def test_action_spawn_subagent_explains_when_dialog_is_open(monkeypatch) -> None
 
     monkeypatch.setattr(app, "_is_text_input_focused", lambda: False)
     monkeypatch.setattr(app, "_has_blocking_modal_open", lambda: True)
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     app.action_spawn_subagent()
 
@@ -292,7 +292,7 @@ def test_do_spawn_subagent_reports_missing_parent_agent_id(monkeypatch) -> None:
 
     notices: list[str] = []
 
-    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
 
     def _spawn_fail(*_args, **_kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("must not spawn when parent id is missing")

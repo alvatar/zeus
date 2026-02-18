@@ -4429,19 +4429,19 @@ class ZeusApp(App):
 
     def action_spawn_subagent(self) -> None:
         if self._is_text_input_focused():
-            self.notify(
+            self.notify_force(
                 "Cannot spawn sub-Hippeus while input is focused. "
                 "Press Esc or Tab to focus the table.",
                 timeout=3,
             )
             return
         if self._has_blocking_modal_open():
-            self.notify("Cannot spawn sub-Hippeus while a dialog is open", timeout=3)
+            self.notify_force("Cannot spawn sub-Hippeus while a dialog is open", timeout=3)
             return
 
         agent = self._get_selected_agent()
         if not agent:
-            self.notify("No Hippeus selected", timeout=2)
+            self.notify_force("No Hippeus selected", timeout=2)
             return
 
         if self._is_stygian_agent(agent) and not agent.session_path:
@@ -4454,7 +4454,7 @@ class ZeusApp(App):
         if source == "cwd":
             same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
             if len(same_cwd) > 1:
-                self.notify(
+                self.notify_force(
                     "Cannot reliably fork this legacy Hippeus: multiple Hippeis "
                     "share the same cwd without pinned sessions. "
                     "Restart the parent Hippeus and try again.",
@@ -4464,13 +4464,13 @@ class ZeusApp(App):
 
         if not session or not os.path.isfile(session):
             if source == "env":
-                self.notify(
+                self.notify_force(
                     f"Pinned session path is stale for {agent.name}. "
                     "Run /reload in that Hippeus, then retry.",
                     timeout=4,
                 )
             else:
-                self.notify(
+                self.notify_force(
                     f"No session found for {agent.name}", timeout=3
                 )
             return
@@ -4483,11 +4483,11 @@ class ZeusApp(App):
     def do_spawn_subagent(self, agent: AgentWindow, name: str) -> None:
         clean_name = name.strip()
         if self._is_agent_name_taken(clean_name):
-            self.notify(f"Name already exists: {clean_name}", timeout=3)
+            self.notify_force(f"Name already exists: {clean_name}", timeout=3)
             return
 
         if not (agent.agent_id or "").strip():
-            self.notify(
+            self.notify_force(
                 f"Cannot spawn sub-Hippeus from {agent.name}: missing parent agent id",
                 timeout=3,
             )
@@ -4500,7 +4500,7 @@ class ZeusApp(App):
             self.notify(f"🧬 Spawned: {clean_name}", timeout=3)
             self.set_timer(1.5, self.poll_and_update)
         else:
-            self.notify(
+            self.notify_force(
                 f"Failed to fork session for {agent.name}", timeout=3
             )
 
