@@ -162,3 +162,62 @@ def test_read_session_user_text_includes_string_message_content(tmp_path):
     session.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 
     assert read_session_user_text(str(session)) == "user line"
+
+
+def test_fork_session_creates_new_file_without_mutating_parent(tmp_path, monkeypatch):
+    monkeypatch.setattr(sessions, "AGENT_SESSIONS_DIR", tmp_path)
+
+    source = tmp_path / "source.jsonl"
+    source_entries = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": "parent-id",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "cwd": "/tmp/project",
+        },
+        {
+            "type": "message",
+            "id": "m1",
+            "parentId": None,
+            "timestamp": "2026-01-01T00:00:01Z",
+            "message": {
+                "role": "user",
+                "content": "hello",
+            },
+        },
+        {
+            "type": "message",
+            "id": "m2",
+            "parentId": "m1",
+            "timestamp": "2026-01-01T00:00:02Z",
+            "message": {
+                "role": "assistant",
+                "content": "hi",
+            },
+        },
+    ]
+    source.write_text("\n".join(json.dumps(line) for line in source_entries) + "\n")
+    parent_before = source.read_bytes()
+
+    child_raw = sessions.fork_session(str(source), "/home/user/project")
+
+    assert child_raw is not None
+    child = Path(child_raw)
+    assert child != source
+    assert child.is_file()
+    assert source.read_bytes() == parent_before
+
+    child_entries = [
+        json.loads(line)
+        for line in child.read_text().splitlines()
+        if line.strip()
+    ]
+
+    assert child_entries[0]["type"] == "session"
+    assert child_entries[0]["cwd"] == "/home/user/project"
+    assert child_entries[0]["parentSession"] == str(source)
+
+    source_non_header = [e for e in source_entries if e["type"] != "session"]
+    child_non_header = [e for e in child_entries if e["type"] != "session"]
+    assert child_non_header == source_non_header
