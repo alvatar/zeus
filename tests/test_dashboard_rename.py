@@ -238,7 +238,8 @@ def test_action_spawn_subagent_reports_stale_pinned_session(monkeypatch) -> None
     pushed: list[object] = []
     notices: list[str] = []
 
-    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_is_text_input_focused", lambda: False)
+    monkeypatch.setattr(app, "_has_blocking_modal_open", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: parent)
     monkeypatch.setattr(
         "zeus.dashboard.app.resolve_agent_session_path_with_source",
@@ -252,6 +253,55 @@ def test_action_spawn_subagent_reports_stale_pinned_session(monkeypatch) -> None
 
     assert pushed == []
     assert notices[-1].startswith("Pinned session path is stale for")
+
+
+def test_action_spawn_subagent_explains_when_input_is_focused(monkeypatch) -> None:
+    app = ZeusApp()
+
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_is_text_input_focused", lambda: True)
+    monkeypatch.setattr(app, "_has_blocking_modal_open", lambda: False)
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert notices[-1] == (
+        "Cannot spawn sub-Hippeus while input is focused. "
+        "Press Esc or Tab to focus the table."
+    )
+
+
+def test_action_spawn_subagent_explains_when_dialog_is_open(monkeypatch) -> None:
+    app = ZeusApp()
+
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_is_text_input_focused", lambda: False)
+    monkeypatch.setattr(app, "_has_blocking_modal_open", lambda: True)
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_spawn_subagent()
+
+    assert notices[-1] == "Cannot spawn sub-Hippeus while a dialog is open"
+
+
+def test_do_spawn_subagent_reports_missing_parent_agent_id(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    def _spawn_fail(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("must not spawn when parent id is missing")
+
+    monkeypatch.setattr("zeus.dashboard.app.spawn_subagent", _spawn_fail)
+
+    app.do_spawn_subagent(parent, "child")
+
+    assert notices[-1] == "Cannot spawn sub-Hippeus from parent: missing parent agent id"
 
 
 def test_name_uniqueness_checks_are_case_insensitive() -> None:

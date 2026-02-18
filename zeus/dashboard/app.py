@@ -3627,7 +3627,11 @@ class ZeusApp(App):
         return self._get_priority(agent.name) == 4
 
     def _is_text_input_focused(self) -> bool:
-        return isinstance(self.focused, (Input, TextArea, ZeusTextArea))
+        try:
+            focused = self.focused
+        except Exception:
+            return False
+        return isinstance(focused, (Input, TextArea, ZeusTextArea))
 
     def _has_modal_open(self) -> bool:
         return len(self.screen_stack) > 1
@@ -4424,8 +4428,17 @@ class ZeusApp(App):
         return True
 
     def action_spawn_subagent(self) -> None:
-        if self._should_ignore_table_action():
+        if self._is_text_input_focused():
+            self.notify(
+                "Cannot spawn sub-Hippeus while input is focused. "
+                "Press Esc or Tab to focus the table.",
+                timeout=3,
+            )
             return
+        if self._has_blocking_modal_open():
+            self.notify("Cannot spawn sub-Hippeus while a dialog is open", timeout=3)
+            return
+
         agent = self._get_selected_agent()
         if not agent:
             self.notify("No Hippeus selected", timeout=2)
@@ -4471,6 +4484,13 @@ class ZeusApp(App):
         clean_name = name.strip()
         if self._is_agent_name_taken(clean_name):
             self.notify(f"Name already exists: {clean_name}", timeout=3)
+            return
+
+        if not (agent.agent_id or "").strip():
+            self.notify(
+                f"Cannot spawn sub-Hippeus from {agent.name}: missing parent agent id",
+                timeout=3,
+            )
             return
 
         result: str | None = spawn_subagent(
