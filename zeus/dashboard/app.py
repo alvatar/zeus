@@ -476,6 +476,7 @@ class ZeusApp(App):
         Binding("q", "stop_agent", "Stop Hippeus"),
         Binding("f10", "quit", "Quit"),
         Binding("tab", "toggle_focus", "Switch focus", show=False),
+        Binding("ctrl+p", "noop", "Disable command palette", show=False, priority=True),
         Binding("ctrl+enter", "focus_agent", "Teleport", priority=True),
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("z", "new_agent", "Invoke"),
@@ -3621,6 +3622,10 @@ class ZeusApp(App):
     def _should_ignore_table_action(self) -> bool:
         """Return True when table-centric actions should be ignored."""
         return self._is_text_input_focused() or self._has_blocking_modal_open()
+
+    def action_noop(self) -> None:
+        """Deliberately ignore key presses bound to no-op actions."""
+        return
 
     def action_cycle_priority(self) -> None:
         """Cycle priority 3→2→1→4→3 for the selected agent."""
