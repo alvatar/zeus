@@ -148,9 +148,9 @@ if $WRAP_PI; then
             fi
 
             if [ "$WRAPPER_BWRAP_ENABLED" = "1" ]; then
-                ZEUS_CONF_DIR="${HOME}/.config/zeus"
-                SANDBOX_CONF="${ZEUS_CONF_DIR}/sandbox-paths.conf"
-                if mkdir -p "$ZEUS_CONF_DIR" 2>/dev/null; then
+                ZEUS_HOME_DIR="${HOME}/.zeus"
+                SANDBOX_CONF="${ZEUS_HOME_DIR}/sandbox-paths.conf"
+                if mkdir -p "$ZEUS_HOME_DIR" 2>/dev/null; then
                     if [ ! -f "$SANDBOX_CONF" ]; then
                         cat > "$SANDBOX_CONF" <<'SCONF'
 # Writable paths for pi sandbox, one per line.
@@ -165,7 +165,7 @@ SCONF
                         echo "✓ Sandbox config already exists: $SANDBOX_CONF (preserved)"
                     fi
                 else
-                    echo "⚠ Could not create $ZEUS_CONF_DIR; skipping sandbox config seed" >&2
+                    echo "⚠ Could not create $ZEUS_HOME_DIR; skipping sandbox config seed" >&2
                 fi
             fi
 
@@ -177,7 +177,7 @@ set -euo pipefail
 
 PI_REAL="$PI_ORIG"
 WRAPPER_BWRAP_ENABLED="$WRAPPER_BWRAP_ENABLED"
-SANDBOX_CONF="\${HOME}/.config/zeus/sandbox-paths.conf"
+SANDBOX_CONF="\${HOME}/.zeus/sandbox-paths.conf"
 
 if [ -z "\${ZEUS_AGENT_ID:-}" ]; then
     ZEUS_AGENT_ID=\$(python3 - <<'PY'
@@ -240,6 +240,9 @@ mkdir -p "\$PI_AGENT_DIR/sessions" \
          "\${HOME}/.rustup" \
          "\${HOME}/.codex" \
          "\${HOME}/.claude"
+for zeus_path in "\${HOME}/.zeus" "\${HOME}/.zeus/messages" "\${HOME}/.zeus/session-map"; do
+    mkdir -p "\$zeus_path" 2>/dev/null || true
+done
 touch "\$PI_AGENT_DIR/auth.json" \
       "\$PI_AGENT_DIR/mcp-cache.json" \
       "\$PI_AGENT_DIR/mcp-npx-cache.json"
@@ -278,6 +281,9 @@ path_is_mounted_dir() {
 # Minimal sandbox skeleton under HOME (no broad home visibility).
 for d in "\${HOME}" \
          "\${HOME}/code" \
+         "\${HOME}/.zeus" \
+         "\${HOME}/.zeus/messages" \
+         "\${HOME}/.zeus/session-map" \
          "\${HOME}/.pi" \
          "\${HOME}/.pi/agent" \
          "\${HOME}/.pi/agent/sessions" \
@@ -299,6 +305,7 @@ for p in /usr /lib /lib64 /bin /sbin /etc /run; do
 done
 
 # Pi/runtime support (read-write, fixed)
+bwrap_bind "\${HOME}/.zeus"
 bwrap_bind "\${HOME}/.pi"
 bwrap_bind "\${HOME}/.local/bin"
 bwrap_bind "\${HOME}/.local/lib/node_modules"

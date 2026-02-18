@@ -17,7 +17,7 @@ Zeus uses three layers, in this order:
 - Each tracked Hippeus has an `agent_id` (`ZEUS_AGENT_ID`).
 - Zeus-launched Hippeis are started with `ZEUS_AGENT_ID` in their environment.
 - Independently discovered Hippeis (heuristic pi windows) are assigned a persisted id in:
-  - `/tmp/zeus-agent-ids.json` (`"socket:kitty_id" -> "agent_id"`)
+  - `~/.zeus/zeus-agent-ids.json` by default (`"socket:kitty_id" -> "agent_id"`)
 
 ## Backfill stamping
 

@@ -21,6 +21,8 @@ def test_install_parser_supports_no_bwrap_flag() -> None:
 def test_install_seeds_sandbox_config_with_defaults() -> None:
     text = _read("install.sh")
 
+    assert 'SANDBOX_CONF="${HOME}/.zeus/sandbox-paths.conf"' in text
+    assert 'SANDBOX_CONF="\\${HOME}/.zeus/sandbox-paths.conf"' in text
     assert "sandbox-paths.conf" in text
     assert "Writable paths for pi sandbox" in text
     assert "Each absolute path listed here is mounted read-write if it exists." in text
@@ -85,6 +87,7 @@ def test_generated_wrapper_sets_npm_prefix_and_cache_to_user_paths() -> None:
 def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     text = _read("install.sh")
 
+    assert 'bwrap_bind "\\${HOME}/.zeus"' in text
     assert 'bwrap_bind "\\${HOME}/.pi"' in text
     assert 'bwrap_bind "\\${HOME}/.pi/agent/sessions"' not in text
     assert 'bwrap_bind "\\${HOME}/.pi/agent/auth.json"' not in text
@@ -102,6 +105,9 @@ def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
 def test_generated_wrapper_precreates_cargo_rustup_codex_and_claude_dirs() -> None:
     text = _read("install.sh")
 
+    assert '"\\${HOME}/.zeus"' in text
+    assert '"\\${HOME}/.zeus/messages"' in text
+    assert '"\\${HOME}/.zeus/session-map"' in text
     assert '"\\${HOME}/.cargo"' in text
     assert '"\\${HOME}/.rustup"' in text
     assert '"\\${HOME}/.codex"' in text
@@ -141,3 +147,4 @@ def test_uninstall_preserves_sandbox_config_notice() -> None:
     text = _read("uninstall.sh")
 
     assert "sandbox config is preserved" in text
+    assert "~/.zeus/sandbox-paths.conf" in text

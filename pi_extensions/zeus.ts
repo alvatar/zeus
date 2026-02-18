@@ -11,7 +11,7 @@ interface SessionSyncPayload {
   event: string;
 }
 
-const DEFAULT_MAP_DIR = "/tmp/zeus-session-map";
+const DEFAULT_MAP_DIR = path.join(process.env.HOME || "~", ".zeus", "session-map");
 
 function sanitizeAgentId(value: string): string {
   return value.trim().replace(/[^A-Za-z0-9_-]/g, "");

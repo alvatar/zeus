@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 
-from .config import USAGE_CACHE
+from .config import STATE_DIR, USAGE_CACHE
 from .models import UsageData
 
 
@@ -19,6 +19,8 @@ _CLAUDE_CREDENTIALS_FILE: Path = (
 )
 _CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 _CLAUDE_CACHE_MAX_AGE_S = 60.0
+_CLAUDE_LOG_FILE = STATE_DIR / "zeus-claude.log"
+_CLAUDE_FETCH_ERR_FILE = STATE_DIR / "zeus-claude-fetch.err"
 
 _last_claude_fetch_attempt: float = 0.0
 
@@ -26,7 +28,7 @@ _last_claude_fetch_attempt: float = 0.0
 def _claude_log(msg: str) -> None:
     try:
         ts: str = time.strftime("%Y-%m-%d %H:%M:%S")
-        with open("/tmp/zeus-claude.log", "a") as f:
+        with _CLAUDE_LOG_FILE.open("a") as f:
             f.write(f"[{ts}] {msg}\n")
     except OSError:
         pass
@@ -152,7 +154,7 @@ def _spawn_claude_fetch() -> None:
     """Spawn a helper process to refresh Claude OAuth/usage cache."""
     try:
         zeus_path: str = str(Path(sys.argv[0]).expanduser().resolve())
-        with open("/tmp/zeus-claude-fetch.err", "a") as err:
+        with _CLAUDE_FETCH_ERR_FILE.open("a") as err:
             subprocess.Popen(
                 [sys.executable, zeus_path, "fetch-claude-usage"],
                 stdout=subprocess.DEVNULL,

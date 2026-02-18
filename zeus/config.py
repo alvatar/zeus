@@ -8,15 +8,28 @@ import tomllib
 from pathlib import Path
 
 
-_USER_CONFIG_PATH = Path.home() / ".config" / "zeus" / "config.toml"
+ZEUS_HOME = Path(os.environ.get("ZEUS_HOME") or "~/.zeus").expanduser()
+
+_USER_CONFIG_PATHS: tuple[Path, ...] = (
+    ZEUS_HOME / "config.toml",
+    Path.home() / ".config" / "zeus" / "config.toml",  # legacy fallback
+)
 
 
 def _load_user_storage() -> dict[str, str]:
-    if not _USER_CONFIG_PATH.is_file():
-        return {}
-    try:
-        raw = tomllib.loads(_USER_CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    raw: dict[str, object] | None = None
+    for config_path in _USER_CONFIG_PATHS:
+        if not config_path.is_file():
+            continue
+        try:
+            parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if isinstance(parsed, dict):
+            raw = parsed
+            break
+
+    if raw is None:
         return {}
 
     storage = raw.get("storage")
@@ -39,21 +52,36 @@ def _resolve_dir(raw: str) -> Path:
     return Path(os.path.expanduser(raw)).expanduser()
 
 
+def _ensure_writable_dir(path: Path, fallback: Path) -> Path:
+    """Ensure directory exists, falling back when creation is denied."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 _storage = _load_user_storage()
+_fallback_zeus_home = _resolve_dir("/tmp/zeus")
+ZEUS_HOME = _ensure_writable_dir(ZEUS_HOME, _fallback_zeus_home)
 
-STATE_DIR = _resolve_dir(
-    os.environ.get("ZEUS_STATE_DIR")
-    or _storage.get("state_dir")
-    or "/tmp"
+STATE_DIR = _ensure_writable_dir(
+    _resolve_dir(
+        os.environ.get("ZEUS_STATE_DIR")
+        or _storage.get("state_dir")
+        or str(ZEUS_HOME)
+    ),
+    ZEUS_HOME,
 )
-MESSAGE_TMP_DIR = _resolve_dir(
-    os.environ.get("ZEUS_MESSAGE_TMP_DIR")
-    or _storage.get("message_tmp_dir")
-    or "/tmp"
+MESSAGE_TMP_DIR = _ensure_writable_dir(
+    _resolve_dir(
+        os.environ.get("ZEUS_MESSAGE_TMP_DIR")
+        or _storage.get("message_tmp_dir")
+        or str(ZEUS_HOME / "messages")
+    ),
+    ZEUS_HOME / "messages",
 )
-
-STATE_DIR.mkdir(parents=True, exist_ok=True)
-MESSAGE_TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 NAMES_FILE = STATE_DIR / "zeus-names.json"
 AGENT_IDS_FILE = STATE_DIR / "zeus-agent-ids.json"

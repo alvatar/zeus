@@ -68,14 +68,14 @@ bash install.sh --wrap-pi
 ```
 
 With `--wrap-pi`, the wrapper runs `pi` inside a `bwrap` sandbox by default.
-Writable paths are controlled via `~/.config/zeus/sandbox-paths.conf` (auto-created with defaults on first install):
+Writable paths are controlled via `~/.zeus/sandbox-paths.conf` (auto-created with defaults on first install):
 
 ```text
 ~/code
 /tmp
 ```
 
-Allowlist note: `sandbox-paths.conf` is the writable allowlist for user paths. Each absolute path listed there (after `~` expansion) is mounted read-write if it exists; non-existent paths are skipped with a warning on stderr. The wrapper also keeps a minimal fixed writable set for operation (`~/.pi`, `~/.local/bin`, `~/.local/lib/node_modules`, `~/.npm`, `~/.cargo`, `~/.rustup`, `~/.codex`, `~/.claude`), and exports npm defaults so global installs target user paths (`NPM_CONFIG_PREFIX=~/.local`, `NPM_CONFIG_CACHE=~/.npm`).
+Allowlist note: `sandbox-paths.conf` is the writable allowlist for user paths. Each absolute path listed there (after `~` expansion) is mounted read-write if it exists; non-existent paths are skipped with a warning on stderr. The wrapper also keeps a minimal fixed writable set for operation (`~/.zeus`, `~/.pi`, `~/.local/bin`, `~/.local/lib/node_modules`, `~/.npm`, `~/.cargo`, `~/.rustup`, `~/.codex`, `~/.claude`), and exports npm defaults so global installs target user paths (`NPM_CONFIG_PREFIX=~/.local`, `NPM_CONFIG_CACHE=~/.npm`).
 
 To disable sandboxing in the generated wrapper:
 
@@ -87,7 +87,7 @@ The installer:
 1. Copies `zeus` and `zeus-launch` to `~/.local/bin/`
 2. Installs Zeus pi extension bundle at `~/.pi/agent/extensions/zeus.ts`
 3. (Optional `--wrap-pi`) wraps `~/.local/bin/pi` and stores backup at `~/.local/bin/pi.zeus-orig`
-4. (Optional sandbox mode) seeds `~/.config/zeus/sandbox-paths.conf` if possible
+4. (Optional sandbox mode) seeds `~/.zeus/sandbox-paths.conf` if possible
 5. Patches `~/.config/kitty/kitty.conf` to enable remote control
 6. Prints instructions for the sway keybinding
 
@@ -195,7 +195,7 @@ python3 -m pytest tests/ -v  # Tests
 
 1. **Kitty remote control** — each kitty instance creates a Unix socket at `/tmp/kitty-{pid}`, enabling `kitty @ ls` and `kitty @ get-text` queries
 2. **Hippeus discovery** — Zeus scans `/tmp/kitty-*` sockets and identifies windows via `ZEUS_AGENT_NAME` or pi heuristics (cmdline/title)
-3. **Hippeus identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `/tmp/zeus-agent-ids.json`)
+3. **Hippeus identity** — each tracked window carries a `ZEUS_AGENT_ID` (or gets one persisted in `~/.zeus/zeus-agent-ids.json` by default)
 4. **tmux ownership** — sessions match by `@zeus_owner` first, then `ZEUS_AGENT_ID` from tmux session env, then cwd/screen heuristics; high-confidence matches are backfilled into `@zeus_owner`
 5. **State detection** — `kitty @ get-text` captures terminal content; pi's braille spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) indicate WORKING, absence indicates IDLE
 6. **Footer parsing** — extracts model name, context %, and token count from pi's usage-bars extension output

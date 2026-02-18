@@ -34,5 +34,5 @@ The following remain as-is:
 
 - CLI/program/package identity: `zeus`, `zeus.*`
 - Environment variables: `ZEUS_*`
-- Persistent paths/keys: `/tmp/zeus-*`, `agent_id`, `@zeus_owner`
+- Persistent paths/keys: `~/.zeus/zeus-*` (default), `agent_id`, `@zeus_owner`
 - External protocol fields/headers: JSON role `"user"`, HTTP `User-Agent`

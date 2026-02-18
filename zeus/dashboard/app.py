@@ -2505,7 +2505,7 @@ class ZeusApp(App):
         return None
 
     _SHARE_MARKER_REMINDER = (
-        "No payload found. Provide ZEUS_MSG_FILE=/tmp/zeus-msg-<uuid>.md "
+        f"No payload found. Provide ZEUS_MSG_FILE={MESSAGE_TMP_DIR}/zeus-msg-<uuid>.md "
         "(file name is arbitrary), "
         f"or wrap text between {_SHARE_MARKER} marker lines."
     )
@@ -3866,6 +3866,7 @@ class ZeusApp(App):
         self._pending_polemarch_bootstraps[clean_id] = requested_name.strip() or clean_id
 
     def _polemarch_bootstrap_message(self, polemarch_name: str) -> str:
+        msg_file_hint = f"{MESSAGE_TMP_DIR}/zeus-msg-<uuid>.md"
         return textwrap.dedent(
             f"""
             You are the agent named {polemarch_name}.
@@ -3913,14 +3914,14 @@ class ZeusApp(App):
             - Use ONLY the canonical tool: zeus-msg send.
             - This applies to Polemarch -> Hoplite, Hoplite -> Polemarch,
               and Hoplite -> Hoplite messages.
-            - Write payload to a /tmp file, then send with exactly one of:
-              zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md
-              zeus-msg send --to polemarch --file /tmp/zeus-msg-<uuid>.md
-              zeus-msg send --to hoplite:<ZEUS_AGENT_ID> --file /tmp/zeus-msg-<uuid>.md
+            - Write payload to a message-tmp file, then send with exactly one of:
+              zeus-msg send --to phalanx --file {msg_file_hint}
+              zeus-msg send --to polemarch --file {msg_file_hint}
+              zeus-msg send --to hoplite:<ZEUS_AGENT_ID> --file {msg_file_hint}
             - DO NOT use any non-canonical transport (tmux send-keys,
               kitty send-text, manual copy/paste, ad-hoc shared files,
               or any custom relay script) for agent-to-agent communication.
-            - DO NOT poll /tmp files as a communication protocol.
+            - DO NOT poll message-tmp files as a communication protocol.
             - Delivery is at-least-once transport-ack; keep payloads idempotent.
             """
         ).strip()

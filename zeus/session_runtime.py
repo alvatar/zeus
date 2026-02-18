@@ -12,7 +12,8 @@ _AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _session_map_dir() -> Path:
-    raw = os.environ.get("ZEUS_SESSION_MAP_DIR", "/tmp/zeus-session-map")
+    default_dir = os.path.join(os.path.expanduser("~/.zeus"), "session-map")
+    raw = os.environ.get("ZEUS_SESSION_MAP_DIR", default_dir)
     return Path(os.path.expanduser(raw))
 
 

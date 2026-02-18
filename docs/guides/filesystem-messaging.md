@@ -18,12 +18,12 @@ Current scope:
 
 ## Storage and payload paths
 
-Storage roots are configurable via `[storage]` in `~/.config/zeus/config.toml`:
+Storage roots are configurable via `[storage]` in `~/.zeus/config.toml`:
 
 ```toml
 [storage]
-state_dir = "/tmp"
-message_tmp_dir = "/tmp"
+state_dir = "~/.zeus"
+message_tmp_dir = "~/.zeus/messages"
 ```
 
 Also supported via env vars:
@@ -32,7 +32,7 @@ Also supported via env vars:
 
 Behavior in current implementation:
 - queue envelopes live under: `<state_dir>/zeus-message-queue/`
-- payload files are expected in: `<message_tmp_dir>` (default `/tmp`)
+- payload files are expected in: `<message_tmp_dir>` (default `~/.zeus/messages`)
 
 ## Agent-side autonomous sends (`zeus-msg`)
 
@@ -42,13 +42,13 @@ Examples:
 
 ```bash
 # hoplite -> polemarch
-zeus-msg send --to polemarch --file /tmp/zeus-msg-<uuid>.md
+zeus-msg send --to polemarch --file ~/.zeus/messages/zeus-msg-<uuid>.md
 
 # polemarch -> all hoplites in phalanx
-zeus-msg send --to phalanx --file /tmp/zeus-msg-<uuid>.md
+zeus-msg send --to phalanx --file ~/.zeus/messages/zeus-msg-<uuid>.md
 
 # polemarch/hoplite -> one hoplite by id
-zeus-msg send --to hoplite:<agent_id> --file /tmp/zeus-msg-<uuid>.md
+zeus-msg send --to hoplite:<agent_id> --file ~/.zeus/messages/zeus-msg-<uuid>.md
 ```
 
 Address resolution notes:

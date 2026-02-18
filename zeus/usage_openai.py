@@ -10,14 +10,18 @@ import subprocess
 import sys
 import time
 
-from .config import OPENAI_USAGE_CACHE
+from .config import OPENAI_USAGE_CACHE, STATE_DIR
 from .models import OpenAIUsageData
+
+
+_OPENAI_LOG_FILE = STATE_DIR / "zeus-openai.log"
+_OPENAI_FETCH_ERR_FILE = STATE_DIR / "zeus-openai-fetch.err"
 
 
 def _openai_log(msg: str) -> None:
     try:
         ts: str = time.strftime("%Y-%m-%d %H:%M:%S")
-        with open("/tmp/zeus-openai.log", "a") as f:
+        with _OPENAI_LOG_FILE.open("a") as f:
             f.write(f"[{ts}] {msg}\n")
     except OSError:
         pass
@@ -50,7 +54,7 @@ def _spawn_openai_fetch() -> None:
     """Spawn a helper process to fetch OpenAI usage."""
     try:
         zeus_path: str = str(Path(sys.argv[0]).expanduser().resolve())
-        with open("/tmp/zeus-openai-fetch.err", "a") as err:
+        with _OPENAI_FETCH_ERR_FILE.open("a") as err:
             subprocess.Popen(
                 [sys.executable, zeus_path, "fetch-openai-usage"],
                 stdout=subprocess.DEVNULL,
