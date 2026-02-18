@@ -451,6 +451,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "dismiss", "Close", show=False),
         Binding("e", "dismiss", "Close", show=False),
         Binding("f5", "refresh", "Refresh", show=False),
+        Binding("g", "go_ahead", "Go ahead", show=False),
         Binding("enter", "message", "Message", show=False),
     ]
 
@@ -467,7 +468,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 )
                 yield Label("", id="expanded-output-title-spacer")
                 yield Label(
-                    "(Enter message | F5 refresh | Esc close)",
+                    "(Enter message | G go ahead | F5 refresh | Esc close)",
                     id="expanded-output-hint",
                 )
             yield RichLog(
@@ -538,6 +539,10 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 compact_for_expanded_output=True,
             )
         )
+
+    def action_go_ahead(self) -> None:
+        self.dismiss()
+        self.zeus.action_go_ahead()
 
     def on_key(self, event: events.Key) -> None:
         if not self._scroll_stream_by_key(event.key):

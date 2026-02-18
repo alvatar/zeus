@@ -420,6 +420,26 @@ def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:
     assert modal.compact_for_expanded_output is True
 
 
+def test_expanded_output_go_ahead_closes_screen_and_dispatches_action(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent)
+
+    calls: list[str] = []
+
+    class _ZeusStub:
+        def action_go_ahead(self) -> None:
+            calls.append("go")
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen.action_go_ahead()
+
+    assert dismissed == [True]
+    assert calls == ["go"]
+
+
 def test_message_screen_mouse_scroll_forwards_to_expanded_output_when_outside_dialog(
     monkeypatch,
 ) -> None:

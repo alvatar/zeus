@@ -84,6 +84,7 @@ def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
     assert bindings["escape"] == "dismiss"
     assert bindings["e"] == "dismiss"
     assert bindings["f5"] == "refresh"
+    assert bindings["g"] == "go_ahead"
     assert bindings["enter"] == "message"
     assert "m" not in bindings
 
