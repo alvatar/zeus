@@ -191,14 +191,14 @@ def test_do_promote_hoplite_tmux_retags_session(monkeypatch) -> None:
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
     monkeypatch.setattr(app, "poll_and_update", lambda: polled.append(True))
     monkeypatch.setattr(
-        "zeus.dashboard.app.promote_hoplite_to_hidden_hippeus",
+        "zeus.dashboard.app.promote_hoplite_to_stygian_hippeus",
         lambda _sess: (True, ""),
     )
 
     ok = app.do_promote_hoplite_tmux(hoplite)
 
     assert ok is True
-    assert notices[-1] == "Promoted Hoplite to Hidden Hippeus: hoplite-a"
+    assert notices[-1] == "Promoted Hoplite to Stygian Hippeus: hoplite-a"
     assert polled == [True]
 
 

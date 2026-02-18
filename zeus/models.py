@@ -58,7 +58,7 @@ class AgentWindow:
     parent_id: str = ""  # ZEUS_PARENT_ID for agent lineage
     role: str = ""  # ZEUS_ROLE for agent-level role (e.g. polemarch)
     session_path: str = ""
-    backend: str = "kitty"  # kitty | tmux-hidden
+    backend: str = "kitty"  # kitty | tmux-stygian
     tmux_session: str = ""  # tmux session for non-kitty backends
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)

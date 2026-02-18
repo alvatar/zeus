@@ -95,7 +95,7 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "os.getcwd()" not in source
     assert "RadioSet(" in source
     assert "invoke-role-hippeus" in source
-    assert "invoke-role-hidden-hippeus" in source
+    assert "invoke-role-stygian-hippeus" in source
     assert "invoke-role-polemarch" in source
     assert "compact=False" in source
     assert "new-agent-buttons" not in source
@@ -342,7 +342,7 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert notices[-1] == "Invoked Polemarch: planner"
 
 
-def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
+def test_invoke_launch_stygian_hippeus_uses_tmux_backend(monkeypatch) -> None:
     screen = NewAgentScreen()
     name_input = _InputStub("shadow")
     dir_input = _InputStub("~/code")
@@ -354,7 +354,7 @@ def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
             return dir_input
         if selector == "#invoke-role":
             return SimpleNamespace(
-                pressed_button=SimpleNamespace(id="invoke-role-hidden-hippeus")
+                pressed_button=SimpleNamespace(id="invoke-role-stygian-hippeus")
             )
         raise LookupError(selector)
 
@@ -372,7 +372,7 @@ def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
             notices.append(message)
 
         def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            raise AssertionError("must not bootstrap hidden invoke")
+            raise AssertionError("must not bootstrap stygian invoke")
 
         def set_timer(self, delay: float, _callback) -> None:  # noqa: ANN001
             timers.append(delay)
@@ -384,11 +384,11 @@ def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
 
     launch_calls: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
-        "zeus.dashboard.screens.launch_hidden_hippeus",
+        "zeus.dashboard.screens.launch_stygian_hippeus",
         lambda *, name, directory, agent_id: launch_calls.append(
             (name, directory, agent_id)
         )
-        or ("hidden-agent-3", "/tmp/session.jsonl"),
+        or ("stygian-agent-3", "/tmp/session.jsonl"),
     )
 
     popen_called: list[bool] = []
@@ -406,12 +406,12 @@ def test_invoke_launch_hidden_hippeus_uses_tmux_backend(monkeypatch) -> None:
     assert launch_calls[0][1].endswith("/code")
     assert launch_calls[0][2] == "agent-3"
     assert popen_called == []
-    assert notices[-1] == "Invoked hidden Hippeus: shadow"
+    assert notices[-1] == "Invoked Stygian Hippeus: shadow"
     assert timers == [1.5]
     assert dismissed == [True]
 
 
-def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
+def test_invoke_launch_stygian_hippeus_notifies_on_failure(monkeypatch) -> None:
     screen = NewAgentScreen()
     name_input = _InputStub("shadow")
     dir_input = _InputStub("~/code")
@@ -423,7 +423,7 @@ def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
             return dir_input
         if selector == "#invoke-role":
             return SimpleNamespace(
-                pressed_button=SimpleNamespace(id="invoke-role-hidden-hippeus")
+                pressed_button=SimpleNamespace(id="invoke-role-stygian-hippeus")
             )
         raise LookupError(selector)
 
@@ -440,7 +440,7 @@ def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
             notices.append(message)
 
         def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            raise AssertionError("must not bootstrap hidden invoke")
+            raise AssertionError("must not bootstrap stygian invoke")
 
         def set_timer(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
             raise AssertionError("must not schedule timer on failed invoke")
@@ -451,7 +451,7 @@ def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
 
     monkeypatch.setattr(
-        "zeus.dashboard.screens.launch_hidden_hippeus",
+        "zeus.dashboard.screens.launch_stygian_hippeus",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("tmux unavailable")),
     )
 
@@ -460,7 +460,7 @@ def test_invoke_launch_hidden_hippeus_notifies_on_failure(monkeypatch) -> None:
 
     screen._launch()
 
-    assert notices[-1] == "Failed to invoke hidden Hippeus: tmux unavailable"
+    assert notices[-1] == "Failed to invoke Stygian Hippeus: tmux unavailable"
     assert dismissed == []
 
 

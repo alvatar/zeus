@@ -12,6 +12,8 @@ Define canonical naming for Zeus user-facing language.
 | Human operator | **The Oracle** |
 | Worker (singular) | **Hippeus** |
 | Workers (plural) | **Hippeis** |
+| Stygian worker (singular) | **Stygian Hippeus** |
+| Stygian workers (plural) | **Stygian Hippei** |
 | Worker group (singular) | **Phalanx** |
 | Worker groups (plural) | **Phalanges** |
 | Phalanx subordinate (singular) | **Hoplite** |
@@ -24,9 +26,10 @@ Define canonical naming for Zeus user-facing language.
 1. User-facing UI copy, help text, notifications, CLI help text, and project docs MUST use the canonical terms above.
 2. `Polemarch` denotes the currently available parent/commander role for Phalanx orchestration.
 3. `Hoplite` MUST refer only to an AGENT-based subordinate initialized by a Polemarch and explicitly associated with that Polemarch's Phalanx.
-4. Viewer-only tmux rows/sessions (regular tmux attach/view entries) MUST be labeled `tmux session` and MUST NOT be labeled `Hoplite` or treated as Phalanx members.
-5. A `Hoplite` MUST NOT be treated as a full `Hippeus` unless explicitly promoted.
-6. Zeus technical identifiers remain unchanged unless a separate migration spec explicitly says otherwise.
+4. `Stygian Hippeus` MUST refer to a tmux-native Hippeus backend without a dedicated kitty window.
+5. Viewer-only tmux rows/sessions (regular tmux attach/view entries) MUST be labeled `tmux session` and MUST NOT be labeled `Hoplite` or treated as Phalanx members.
+6. A `Hoplite` MUST NOT be treated as a full `Hippeus` unless explicitly promoted.
+7. Zeus technical identifiers remain unchanged unless a separate migration spec explicitly says otherwise.
 
 ## Out of scope (unchanged technical contracts)
 

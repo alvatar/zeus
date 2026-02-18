@@ -74,17 +74,17 @@ from ..tmux import (
     ensure_tmux_update_environment,
     match_tmux_to_agents,
 )
-from ..hidden_hippeus import (
-    HIDDEN_AGENT_BACKEND,
-    capture_hidden_screen_text,
-    discover_hidden_agents,
-    hidden_agent_row_key,
-    is_hidden_tmux_session,
-    kill_hidden_session,
-    promote_hoplite_to_hidden_hippeus,
-    resolve_hidden_session_path,
-    send_hidden_escape,
-    send_hidden_text,
+from ..stygian_hippeus import (
+    STYGIAN_AGENT_BACKEND,
+    capture_stygian_screen_text,
+    discover_stygian_agents,
+    stygian_agent_row_key,
+    is_stygian_tmux_session,
+    kill_stygian_session,
+    promote_hoplite_to_stygian_hippeus,
+    resolve_stygian_session_path,
+    send_stygian_escape,
+    send_stygian_text,
 )
 from ..state import detect_state, activity_signature, parse_footer
 from ..usage import read_usage, read_openai_usage, time_left
@@ -884,11 +884,11 @@ class ZeusApp(App):
         agents = discover_agents()
         pid_ws: dict[int, str] = build_pid_workspace_map()
         tmux_sessions: list[TmuxSession] = discover_tmux_sessions()
-        hidden_agents, visible_tmux_sessions = discover_hidden_agents(
+        stygian_agents, visible_tmux_sessions = discover_stygian_agents(
             tmux_sessions,
             name_overrides=load_names(),
         )
-        agents.extend(hidden_agents)
+        agents.extend(stygian_agents)
 
         usage = read_usage()
         openai = read_openai_usage()
@@ -1404,7 +1404,7 @@ class ZeusApp(App):
             akey: str = self._agent_key(a)
             blocked: bool = self._is_blocked(a)
             paused: bool = self._is_paused(a)
-            hidden: bool = self._is_hidden_agent(a)
+            stygian: bool = self._is_stygian_agent(a)
             waiting: bool = (
                 (not paused)
                 and (not blocked)
@@ -1447,7 +1447,7 @@ class ZeusApp(App):
             agent_role = (a.role or "").strip().lower()
             is_polemarch_display = agent_role == "polemarch"
             role_marker = "⌁ " if is_polemarch_display else ""
-            hidden_marker = "◆ " if hidden else ""
+            stygian_marker = "◆ " if stygian else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
             )
@@ -1457,15 +1457,15 @@ class ZeusApp(App):
                 if relation_icon:
                     raw_name = (
                         f"{branch_prefix}{relation_icon} "
-                        f"{hidden_marker}{role_marker}{a.name}{phalanx_marker}"
+                        f"{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
                     )
                 else:
                     raw_name = (
-                        f"{branch_prefix}{hidden_marker}{role_marker}"
+                        f"{branch_prefix}{stygian_marker}{role_marker}"
                         f"{a.name}{phalanx_marker}"
                     )
             else:
-                raw_name = f"{hidden_marker}{role_marker}{a.name}{phalanx_marker}"
+                raw_name = f"{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
 
             # Always use Text so bracketed labels like "[phalanx: N]" render
             # literally and are not parsed as Rich markup tags.
@@ -1646,7 +1646,7 @@ class ZeusApp(App):
                 sess
                 for sess in a.tmux_sessions
                 if (not self._is_hoplite_session_for(a, sess))
-                and (not is_hidden_tmux_session(sess))
+                and (not is_stygian_tmux_session(sess))
             ]
 
             hoplite_prefix = f"{'  ' * indent_level}└ 🗡 "
@@ -2078,9 +2078,9 @@ class ZeusApp(App):
         return bool((sess.phalanx_id or "").strip())
 
     @staticmethod
-    def _is_hidden_agent(agent: AgentWindow) -> bool:
+    def _is_stygian_agent(agent: AgentWindow) -> bool:
         return (
-            (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND
+            (agent.backend or "").strip() == STYGIAN_AGENT_BACKEND
             and bool((agent.tmux_session or "").strip())
         )
 
@@ -2091,8 +2091,8 @@ class ZeusApp(App):
         full: bool = False,
         ansi: bool = False,
     ) -> str:
-        if self._is_hidden_agent(agent):
-            return capture_hidden_screen_text(
+        if self._is_stygian_agent(agent):
+            return capture_stygian_screen_text(
                 agent.tmux_session,
                 full=full,
                 ansi=ansi,
@@ -2111,8 +2111,8 @@ class ZeusApp(App):
         if not agent:
             return
 
-        if self._is_hidden_agent(agent):
-            if send_hidden_escape(agent.tmux_session):
+        if self._is_stygian_agent(agent):
+            if send_stygian_escape(agent.tmux_session):
                 self.notify(f"ESC → {agent.name}", timeout=2)
             else:
                 self.notify(f"ESC failed: {agent.name}", timeout=3)
@@ -2162,16 +2162,16 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if not agent:
             return
-        if self._is_hidden_agent(agent):
-            self._focus_hidden_agent(agent)
+        if self._is_stygian_agent(agent):
+            self._focus_stygian_agent(agent)
             return
         focus_window(agent)
 
-    def _focus_hidden_agent(self, agent: AgentWindow) -> None:
-        """Focus/attach hidden Hippeus tmux session."""
+    def _focus_stygian_agent(self, agent: AgentWindow) -> None:
+        """Focus/attach Stygian Hippeus tmux session."""
         sess_name = (agent.tmux_session or "").strip()
         if not sess_name:
-            self.notify("Hidden Hippeus session missing", timeout=2)
+            self.notify("Stygian Hippeus session missing", timeout=2)
             return
 
         tmux_target = TmuxSession(
@@ -2272,10 +2272,10 @@ class ZeusApp(App):
     @staticmethod
     def _agent_key(agent: AgentWindow) -> str:
         if (
-            (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND
+            (agent.backend or "").strip() == STYGIAN_AGENT_BACKEND
             and (agent.agent_id or "").strip()
         ):
-            return hidden_agent_row_key(agent.agent_id)
+            return stygian_agent_row_key(agent.agent_id)
         return f"{agent.socket}:{agent.kitty_id}"
 
     @staticmethod
@@ -2302,10 +2302,10 @@ class ZeusApp(App):
     def _agent_identity_key(agent: AgentWindow) -> str:
         if agent.agent_id:
             return agent.agent_id
-        if (agent.backend or "").strip() == HIDDEN_AGENT_BACKEND:
+        if (agent.backend or "").strip() == STYGIAN_AGENT_BACKEND:
             sess = (agent.tmux_session or "").strip()
             if sess:
-                return f"hidden-session:{sess}"
+                return f"stygian-session:{sess}"
         return f"{agent.socket}:{agent.kitty_id}"
 
     def _agent_tasks_key(self, agent: AgentWindow) -> str:
@@ -3758,8 +3758,8 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if not agent:
             return
-        if self._is_hidden_agent(agent):
-            self._focus_hidden_agent(agent)
+        if self._is_stygian_agent(agent):
+            self._focus_stygian_agent(agent)
             return
         focus_window(agent)
         self.notify(f"Focused: {agent.name}", timeout=2)
@@ -3801,12 +3801,12 @@ class ZeusApp(App):
         self.do_kill_tmux_session(tmux)
 
     def do_kill_agent(self, agent: AgentWindow) -> None:
-        if self._is_hidden_agent(agent):
+        if self._is_stygian_agent(agent):
             sess_name = (agent.tmux_session or "").strip()
             if not sess_name:
                 self.notify(f"Kill failed: {agent.name}", timeout=3)
                 return
-            ok, detail = kill_hidden_session(sess_name)
+            ok, detail = kill_stygian_session(sess_name)
             if ok:
                 self.notify(f"Killed: {agent.name}", timeout=2)
             else:
@@ -4319,8 +4319,8 @@ class ZeusApp(App):
             self.notify("No Hippeus selected", timeout=2)
             return
 
-        if self._is_hidden_agent(agent):
-            self.notify(f"{agent.name} is already a Hidden Hippeus", timeout=3)
+        if self._is_stygian_agent(agent):
+            self.notify(f"{agent.name} is already a Stygian Hippeus", timeout=3)
             return
 
         if not self._has_promotable_parent(agent):
@@ -4412,12 +4412,12 @@ class ZeusApp(App):
             self.notify("Selected tmux row is not a Hoplite", timeout=3)
             return False
 
-        ok, detail = promote_hoplite_to_hidden_hippeus(sess)
+        ok, detail = promote_hoplite_to_stygian_hippeus(sess)
         if not ok:
             self.notify(f"Promote failed for {sess.name}: {detail}", timeout=3)
             return False
 
-        self.notify(f"Promoted Hoplite to Hidden Hippeus: {sess.name}", timeout=3)
+        self.notify(f"Promoted Hoplite to Stygian Hippeus: {sess.name}", timeout=3)
         self.poll_and_update()
         if self._interact_visible:
             self._refresh_interact_panel()
@@ -4431,8 +4431,8 @@ class ZeusApp(App):
             self.notify("No Hippeus selected", timeout=2)
             return
 
-        if self._is_hidden_agent(agent) and not agent.session_path:
-            recovered = resolve_hidden_session_path(agent.tmux_session)
+        if self._is_stygian_agent(agent) and not agent.session_path:
+            recovered = resolve_stygian_session_path(agent.tmux_session)
             if recovered:
                 agent.session_path = recovered
 
@@ -4779,8 +4779,8 @@ class ZeusApp(App):
         """Send text to an agent either as plain Enter or queue sequence."""
         clean = self._normalize_outgoing_text(text)
 
-        if self._is_hidden_agent(agent):
-            ok = send_hidden_text(
+        if self._is_stygian_agent(agent):
+            ok = send_stygian_text(
                 agent.tmux_session,
                 clean,
                 queue=queue_sequence is not None,

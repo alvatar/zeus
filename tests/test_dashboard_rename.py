@@ -122,41 +122,41 @@ def test_do_spawn_subagent_rejects_duplicate_name(monkeypatch) -> None:
     assert notices[-1] == "Name already exists: taken"
 
 
-def test_action_spawn_subagent_recovers_hidden_session_path(monkeypatch) -> None:
+def test_action_spawn_subagent_recovers_stygian_session_path(monkeypatch) -> None:
     app = ZeusApp()
-    hidden = AgentWindow(
+    stygian = AgentWindow(
         kitty_id=0,
         socket="",
         name="shadow",
         pid=101,
         kitty_pid=0,
         cwd="/tmp/project",
-        agent_id="agent-hidden",
-        backend="tmux-hidden",
-        tmux_session="hidden-agent",
+        agent_id="agent-stygian",
+        backend="tmux-stygian",
+        tmux_session="stygian-agent",
     )
-    app.agents = [hidden]
+    app.agents = [stygian]
 
     pushed: list[object] = []
     notices: list[str] = []
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
-    monkeypatch.setattr(app, "_get_selected_agent", lambda: hidden)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: stygian)
     monkeypatch.setattr(
-        "zeus.dashboard.app.resolve_hidden_session_path",
-        lambda _sess: "/tmp/hidden-session.jsonl",
+        "zeus.dashboard.app.resolve_stygian_session_path",
+        lambda _sess: "/tmp/stygian-session.jsonl",
     )
     monkeypatch.setattr(
         "zeus.dashboard.app.resolve_agent_session_path_with_source",
         lambda agent: (agent.session_path, "env"),
     )
-    monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda path: path == "/tmp/hidden-session.jsonl")
+    monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda path: path == "/tmp/stygian-session.jsonl")
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
 
     app.action_spawn_subagent()
 
-    assert hidden.session_path == "/tmp/hidden-session.jsonl"
+    assert stygian.session_path == "/tmp/stygian-session.jsonl"
     assert pushed
     assert isinstance(pushed[0], SubAgentScreen)
     assert notices == []

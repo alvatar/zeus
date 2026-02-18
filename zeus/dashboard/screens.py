@@ -26,7 +26,7 @@ from textual.widgets import (
 from .widgets import ZeusTextArea
 
 from ..kitty import generate_agent_id
-from ..hidden_hippeus import launch_hidden_hippeus
+from ..stygian_hippeus import launch_stygian_hippeus
 from ..models import AgentWindow, TmuxSession
 from ..notes import clear_done_tasks
 from ..sessions import make_new_session_path
@@ -77,7 +77,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             yield Label("Type:")
             yield RadioSet(
                 RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
-                RadioButton("Hidden Hippeus", id="invoke-role-hidden-hippeus"),
+                RadioButton("Stygian Hippeus", id="invoke-role-stygian-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
                 id="invoke-role",
                 compact=False,
@@ -100,8 +100,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         pressed = role_set.pressed_button
         if pressed is not None and pressed.id == "invoke-role-polemarch":
             return "polemarch"
-        if pressed is not None and pressed.id == "invoke-role-hidden-hippeus":
-            return "hidden-hippeus"
+        if pressed is not None and pressed.id == "invoke-role-stygian-hippeus":
+            return "stygian-hippeus"
         return "hippeus"
 
     def _launch(self) -> None:
@@ -121,21 +121,21 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
 
-        if role == "hidden-hippeus":
+        if role == "stygian-hippeus":
             try:
-                launch_hidden_hippeus(
+                launch_stygian_hippeus(
                     name=name,
                     directory=directory,
                     agent_id=agent_id,
                 )
             except (RuntimeError, ValueError) as exc:
                 self.zeus.notify(
-                    f"Failed to invoke hidden Hippeus: {exc}",
+                    f"Failed to invoke Stygian Hippeus: {exc}",
                     timeout=3,
                 )
                 return
 
-            self.zeus.notify(f"Invoked hidden Hippeus: {name}", timeout=3)
+            self.zeus.notify(f"Invoked Stygian Hippeus: {name}", timeout=3)
             self.dismiss()
             self.zeus.set_timer(1.5, self.zeus.poll_and_update)
             return
@@ -818,7 +818,7 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
             elif self.sess is not None:
                 prompt = (
                     f"Promote Hoplite [bold]{self.sess.name}[/bold] "
-                    "to Hidden Hippeus?"
+                    "to Stygian Hippeus?"
                 )
             else:
                 prompt = "Promote selected target?"
@@ -1089,7 +1089,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("h", "History for selected Hippeus"),
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
-    ("z", "Invoke Hippeus / Hidden Hippeus / Polemarch"),
+    ("z", "Invoke Hippeus / Stygian Hippeus / Polemarch"),
     ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
     ("n", "Queue next task for selected Hippeus"),
     (
