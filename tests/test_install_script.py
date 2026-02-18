@@ -75,10 +75,11 @@ def test_generated_wrapper_sets_npm_prefix_and_cache_to_user_paths() -> None:
 def test_generated_wrapper_mounts_required_pi_rw_paths() -> None:
     text = _read("install.sh")
 
-    assert 'bwrap_bind "\\${HOME}/.pi/agent/sessions"' in text
-    assert 'bwrap_bind "\\${HOME}/.pi/agent/auth.json"' in text
-    assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-cache.json"' in text
-    assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-npx-cache.json"' in text
+    assert 'bwrap_bind "\\${HOME}/.pi"' in text
+    assert 'bwrap_bind "\\${HOME}/.pi/agent/sessions"' not in text
+    assert 'bwrap_bind "\\${HOME}/.pi/agent/auth.json"' not in text
+    assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-cache.json"' not in text
+    assert 'bwrap_bind "\\${HOME}/.pi/agent/mcp-npx-cache.json"' not in text
     assert 'bwrap_bind "\\${HOME}/.local/bin"' in text
     assert 'bwrap_bind "\\${HOME}/.local/lib/node_modules"' in text
     assert 'bwrap_bind "\\${HOME}/.npm"' in text

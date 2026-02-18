@@ -268,19 +268,8 @@ for p in /usr /lib /lib64 /bin /sbin /etc /run; do
     bwrap_ro "\$p"
 done
 
-# Pi/runtime support (read-only, minimal)
-bwrap_ro "\${HOME}/.pi/agent/settings.json"
-bwrap_ro "\${HOME}/.pi/agent/mcp.json"
-bwrap_ro "\${HOME}/.pi/agent/extensions"
-bwrap_ro "\${HOME}/.pi/agent/bin"
-bwrap_ro "\${HOME}/.pi/agent/APPEND_SYSTEM.md"
-bwrap_ro "\${HOME}/.gitconfig"
-
 # Pi/runtime support (read-write, fixed)
-bwrap_bind "\${HOME}/.pi/agent/sessions"
-bwrap_bind "\${HOME}/.pi/agent/auth.json"
-bwrap_bind "\${HOME}/.pi/agent/mcp-cache.json"
-bwrap_bind "\${HOME}/.pi/agent/mcp-npx-cache.json"
+bwrap_bind "\${HOME}/.pi"
 bwrap_bind "\${HOME}/.local/bin"
 bwrap_bind "\${HOME}/.local/lib/node_modules"
 bwrap_bind "\${HOME}/.npm"
@@ -288,6 +277,7 @@ bwrap_bind "\${HOME}/.cargo"
 bwrap_bind "\${HOME}/.rustup"
 bwrap_bind "\${HOME}/.codex"
 bwrap_bind "\${HOME}/.claude"
+bwrap_ro "\${HOME}/.gitconfig"
 
 # User writable paths from sandbox-paths.conf allowlist.
 if [ -f "\$SANDBOX_CONF" ]; then
