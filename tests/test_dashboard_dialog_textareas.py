@@ -139,7 +139,7 @@ def test_aegis_config_switching_mode_loads_different_prompt(monkeypatch) -> None
         iterate_prompt="iterate-default",
     )
 
-    mode_set = SimpleNamespace(pressed_button=SimpleNamespace(id="aegis-config-iterate"))
+    mode_set = _RadioSetStub("aegis-config-iterate")
     prompt = _TextAreaStub("edited-continue")
 
     def _query_one(selector: str, cls=None):  # noqa: ANN001
@@ -156,6 +156,37 @@ def test_aegis_config_switching_mode_loads_different_prompt(monkeypatch) -> None
 
     assert prompt.text == "iterate-default"
     assert screen._prompt_by_mode["continue"] == "edited-continue"
+    assert mode_set.focused is True
+
+
+def test_aegis_config_mount_focuses_mode_selection(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = AegisConfigureScreen(
+        agent,
+        continue_prompt="continue-default",
+        iterate_prompt="iterate-default",
+    )
+
+    mode_set = _RadioSetStub("aegis-config-continue")
+
+    monkeypatch.setattr(
+        screen,
+        "query_one",
+        lambda selector, cls=None: mode_set if selector == "#aegis-config-mode" else (_ for _ in ()).throw(LookupError(selector)),
+    )
+
+    screen.on_mount()
+
+    assert mode_set.focused is True
 
 
 def test_new_agent_dir_suggestions_match_prefix() -> None:
@@ -372,6 +403,15 @@ class _OptionListStub:
 
     def remove_class(self, name: str) -> None:
         self.classes.discard(name)
+
+
+class _RadioSetStub:
+    def __init__(self, pressed_id: str) -> None:
+        self.pressed_button = SimpleNamespace(id=pressed_id)
+        self.focused = False
+
+    def focus(self) -> None:
+        self.focused = True
 
 
 class _TextAreaStub:

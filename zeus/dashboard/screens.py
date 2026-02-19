@@ -1158,9 +1158,7 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
                 yield Button("Enable", variant="primary", id="aegis-config-enable")
 
     def on_mount(self) -> None:
-        prompt = self.query_one("#aegis-config-prompt", ZeusTextArea)
-        prompt.focus()
-        prompt.move_cursor(prompt.document.end)
+        self.query_one("#aegis-config-mode", RadioSet).focus()
 
     def _selected_mode(self) -> str:
         mode_set = self.query_one("#aegis-config-mode", RadioSet)
@@ -1182,6 +1180,7 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
         self._mode = self._selected_mode()
         prompt.load_text(self._prompt_by_mode[self._mode])
         prompt.move_cursor(prompt.document.end)
+        self.query_one("#aegis-config-mode", RadioSet).focus()
 
     def action_confirm(self) -> None:
         mode = self._selected_mode()
