@@ -79,6 +79,9 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     def __init__(self) -> None:
         super().__init__()
         self._dir_suggestion_values: list[str] = []
+        self._dir_cycle_seed: str | None = None
+        self._dir_cycle_index: int = -1
+        self._dir_programmatic_change: bool = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
@@ -176,11 +179,50 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         options.highlighted = 0
         options.remove_class("hidden")
 
-    def _apply_dir_suggestion(self, suggestion: str) -> None:
+    def _set_directory_input_value(self, value: str) -> None:
         directory_input = self.query_one("#agent-dir", Input)
-        directory_input.value = suggestion
-        directory_input.cursor_position = len(suggestion)
+        self._dir_programmatic_change = True
+        directory_input.value = value
+        directory_input.cursor_position = len(value)
+
+    def _apply_dir_suggestion(self, suggestion: str) -> None:
+        self._set_directory_input_value(suggestion)
+        self._dir_cycle_seed = None
+        self._dir_cycle_index = -1
         self._refresh_dir_suggestions(suggestion)
+
+    def _cycle_dir_suggestion(self, *, forward: bool) -> bool:
+        options = self.query_one("#agent-dir-suggestions", OptionList)
+        directory_input = self.query_one("#agent-dir", Input)
+
+        started_cycle = False
+        if self._dir_cycle_seed is None:
+            self._dir_cycle_seed = directory_input.value
+            self._refresh_dir_suggestions(self._dir_cycle_seed)
+            self._dir_cycle_index = -1 if forward else 0
+            started_cycle = True
+
+        if "hidden" in options.classes or not self._dir_suggestion_values:
+            seed = self._dir_cycle_seed or directory_input.value
+            self._refresh_dir_suggestions(seed)
+            if "hidden" in options.classes or not self._dir_suggestion_values:
+                self._dir_cycle_seed = None
+                self._dir_cycle_index = -1
+                return False
+
+        if not started_cycle:
+            idx = options.highlighted
+            if idx is not None and 0 <= idx < len(self._dir_suggestion_values):
+                self._dir_cycle_index = idx
+
+        delta = 1 if forward else -1
+        self._dir_cycle_index = (
+            self._dir_cycle_index + delta
+        ) % len(self._dir_suggestion_values)
+        suggestion = self._dir_suggestion_values[self._dir_cycle_index]
+        options.highlighted = self._dir_cycle_index
+        self._set_directory_input_value(suggestion)
+        return True
 
     def _apply_highlighted_dir_suggestion(
         self,
@@ -204,12 +246,22 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self.query_one("#agent-dir-suggestions", OptionList).add_class("hidden")
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "agent-dir":
-            self._refresh_dir_suggestions(event.value)
+        if event.input.id != "agent-dir":
+            return
+
+        if self._dir_programmatic_change:
+            self._dir_programmatic_change = False
+            return
+
+        self._dir_cycle_seed = None
+        self._dir_cycle_index = -1
+        self._refresh_dir_suggestions(event.value)
 
     def on_input_blurred(self, event: Input.Blurred) -> None:
         if event.input.id == "agent-dir":
             self.query_one("#agent-dir-suggestions", OptionList).add_class("hidden")
+            self._dir_cycle_seed = None
+            self._dir_cycle_index = -1
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "agent-dir-suggestions":
@@ -224,7 +276,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         event.stop()
 
     def on_key(self, event: events.Key) -> None:
-        if event.key not in {"up", "down", "tab"}:
+        if event.key not in {"up", "down", "tab", "shift+tab", "backtab"}:
             return
 
         directory_input = self.query_one("#agent-dir", Input)
@@ -232,22 +284,26 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         options = self.query_one("#agent-dir-suggestions", OptionList)
+        if event.key in {"tab", "shift+tab", "backtab"}:
+            handled = self._cycle_dir_suggestion(forward=event.key == "tab")
+            if handled:
+                event.prevent_default()
+                event.stop()
+            return
+
         if "hidden" in options.classes or not self._dir_suggestion_values:
             self._refresh_dir_suggestions(directory_input.value)
         if "hidden" in options.classes or not self._dir_suggestion_values:
             return
 
-        handled = False
         if event.key == "down":
             options.action_cursor_down()
-            handled = True
-        elif event.key == "up":
-            options.action_cursor_up()
-            handled = True
-        elif event.key == "tab":
-            handled = self._apply_highlighted_dir_suggestion(only_if_different=True)
+            event.prevent_default()
+            event.stop()
+            return
 
-        if handled:
+        if event.key == "up":
+            options.action_cursor_up()
             event.prevent_default()
             event.stop()
 

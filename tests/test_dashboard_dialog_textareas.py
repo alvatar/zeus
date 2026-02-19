@@ -165,6 +165,74 @@ def test_new_agent_submit_launches_when_no_directory_suggestion_applied(monkeypa
     assert launches == [True]
 
 
+def test_new_agent_tab_cycles_directory_suggestions(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    directory_input = _InputStub("~/co")
+    options = _OptionListStub(hidden=True)
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir":
+            return directory_input
+        if selector == "#agent-dir-suggestions":
+            return options
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    def _refresh(_raw: str) -> None:
+        screen._dir_suggestion_values = ["~/code/", "~/config/"]
+        options.remove_class("hidden")
+
+    monkeypatch.setattr(screen, "_refresh_dir_suggestions", _refresh)
+
+    assert screen._cycle_dir_suggestion(forward=True) is True
+    assert directory_input.value == "~/code/"
+    assert options.highlighted == 0
+
+    assert screen._cycle_dir_suggestion(forward=True) is True
+    assert directory_input.value == "~/config/"
+    assert options.highlighted == 1
+
+    assert screen._cycle_dir_suggestion(forward=False) is True
+    assert directory_input.value == "~/code/"
+    assert options.highlighted == 0
+
+
+def test_new_agent_on_key_routes_tab_and_shift_tab_to_cycle(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    directory_input = _InputStub("~/co")
+    options = _OptionListStub(hidden=False)
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir":
+            return directory_input
+        if selector == "#agent-dir-suggestions":
+            return options
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(NewAgentScreen, "focused", property(lambda _self: directory_input))
+
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        screen,
+        "_cycle_dir_suggestion",
+        lambda *, forward: calls.append(forward) or True,
+    )
+
+    tab_event = _KeyEventStub("tab")
+    screen.on_key(tab_event)
+
+    shift_tab_event = _KeyEventStub("shift+tab")
+    screen.on_key(shift_tab_event)
+
+    assert calls == [True, False]
+    assert tab_event.prevented is True
+    assert tab_event.stopped is True
+    assert shift_tab_event.prevented is True
+    assert shift_tab_event.stopped is True
+
+
 def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
     source = _compose_source(RenameScreen)
     assert "rename-buttons" not in source
@@ -205,10 +273,36 @@ def test_snapshot_save_dialog_uses_checkbox_for_close_all() -> None:
 class _InputStub:
     def __init__(self, value: str = "") -> None:
         self.value = value
+        self.cursor_position = len(value)
         self.focused = False
 
     def focus(self) -> None:
         self.focused = True
+
+
+class _OptionListStub:
+    def __init__(self, *, hidden: bool = True) -> None:
+        self.classes: set[str] = {"hidden"} if hidden else set()
+        self.highlighted: int | None = None
+
+    def add_class(self, name: str) -> None:
+        self.classes.add(name)
+
+    def remove_class(self, name: str) -> None:
+        self.classes.discard(name)
+
+
+class _KeyEventStub:
+    def __init__(self, key: str) -> None:
+        self.key = key
+        self.prevented = False
+        self.stopped = False
+
+    def prevent_default(self) -> None:
+        self.prevented = True
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 class _LabelStub:
