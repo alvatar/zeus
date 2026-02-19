@@ -314,8 +314,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             "up",
             "down",
             "tab",
-            "shift+tab",
-            "backtab",
             "alt+backspace",
         }:
             return
@@ -325,8 +323,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         options = self.query_one("#agent-dir-suggestions", OptionList)
-        if event.key in {"tab", "shift+tab", "backtab"}:
-            handled = self._cycle_dir_suggestion(forward=event.key == "tab")
+        if event.key == "tab":
+            handled = self._cycle_dir_suggestion(forward=True)
             if handled:
                 event.prevent_default()
                 event.stop()
@@ -359,8 +357,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if event.input.id == "agent-name":
             self.query_one("#agent-dir", Input).focus()
         elif event.input.id == "agent-dir":
-            if self._apply_highlighted_dir_suggestion(only_if_different=True):
-                return
             self._launch()
 
     def _selected_role(self) -> str:

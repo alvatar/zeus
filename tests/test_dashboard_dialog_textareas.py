@@ -108,7 +108,7 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
 
     submit_source = inspect.getsource(NewAgentScreen.on_input_submitted)
     assert "event.input.id == \"agent-dir\"" in submit_source
-    assert "self._apply_highlighted_dir_suggestion" in submit_source
+    assert "self._apply_highlighted_dir_suggestion" not in submit_source
     assert "self._launch()" in submit_source
 
 
@@ -131,31 +131,16 @@ def test_new_agent_dir_suggestions_match_prefix() -> None:
     ]
 
 
-def test_new_agent_submit_applies_directory_suggestion_before_launch(monkeypatch) -> None:
+def test_new_agent_submit_launches_without_completion_capture(monkeypatch) -> None:
     screen = NewAgentScreen()
     launches: list[bool] = []
 
     monkeypatch.setattr(
         screen,
         "_apply_highlighted_dir_suggestion",
-        lambda *, only_if_different: True,
-    )
-    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
-
-    event = SimpleNamespace(input=SimpleNamespace(id="agent-dir"))
-    screen.on_input_submitted(event)
-
-    assert launches == []
-
-
-def test_new_agent_submit_launches_when_no_directory_suggestion_applied(monkeypatch) -> None:
-    screen = NewAgentScreen()
-    launches: list[bool] = []
-
-    monkeypatch.setattr(
-        screen,
-        "_apply_highlighted_dir_suggestion",
-        lambda *, only_if_different: False,
+        lambda *, only_if_different: (_ for _ in ()).throw(
+            AssertionError("should not capture Enter for completion")
+        ),
     )
     monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
 
@@ -198,7 +183,9 @@ def test_new_agent_tab_cycles_directory_suggestions(monkeypatch) -> None:
     assert options.highlighted == 0
 
 
-def test_new_agent_on_key_routes_tab_and_shift_tab_to_cycle(monkeypatch) -> None:
+def test_new_agent_on_key_routes_tab_to_cycle_and_leaves_shift_tab_for_focus_nav(
+    monkeypatch,
+) -> None:
     screen = NewAgentScreen()
     directory_input = _InputStub("~/co")
     options = _OptionListStub(hidden=False)
@@ -226,11 +213,11 @@ def test_new_agent_on_key_routes_tab_and_shift_tab_to_cycle(monkeypatch) -> None
     shift_tab_event = _KeyEventStub("shift+tab")
     screen.on_key(shift_tab_event)
 
-    assert calls == [True, False]
+    assert calls == [True]
     assert tab_event.prevented is True
     assert tab_event.stopped is True
-    assert shift_tab_event.prevented is True
-    assert shift_tab_event.stopped is True
+    assert shift_tab_event.prevented is False
+    assert shift_tab_event.stopped is False
 
 
 def test_new_agent_delete_dir_segment_left_to_previous_slash(monkeypatch) -> None:
