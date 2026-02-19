@@ -19,6 +19,7 @@ from textual.widgets import (
     Checkbox,
     Input,
     Label,
+    OptionList,
     RadioButton,
     RadioSet,
     RichLog,
@@ -73,6 +74,11 @@ class _ZeusScreenMixin:
 class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     CSS = NEW_AGENT_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+    _DIR_SUGGESTION_LIMIT = 12
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._dir_suggestion_values: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
@@ -93,11 +99,140 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 value="~/code",
                 id="agent-dir",
             )
+            yield OptionList(id="agent-dir-suggestions", classes="hidden", compact=True)
+
+    @staticmethod
+    def _display_dir_path(path: str) -> str:
+        home = os.path.expanduser("~")
+        if path == home:
+            return "~"
+        if path.startswith(home + os.sep):
+            return "~" + path[len(home):]
+        return path
+
+    def _dir_suggestions(self, raw_value: str) -> list[str]:
+        value = raw_value.strip() or "~"
+        expanded = os.path.expanduser(value)
+
+        if expanded.endswith(os.sep):
+            parent = expanded
+            prefix = ""
+        else:
+            parent, prefix = os.path.split(expanded)
+            if not parent:
+                parent = "."
+
+        parent = os.path.abspath(parent)
+
+        try:
+            with os.scandir(parent) as entries:
+                directory_names = [
+                    entry.name
+                    for entry in entries
+                    if entry.is_dir(follow_symlinks=False)
+                ]
+        except OSError:
+            return []
+
+        prefix_fold = prefix.casefold()
+        suggestions: list[str] = []
+        for name in sorted(directory_names, key=lambda n: (n.startswith("."), n.casefold())):
+            if prefix and not name.casefold().startswith(prefix_fold):
+                continue
+            candidate = os.path.join(parent, name)
+            if not candidate.endswith(os.sep):
+                candidate += os.sep
+            suggestions.append(self._display_dir_path(candidate))
+            if len(suggestions) >= self._DIR_SUGGESTION_LIMIT:
+                break
+
+        return suggestions
+
+    def _refresh_dir_suggestions(self, raw_value: str) -> None:
+        options = self.query_one("#agent-dir-suggestions", OptionList)
+        self._dir_suggestion_values = self._dir_suggestions(raw_value)
+
+        options.clear_options()
+        if not self._dir_suggestion_values:
+            options.add_class("hidden")
+            return
+
+        options.add_options(self._dir_suggestion_values)
+        options.highlighted = 0
+        options.remove_class("hidden")
+
+    def _apply_dir_suggestion(self, suggestion: str) -> None:
+        directory_input = self.query_one("#agent-dir", Input)
+        directory_input.value = suggestion
+        directory_input.cursor_position = len(suggestion)
+        self._refresh_dir_suggestions(suggestion)
+
+    def _apply_highlighted_dir_suggestion(
+        self,
+        *,
+        only_if_different: bool,
+    ) -> bool:
+        options = self.query_one("#agent-dir-suggestions", OptionList)
+        idx = options.highlighted
+        if idx is None or idx < 0 or idx >= len(self._dir_suggestion_values):
+            return False
+
+        suggestion = self._dir_suggestion_values[idx]
+        directory_input = self.query_one("#agent-dir", Input)
+        if only_if_different and directory_input.value.strip() == suggestion:
+            return False
+
+        self._apply_dir_suggestion(suggestion)
+        return True
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "agent-dir":
+            self._refresh_dir_suggestions(event.value)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "agent-dir-suggestions":
+            return
+
+        index = event.option_index
+        if index < 0 or index >= len(self._dir_suggestion_values):
+            return
+
+        self._apply_dir_suggestion(self._dir_suggestion_values[index])
+        self.query_one("#agent-dir", Input).focus()
+        event.stop()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key not in {"up", "down", "tab"}:
+            return
+
+        directory_input = self.query_one("#agent-dir", Input)
+        if self.focused is not directory_input:
+            return
+
+        options = self.query_one("#agent-dir-suggestions", OptionList)
+        if "hidden" in options.classes or not self._dir_suggestion_values:
+            return
+
+        handled = False
+        if event.key == "down":
+            options.action_cursor_down()
+            handled = True
+        elif event.key == "up":
+            options.action_cursor_up()
+            handled = True
+        elif event.key == "tab":
+            handled = self._apply_highlighted_dir_suggestion(only_if_different=True)
+
+        if handled:
+            event.prevent_default()
+            event.stop()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "agent-name":
             self.query_one("#agent-dir", Input).focus()
         elif event.input.id == "agent-dir":
+            if self._apply_highlighted_dir_suggestion(only_if_different=True):
+                return
             self._launch()
 
     def _selected_role(self) -> str:

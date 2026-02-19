@@ -278,6 +278,19 @@ NewAgentScreen {{
     margin: 0 0 1 0;
 }}
 
+#agent-dir-suggestions {{
+    width: 100%;
+    max-height: 8;
+    margin: 0 0 1 0;
+    border: solid #2a5f5f;
+    background: #061010;
+    color: #cccccc;
+}}
+
+#agent-dir-suggestions.hidden {{
+    display: none;
+}}
+
 #invoke-role {{
     width: 100%;
     margin: 0 0 1 0;

@@ -100,13 +100,69 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "invoke-role-stygian-hippeus" in source
     assert "invoke-role-polemarch" in source
     assert "compact=False" in source
+    assert "OptionList(" in source
+    assert "agent-dir-suggestions" in source
     assert "new-agent-buttons" not in source
     assert "launch-btn" not in source
     assert "cancel-btn" not in source
 
     submit_source = inspect.getsource(NewAgentScreen.on_input_submitted)
     assert "event.input.id == \"agent-dir\"" in submit_source
+    assert "self._apply_highlighted_dir_suggestion" in submit_source
     assert "self._launch()" in submit_source
+
+
+def test_new_agent_dir_suggestions_match_prefix() -> None:
+    from tempfile import TemporaryDirectory
+    from pathlib import Path
+
+    with TemporaryDirectory() as raw_tmp:
+        tmp = Path(raw_tmp)
+        (tmp / "alpha").mkdir()
+        (tmp / "alphabet").mkdir()
+        (tmp / "beta").mkdir()
+
+        screen = NewAgentScreen()
+        suggestions = screen._dir_suggestions(str(tmp / "alp"))
+
+    assert suggestions == [
+        str(tmp / "alpha") + "/",
+        str(tmp / "alphabet") + "/",
+    ]
+
+
+def test_new_agent_submit_applies_directory_suggestion_before_launch(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    launches: list[bool] = []
+
+    monkeypatch.setattr(
+        screen,
+        "_apply_highlighted_dir_suggestion",
+        lambda *, only_if_different: True,
+    )
+    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
+
+    event = SimpleNamespace(input=SimpleNamespace(id="agent-dir"))
+    screen.on_input_submitted(event)
+
+    assert launches == []
+
+
+def test_new_agent_submit_launches_when_no_directory_suggestion_applied(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    launches: list[bool] = []
+
+    monkeypatch.setattr(
+        screen,
+        "_apply_highlighted_dir_suggestion",
+        lambda *, only_if_different: False,
+    )
+    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
+
+    event = SimpleNamespace(input=SimpleNamespace(id="agent-dir"))
+    screen.on_input_submitted(event)
+
+    assert launches == [True]
 
 
 def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
