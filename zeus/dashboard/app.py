@@ -1342,35 +1342,9 @@ class ZeusApp(App):
             if parent_id and parent_id in parent_ids:
                 children_of.setdefault(parent_id, []).append(agent)
 
-        def _priority_sort_key(
-            a: AgentWindow,
-        ) -> tuple[int, int, float, str]:
-            # Priority first (1=high … 4=paused)
-            p = self._get_priority(a.name)
-            # State: WAITING (0) → WORKING (1) → IDLE (2) → BLOCKED (3) → PAUSED (4)
-            akey: str = self._agent_key(a)
-            if self._is_blocked(a):
-                st = 3
-            elif self._is_paused(a):
-                st = 4
-            elif a.state == State.IDLE and akey in self._action_needed:
-                st = 0  # WAITING
-            elif a.state == State.WORKING:
-                st = 1
-            else:
-                st = 2  # IDLE
-
-            changed_at: float = self.state_changed_at.get(akey, time.time())
-            # For IDLE ties, newer-idle first and longer-idle lower.
-            # This keeps stale idle agents at the bottom of their
-            # priority+state bucket.
-            if st == 2:
-                idle_at = self.idle_since.get(akey, changed_at)
-                time_key = -idle_at
-            else:
-                time_key = changed_at
-
-            return (p, st, time_key, a.name.lower())
+        def _priority_sort_key(a: AgentWindow) -> tuple[int, str]:
+            # Priority first (1=high … 4=paused), then lexicographic.
+            return (self._get_priority(a.name), a.name.lower())
 
         def _alpha_sort_key(a: AgentWindow) -> str:
             return a.name.lower()

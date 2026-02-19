@@ -64,74 +64,74 @@ def _render_row_keys(app: ZeusApp, monkeypatch) -> list[str]:
     return [row.value for row in table.rows]
 
 
-def test_priority_sort_orders_priority_then_state_then_idle_time(monkeypatch) -> None:
+def test_priority_sort_orders_priority_then_lexicographic(monkeypatch) -> None:
     app = ZeusApp()
 
-    p1_idle_old = _agent("p1-idle-old", 1, State.IDLE)
-    p1_working = _agent("p1-working", 2, State.WORKING)
-    p1_idle_new = _agent("p1-idle-new", 3, State.IDLE)
-    p2_working = _agent("p2-working", 4, State.WORKING)
+    p1_z_working = _agent("p1-z-working", 1, State.WORKING)
+    p1_a_idle_old = _agent("p1-a-idle-old", 2, State.IDLE)
+    p1_m_idle_new = _agent("p1-m-idle-new", 3, State.IDLE)
+    p2_b_working = _agent("p2-b-working", 4, State.WORKING)
 
-    app.agents = [p1_idle_old, p1_working, p1_idle_new, p2_working]
+    app.agents = [p1_z_working, p1_a_idle_old, p1_m_idle_new, p2_b_working]
     app._agent_priorities = {
-        "p1-idle-old": 1,
-        "p1-working": 1,
-        "p1-idle-new": 1,
-        "p2-working": 2,
+        "p1-z-working": 1,
+        "p1-a-idle-old": 1,
+        "p1-m-idle-new": 1,
+        "p2-b-working": 2,
     }
 
     now = time.time()
     app.state_changed_at = {
-        app._agent_key(p1_idle_old): now - 300,
-        app._agent_key(p1_working): now - 100,
-        app._agent_key(p1_idle_new): now - 20,
-        app._agent_key(p2_working): now - 200,
+        app._agent_key(p1_z_working): now - 10,
+        app._agent_key(p1_a_idle_old): now - 600,
+        app._agent_key(p1_m_idle_new): now - 5,
+        app._agent_key(p2_b_working): now - 300,
     }
     app.idle_since = {
-        app._agent_key(p1_idle_old): now - 300,
-        app._agent_key(p1_idle_new): now - 20,
+        app._agent_key(p1_a_idle_old): now - 600,
+        app._agent_key(p1_m_idle_new): now - 5,
     }
 
     row_keys = _render_row_keys(app, monkeypatch)
 
     assert row_keys == [
-        app._agent_key(p1_working),
-        app._agent_key(p1_idle_new),
-        app._agent_key(p1_idle_old),
-        app._agent_key(p2_working),
+        app._agent_key(p1_a_idle_old),
+        app._agent_key(p1_m_idle_new),
+        app._agent_key(p1_z_working),
+        app._agent_key(p2_b_working),
     ]
 
 
-def test_priority_sort_places_longer_idle_lower_within_same_bucket(monkeypatch) -> None:
+def test_priority_sort_ignores_idle_recency_within_same_priority(monkeypatch) -> None:
     app = ZeusApp()
 
-    idle_a = _agent("idle-a", 10, State.IDLE)
-    idle_b = _agent("idle-b", 11, State.IDLE)
-    idle_c = _agent("idle-c", 12, State.IDLE)
+    idle_z = _agent("idle-z", 10, State.IDLE)
+    idle_a = _agent("idle-a", 11, State.IDLE)
+    idle_m = _agent("idle-m", 12, State.IDLE)
 
-    app.agents = [idle_a, idle_b, idle_c]
+    app.agents = [idle_z, idle_a, idle_m]
     app._agent_priorities = {
+        "idle-z": 2,
         "idle-a": 2,
-        "idle-b": 2,
-        "idle-c": 2,
+        "idle-m": 2,
     }
 
     now = time.time()
     app.state_changed_at = {
-        app._agent_key(idle_a): now - 5,
-        app._agent_key(idle_b): now - 60,
-        app._agent_key(idle_c): now - 600,
+        app._agent_key(idle_z): now - 1,
+        app._agent_key(idle_a): now - 100,
+        app._agent_key(idle_m): now - 1000,
     }
     app.idle_since = {
-        app._agent_key(idle_a): now - 5,
-        app._agent_key(idle_b): now - 60,
-        app._agent_key(idle_c): now - 600,
+        app._agent_key(idle_z): now - 1,
+        app._agent_key(idle_a): now - 100,
+        app._agent_key(idle_m): now - 1000,
     }
 
     row_keys = _render_row_keys(app, monkeypatch)
 
     assert row_keys == [
         app._agent_key(idle_a),
-        app._agent_key(idle_b),
-        app._agent_key(idle_c),
+        app._agent_key(idle_m),
+        app._agent_key(idle_z),
     ]
