@@ -217,7 +217,13 @@ def cmd_send(args: argparse.Namespace) -> int:
         )
     except ValueError as error:
         return _err(str(error))
-    source_name = os.environ.get("ZEUS_AGENT_NAME", "").strip() or sender_agent_id
+    from_sender = getattr(args, "from_sender", None)
+    if from_sender is not None:
+        source_name = str(from_sender).strip()
+        if not source_name:
+            return _err("--from cannot be empty")
+    else:
+        source_name = os.environ.get("ZEUS_AGENT_NAME", "").strip() or sender_agent_id
 
     envelope = OutboundEnvelope.new(
         source_name=source_name,
@@ -264,6 +270,11 @@ def main() -> int:
             "polemarch | phalanx | hoplite:<id> | "
             "agent:<id-or-name> | name:<display-name> | <id-or-name>"
         ),
+    )
+    p_send.add_argument(
+        "--from",
+        dest="from_sender",
+        help="Override sender display name for source_name",
     )
     p_send.add_argument(
         "--file",

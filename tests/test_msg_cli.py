@@ -50,6 +50,7 @@ def _args(
     stdin: bool = False,
     wait_delivery: bool = False,
     timeout: float = 30.0,
+    from_sender: str | None = None,
 ) -> Namespace:
     return Namespace(
         to=to,
@@ -58,6 +59,7 @@ def _args(
         stdin=stdin,
         wait_delivery=wait_delivery,
         timeout=timeout,
+        from_sender=from_sender,
     )
 
 
@@ -175,6 +177,40 @@ def test_msg_cli_send_accepts_inline_text_payload(monkeypatch, tmp_path: Path) -
 
     env = _single_envelope(queue_root)
     assert env.message == "hello"
+
+
+def test_msg_cli_send_from_overrides_env_sender_name(monkeypatch, tmp_path: Path) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+    monkeypatch.setenv("ZEUS_AGENT_NAME", "env-sender")
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            text="hello",
+            from_sender="manual-sender",
+        )
+    )
+    assert rc == 0
+
+    env = _single_envelope(queue_root)
+    assert env.source_name == "manual-sender"
+
+
+def test_msg_cli_send_rejects_empty_from_sender(monkeypatch, tmp_path: Path) -> None:
+    _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+
+    rc = msg_cli.cmd_send(
+        _args(
+            to="agent:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            text="hello",
+            from_sender="   ",
+        )
+    )
+
+    assert rc == 1
+    assert sorted((queue_root / "new").glob("*.json")) == []
 
 
 def test_msg_cli_send_accepts_stdin_payload(monkeypatch, tmp_path: Path) -> None:
