@@ -267,6 +267,7 @@ NewAgentScreen {{
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
+    position: relative;
 }}
 
 #new-agent-dialog Label {{
@@ -279,9 +280,11 @@ NewAgentScreen {{
 }}
 
 #agent-dir-suggestions {{
+    position: absolute;
+    layer: overlay;
     width: 100%;
     max-height: 8;
-    margin: 0 0 1 0;
+    margin: 0;
     border: solid #2a5f5f;
     background: #061010;
     color: #cccccc;

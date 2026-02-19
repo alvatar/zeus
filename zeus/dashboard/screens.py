@@ -148,6 +148,20 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
         return suggestions
 
+    def _position_dir_suggestions(self) -> None:
+        options = self.query_one("#agent-dir-suggestions", OptionList)
+        dialog = self.query_one("#new-agent-dialog", Vertical)
+        directory_input = self.query_one("#agent-dir", Input)
+
+        rel_x = max(0, directory_input.region.x - dialog.region.x)
+        rel_y = max(
+            0,
+            directory_input.region.y - dialog.region.y + directory_input.region.height,
+        )
+
+        options.styles.offset = (rel_x, rel_y)
+        options.styles.width = directory_input.region.width
+
     def _refresh_dir_suggestions(self, raw_value: str) -> None:
         options = self.query_one("#agent-dir-suggestions", OptionList)
         self._dir_suggestion_values = self._dir_suggestions(raw_value)
@@ -157,6 +171,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             options.add_class("hidden")
             return
 
+        self._position_dir_suggestions()
         options.add_options(self._dir_suggestion_values)
         options.highlighted = 0
         options.remove_class("hidden")
@@ -185,9 +200,16 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self._apply_dir_suggestion(suggestion)
         return True
 
+    def on_mount(self) -> None:
+        self.query_one("#agent-dir-suggestions", OptionList).add_class("hidden")
+
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "agent-dir":
             self._refresh_dir_suggestions(event.value)
+
+    def on_input_blurred(self, event: Input.Blurred) -> None:
+        if event.input.id == "agent-dir":
+            self.query_one("#agent-dir-suggestions", OptionList).add_class("hidden")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "agent-dir-suggestions":
@@ -210,6 +232,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         options = self.query_one("#agent-dir-suggestions", OptionList)
+        if "hidden" in options.classes or not self._dir_suggestion_values:
+            self._refresh_dir_suggestions(directory_input.value)
         if "hidden" in options.classes or not self._dir_suggestion_values:
             return
 
