@@ -179,11 +179,18 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         options.highlighted = 0
         options.remove_class("hidden")
 
-    def _set_directory_input_value(self, value: str) -> None:
+    def _set_directory_input_value(
+        self,
+        value: str,
+        *,
+        cursor_position: int | None = None,
+    ) -> None:
         directory_input = self.query_one("#agent-dir", Input)
         self._dir_programmatic_change = True
         directory_input.value = value
-        directory_input.cursor_position = len(value)
+        directory_input.cursor_position = (
+            len(value) if cursor_position is None else max(0, cursor_position)
+        )
 
     def _apply_dir_suggestion(self, suggestion: str) -> None:
         self._set_directory_input_value(suggestion)
@@ -222,6 +229,33 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         suggestion = self._dir_suggestion_values[self._dir_cycle_index]
         options.highlighted = self._dir_cycle_index
         self._set_directory_input_value(suggestion)
+        return True
+
+    def _delete_dir_segment_left(self) -> bool:
+        directory_input = self.query_one("#agent-dir", Input)
+        value = directory_input.value
+        cursor = max(0, min(directory_input.cursor_position, len(value)))
+        left = value[:cursor]
+        right = value[cursor:]
+
+        if not left or left in {"/", "~/"}:
+            return False
+
+        cut = len(left)
+        while cut > 0 and left[cut - 1] == os.sep:
+            cut -= 1
+        while cut > 0 and left[cut - 1] != os.sep:
+            cut -= 1
+
+        if cut == cursor:
+            return False
+
+        new_value = value[:cut] + right
+        self._set_directory_input_value(new_value, cursor_position=cut)
+
+        self._dir_cycle_seed = None
+        self._dir_cycle_index = -1
+        self._refresh_dir_suggestions(new_value)
         return True
 
     def _apply_highlighted_dir_suggestion(
@@ -276,7 +310,14 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         event.stop()
 
     def on_key(self, event: events.Key) -> None:
-        if event.key not in {"up", "down", "tab", "shift+tab", "backtab"}:
+        if event.key not in {
+            "up",
+            "down",
+            "tab",
+            "shift+tab",
+            "backtab",
+            "alt+backspace",
+        }:
             return
 
         directory_input = self.query_one("#agent-dir", Input)
@@ -286,6 +327,13 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         options = self.query_one("#agent-dir-suggestions", OptionList)
         if event.key in {"tab", "shift+tab", "backtab"}:
             handled = self._cycle_dir_suggestion(forward=event.key == "tab")
+            if handled:
+                event.prevent_default()
+                event.stop()
+            return
+
+        if event.key == "alt+backspace":
+            handled = self._delete_dir_segment_left()
             if handled:
                 event.prevent_default()
                 event.stop()

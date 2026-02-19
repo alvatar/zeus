@@ -233,6 +233,55 @@ def test_new_agent_on_key_routes_tab_and_shift_tab_to_cycle(monkeypatch) -> None
     assert shift_tab_event.stopped is True
 
 
+def test_new_agent_delete_dir_segment_left_to_previous_slash(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    directory_input = _InputStub("~/code/zeus/")
+    directory_input.cursor_position = len(directory_input.value)
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir":
+            return directory_input
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    refreshed: list[str] = []
+    monkeypatch.setattr(screen, "_refresh_dir_suggestions", lambda raw: refreshed.append(raw))
+
+    ok = screen._delete_dir_segment_left()
+
+    assert ok is True
+    assert directory_input.value == "~/code/"
+    assert directory_input.cursor_position == len("~/code/")
+    assert refreshed == ["~/code/"]
+
+
+def test_new_agent_on_key_routes_alt_backspace_to_path_segment_delete(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    directory_input = _InputStub("~/code/zeus/")
+    options = _OptionListStub(hidden=False)
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir":
+            return directory_input
+        if selector == "#agent-dir-suggestions":
+            return options
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(NewAgentScreen, "focused", property(lambda _self: directory_input))
+
+    called: list[bool] = []
+    monkeypatch.setattr(screen, "_delete_dir_segment_left", lambda: called.append(True) or True)
+
+    event = _KeyEventStub("alt+backspace")
+    screen.on_key(event)
+
+    assert called == [True]
+    assert event.prevented is True
+    assert event.stopped is True
+
+
 def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
     source = _compose_source(RenameScreen)
     assert "rename-buttons" not in source
