@@ -701,6 +701,48 @@ CONFIRM_PROMOTE_CSS = _confirm_dialog_css(
     border_color="#ffb000",
 )
 
+AEGIS_CONFIG_CSS = f"""
+AegisConfigureScreen {{
+    align: center middle;
+    background: transparent;
+}}
+
+#aegis-config-dialog {{
+    width: 86;
+    height: auto;
+    max-height: 34;
+    border: thick #ff69b4;
+    background: #0a0a0a;
+    padding: 2 3;
+}}
+
+#aegis-config-dialog Label {{
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}}
+
+#aegis-config-mode {{
+    width: 100%;
+    margin: 0 0 1 0;
+}}
+
+#aegis-config-mode RadioButton {{
+    color: #cccccc;
+    margin: 1 0;
+}}
+
+#aegis-config-prompt {{
+    height: 8;
+    margin: 0 0 1 0;
+    border: solid #444444;
+    background: #0a1018;
+    color: #dddddd;
+}}
+
+{_button_row_css("aegis-config-buttons", align="right middle")}
+"""
+
 SNAPSHOT_SAVE_CSS = f"""
 SaveSnapshotScreen {{
     align: center middle;

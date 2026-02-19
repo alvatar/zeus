@@ -44,6 +44,7 @@ from .css import (
     RENAME_CSS,
     CONFIRM_KILL_CSS,
     CONFIRM_PROMOTE_CSS,
+    AEGIS_CONFIG_CSS,
     SNAPSHOT_SAVE_CSS,
     SNAPSHOT_RESTORE_CSS,
     BROADCAST_PREPARING_CSS,
@@ -1113,6 +1114,96 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
         elif self.sess is not None:
             self.zeus.do_promote_hoplite_tmux(self.sess)
         self.dismiss()
+
+
+class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = AEGIS_CONFIG_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("enter", "confirm", "Enable", show=False),
+    ]
+
+    def __init__(
+        self,
+        agent: AgentWindow,
+        *,
+        continue_prompt: str,
+        iterate_prompt: str,
+    ) -> None:
+        super().__init__()
+        self.agent = agent
+        self._mode = "continue"
+        self._prompt_by_mode: dict[str, str] = {
+            "continue": continue_prompt,
+            "iterate": iterate_prompt,
+        }
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="aegis-config-dialog"):
+            yield Label(f"Configure Aegis for [bold]{self.agent.name}[/bold]")
+            yield Label("Behavior:")
+            yield RadioSet(
+                RadioButton("Continue", value=True, id="aegis-config-continue"),
+                RadioButton("Iterate", id="aegis-config-iterate"),
+                id="aegis-config-mode",
+                compact=False,
+            )
+            yield Label("Message (editable):")
+            yield ZeusTextArea(
+                self._prompt_by_mode["continue"],
+                id="aegis-config-prompt",
+            )
+            with Horizontal(id="aegis-config-buttons"):
+                yield Button("Cancel", variant="default", id="aegis-config-cancel")
+                yield Button("Enable", variant="primary", id="aegis-config-enable")
+
+    def on_mount(self) -> None:
+        prompt = self.query_one("#aegis-config-prompt", ZeusTextArea)
+        prompt.focus()
+        prompt.move_cursor(prompt.document.end)
+
+    def _selected_mode(self) -> str:
+        mode_set = self.query_one("#aegis-config-mode", RadioSet)
+        pressed = mode_set.pressed_button
+        if pressed is not None and pressed.id == "aegis-config-iterate":
+            return "iterate"
+        return "continue"
+
+    def _current_prompt(self) -> str:
+        return self.query_one("#aegis-config-prompt", ZeusTextArea).text
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id != "aegis-config-mode":
+            return
+
+        prompt = self.query_one("#aegis-config-prompt", ZeusTextArea)
+        self._prompt_by_mode[self._mode] = prompt.text
+
+        self._mode = self._selected_mode()
+        prompt.load_text(self._prompt_by_mode[self._mode])
+        prompt.move_cursor(prompt.document.end)
+
+    def action_confirm(self) -> None:
+        mode = self._selected_mode()
+        prompt_text = self._current_prompt()
+
+        if not prompt_text.strip():
+            self.zeus.notify_force("Aegis message cannot be empty", timeout=3)
+            self.query_one("#aegis-config-prompt", ZeusTextArea).focus()
+            return
+
+        self._prompt_by_mode[mode] = prompt_text
+        if self.zeus.do_enable_aegis(self.agent, prompt_text):
+            self.dismiss()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "aegis-config-enable":
+            self.action_confirm()
+            event.stop()
+            return
+
+        self.dismiss()
+        event.stop()
 
 
 class BroadcastPreparingScreen(_ZeusScreenMixin, ModalScreen):

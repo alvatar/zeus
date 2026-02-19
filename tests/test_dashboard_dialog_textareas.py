@@ -5,6 +5,7 @@ import re
 from types import SimpleNamespace
 
 from zeus.dashboard.screens import (
+    AegisConfigureScreen,
     AgentMessageScreen,
     AgentTasksScreen,
     ConfirmBroadcastScreen,
@@ -110,6 +111,51 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "event.input.id == \"agent-dir\"" in submit_source
     assert "self._apply_highlighted_dir_suggestion" not in submit_source
     assert "self._launch()" in submit_source
+
+
+def test_aegis_config_dialog_uses_radio_options_and_textarea() -> None:
+    source = _compose_source(AegisConfigureScreen)
+    assert "RadioSet(" in source
+    assert "aegis-config-continue" in source
+    assert "aegis-config-iterate" in source
+    assert "ZeusTextArea(" in source
+    assert "aegis-config-prompt" in source
+
+
+def test_aegis_config_switching_mode_loads_different_prompt(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = AegisConfigureScreen(
+        agent,
+        continue_prompt="continue-default",
+        iterate_prompt="iterate-default",
+    )
+
+    mode_set = SimpleNamespace(pressed_button=SimpleNamespace(id="aegis-config-iterate"))
+    prompt = _TextAreaStub("edited-continue")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#aegis-config-mode":
+            return mode_set
+        if selector == "#aegis-config-prompt":
+            return prompt
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    event = SimpleNamespace(radio_set=SimpleNamespace(id="aegis-config-mode"))
+    screen.on_radio_set_changed(event)
+
+    assert prompt.text == "iterate-default"
+    assert screen._prompt_by_mode["continue"] == "edited-continue"
 
 
 def test_new_agent_dir_suggestions_match_prefix() -> None:
@@ -326,6 +372,18 @@ class _OptionListStub:
 
     def remove_class(self, name: str) -> None:
         self.classes.discard(name)
+
+
+class _TextAreaStub:
+    def __init__(self, text: str = "") -> None:
+        self.text = text
+        self.document = SimpleNamespace(end=(0, 0))
+
+    def load_text(self, text: str) -> None:
+        self.text = text
+
+    def move_cursor(self, _cursor) -> None:  # noqa: ANN001
+        return
 
 
 class _KeyEventStub:

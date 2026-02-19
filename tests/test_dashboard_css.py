@@ -26,6 +26,7 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
     assert "#direct-buttons {" in css.DIRECT_MESSAGE_CONFIRM_CSS
     assert "#confirm-kill-buttons {" in css.CONFIRM_KILL_CSS
     assert "#confirm-promote-buttons {" in css.CONFIRM_PROMOTE_CSS
+    assert "#aegis-config-buttons {" in css.AEGIS_CONFIG_CSS
     assert "#snapshot-save-buttons {" in css.SNAPSHOT_SAVE_CSS
     assert "#snapshot-save-close-all {" in css.SNAPSHOT_SAVE_CSS
     assert "color: #cccccc;" in css.SNAPSHOT_SAVE_CSS
@@ -59,6 +60,7 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.HELP_CSS,
         css.CONFIRM_KILL_CSS,
         css.CONFIRM_PROMOTE_CSS,
+        css.AEGIS_CONFIG_CSS,
         css.SNAPSHOT_SAVE_CSS,
         css.SNAPSHOT_RESTORE_CSS,
         css.BROADCAST_PREPARING_CSS,

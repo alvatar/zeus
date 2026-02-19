@@ -1,6 +1,7 @@
 """Tests for Aegis lifecycle behavior."""
 
 from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.screens import AegisConfigureScreen
 from zeus.models import AgentWindow, State
 
 
@@ -29,6 +30,7 @@ def _new_app() -> ZeusApp:
     app._agent_priorities = {}
     app._aegis_enabled = set()
     app._aegis_modes = {}
+    app._aegis_prompts = {}
     app._aegis_delay_timers = {}
     app._aegis_check_timers = {}
     return app
@@ -38,24 +40,38 @@ def test_aegis_post_check_delay_is_20_seconds() -> None:
     assert ZeusApp._AEGIS_CHECK_S == 20.0
 
 
-def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None:
+def test_toggle_aegis_opens_config_dialog_and_disable_still_works(monkeypatch) -> None:
     app = _new_app()
     hippeus = _agent("alpha", 1)
     key = app._agent_key(hippeus)
+    app.agents = [hippeus]
 
     notices: list[str] = []
     renders: list[bool] = []
+    pushed: list[object] = []
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: hippeus)
     monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
-    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: renders.append(True) or True)
+    monkeypatch.setattr(
+        app,
+        "_render_agent_table_and_status",
+        lambda: renders.append(True) or True,
+    )
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
     app._interact_visible = False
 
     app.action_toggle_aegis()
 
+    assert pushed
+    assert isinstance(pushed[0], AegisConfigureScreen)
+    assert key not in app._aegis_enabled
+    assert renders == []
+
+    assert app.do_enable_aegis(hippeus, app._AEGIS_PROMPT) is True
     assert key in app._aegis_enabled
     assert app._aegis_modes[key] == app._AEGIS_MODE_ARMED
+    assert app._aegis_prompts[key] == app._AEGIS_PROMPT
     assert notices[-1] == "Aegis enabled: alpha"
     assert renders == [True]
 
@@ -63,6 +79,7 @@ def test_toggle_aegis_enables_and_disables_selected_hippeus(monkeypatch) -> None
 
     assert key not in app._aegis_enabled
     assert key not in app._aegis_modes
+    assert key not in app._aegis_prompts
     assert notices[-1] == "Aegis disabled: alpha"
     assert renders == [True, True]
 
@@ -219,6 +236,34 @@ def test_aegis_delay_sends_prompt_once_and_starts_post_check(monkeypatch) -> Non
 
     app._on_aegis_delay_elapsed(key)
     assert sent == [("alpha", app._AEGIS_PROMPT)]
+
+
+def test_aegis_delay_uses_configured_prompt(monkeypatch) -> None:
+    app = _new_app()
+    hippeus = _agent("alpha", 1)
+    hippeus.state = State.IDLE
+    app.agents = [hippeus]
+    key = app._agent_key(hippeus)
+    app._aegis_enabled.add(key)
+    app._aegis_modes[key] = app._AEGIS_MODE_PENDING_DELAY
+    app._aegis_prompts[key] = "custom-aegis-prompt"
+
+    sent: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        app,
+        "_send_text_to_agent",
+        lambda agent, text: sent.append((agent.name, text)),
+    )
+    monkeypatch.setattr(
+        app,
+        "set_timer",
+        lambda _delay, _callback: _FakeTimer(),
+    )
+
+    app._on_aegis_delay_elapsed(key)
+
+    assert sent == [("alpha", "custom-aegis-prompt")]
 
 
 def test_aegis_post_check_rearms_only_if_working_again() -> None:

@@ -119,6 +119,7 @@ from .screens import (
     RenameScreen,
     RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen, ConfirmPromoteScreen,
+    AegisConfigureScreen,
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
@@ -540,6 +541,12 @@ class ZeusApp(App):
         "explanation of why you stopped in first place, and why you "
         "decided to continue without my input on this matter."
     )
+    _AEGIS_ITERATE_PROMPT = (
+        "Review the work you have done. Identify areas of improvement and "
+        "classify them into high-confidence and low-confidence. Execute the "
+        "high-confidence ones immediately. Remember the low-confidence ones "
+        "so you can summarize them to me when I ask to"
+    )
     _CELEBRATION_COOLDOWN_S = 3600.0
     _CELEBRATION_MIN_ACTIVE_AGENTS = 4
 
@@ -590,6 +597,7 @@ class ZeusApp(App):
     _message_queue_inotify_enabled: bool = False
     _aegis_enabled: set[str] = set()
     _aegis_modes: dict[str, str] = {}
+    _aegis_prompts: dict[str, str] = {}
     _aegis_delay_timers: dict[str, Timer] = {}
     _aegis_check_timers: dict[str, Timer] = {}
     _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
@@ -1072,6 +1080,7 @@ class ZeusApp(App):
     def _disable_aegis(self, key: str) -> None:
         self._aegis_enabled.discard(key)
         self._aegis_modes.pop(key, None)
+        self._aegis_prompts.pop(key, None)
         self._cancel_aegis_delay_timer(key)
         self._cancel_aegis_check_timer(key)
 
@@ -1188,7 +1197,8 @@ class ZeusApp(App):
             self._aegis_modes[key] = self._AEGIS_MODE_HALTED
             return
 
-        self._send_text_to_agent(agent, self._AEGIS_PROMPT)
+        prompt_text = self._aegis_prompts.get(key, self._AEGIS_PROMPT)
+        self._send_text_to_agent(agent, prompt_text)
         self._aegis_modes[key] = self._AEGIS_MODE_POST_CHECK
         self._cancel_aegis_check_timer(key)
         self._aegis_check_timers[key] = self.set_timer(
@@ -4254,13 +4264,43 @@ class ZeusApp(App):
             )
             return
 
+        self.push_screen(
+            AegisConfigureScreen(
+                agent,
+                continue_prompt=self._AEGIS_PROMPT,
+                iterate_prompt=self._AEGIS_ITERATE_PROMPT,
+            )
+        )
+
+    def do_enable_aegis(self, agent: AgentWindow, prompt_text: str) -> bool:
+        key = self._agent_key(agent)
+        live = self._get_agent_by_key(key)
+        if live is None:
+            self.notify("Selected Hippeus is no longer active", timeout=2)
+            return False
+
+        if self._is_input_blocked(live):
+            self.notify(
+                f"Aegis unavailable for blocked/paused Hippeus: {live.name}",
+                timeout=2,
+            )
+            return False
+
+        clean_prompt = prompt_text.strip()
+        if not clean_prompt:
+            self.notify_force("Aegis message cannot be empty", timeout=3)
+            return False
+
         self._aegis_enabled.add(key)
         self._aegis_modes[key] = self._AEGIS_MODE_ARMED
-        self.notify(f"Aegis enabled: {agent.name}", timeout=2)
+        self._aegis_prompts[key] = clean_prompt
+        self.notify(f"Aegis enabled: {live.name}", timeout=2)
 
         self._render_agent_table_and_status()
         if self._interact_visible:
             self._refresh_interact_panel()
+
+        return True
 
     def action_toggle_dependency(self) -> None:
         """D: toggle blocked dependency for selected agent."""
