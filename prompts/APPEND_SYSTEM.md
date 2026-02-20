@@ -30,14 +30,14 @@ Zeus messaging protocol
 - For agent-to-agent messaging, use only:
   - `zeus-msg send --to <target> [--from <sender>] <payload-option> [--wait-delivery --timeout <sec>]`
 - Targeting:
-  - Preferred: `--to <agent-display-name>`
+  - Preferred: `--to <agent-display-name> --from<your-agent-display-name>`
   - Also valid: `agent:<id-or-name>`, `name:<display-name>`, `polemarch`, `phalanx`, `hoplite:<id>`
   - If target is ambiguous or unresolved: stop and ask; never guess.
 - Sender label:
   - Default is `ZEUS_AGENT_NAME` (fallback: `ZEUS_AGENT_ID`).
   - Use `--from <sender>` when you must override the display sender name.
 - Payload option priority (strict):
-  1) Preferred/default: `--text "..."`
+  1) Preferred/default: `--text "..."`. Use this always unless the payload is extremely large.
   2) `--stdin` or piped stdin for multiline/generated text
   3) `--file <path>` only when payload already exists and reuse is intended
 - Do not create temp UUID payload files unless `--file` is explicitly necessary.
