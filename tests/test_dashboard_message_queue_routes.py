@@ -132,7 +132,7 @@ def test_drain_message_queue_routes_hoplite_by_session_agent_id(
     assert mq.list_inflight_envelopes() == []
 
 
-def test_drain_message_queue_hoplite_falls_back_to_tmux_when_agent_id_missing(
+def test_drain_message_queue_hoplite_without_agent_id_is_blocked_with_notice(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -155,12 +155,8 @@ def test_drain_message_queue_hoplite_falls_back_to_tmux_when_agent_id_missing(
     app.agents = [polemarch]
     app._message_receipts = {}
 
-    tmux_calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        app,
-        "_dispatch_tmux_text",
-        lambda sess, text, queue: tmux_calls.append((sess, text)) or True,
-    )
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
 
     envelope = mq.OutboundEnvelope.new(
         source_name="polemarch",
@@ -174,8 +170,10 @@ def test_drain_message_queue_hoplite_falls_back_to_tmux_when_agent_id_missing(
 
     app._drain_message_queue()
 
-    assert tmux_calls == [("hoplite-x", "fallback")]
-    assert mq.list_new_envelopes() == []
+    assert notices
+    assert "Queue blocked:" in notices[-1]
+    assert "missing @zeus_agent id" in notices[-1]
+    assert len(mq.list_new_envelopes()) == 1
     assert mq.list_inflight_envelopes() == []
 
 

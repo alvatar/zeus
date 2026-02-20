@@ -598,6 +598,8 @@ class ZeusApp(App):
     _message_queue_backoff_max_s: float = 30.0
     _message_receipts_ttl_s: float = 24 * 3600.0
     _message_receipts: dict[str, dict[str, float]] = {}
+    _queue_unresolved_notice_at: dict[str, float] = {}
+    _queue_unresolved_notice_interval_s: float = 30.0
     _message_queue_watch_thread: threading.Thread | None = None
     _message_queue_watch_stop: threading.Event | None = None
     _message_queue_inotify_proc: subprocess.Popen[str] | None = None
@@ -2849,6 +2851,25 @@ class ZeusApp(App):
     def _queue_retry_delay_s(attempts: int) -> float:
         return min(30.0, float(2 ** max(0, min(attempts, 4))))
 
+    def _notify_queue_unresolved(
+        self,
+        envelope: OutboundEnvelope,
+        reason: str | None,
+    ) -> None:
+        envelope_id = envelope.id.strip() or (
+            f"{envelope.target_kind}:{envelope.target_ref}:{envelope.message[:24]}"
+        )
+        now = time.time()
+        last = self._queue_unresolved_notice_at.get(envelope_id, 0.0)
+        if (now - last) < self._queue_unresolved_notice_interval_s:
+            return
+
+        self._queue_unresolved_notice_at[envelope_id] = now
+        detail = reason or (
+            f"target unresolved ({envelope.target_kind}:{envelope.target_ref})"
+        )
+        self.notify_force(f"Queue blocked: {detail}", timeout=4)
+
     def _get_agent_by_id(self, agent_id: str) -> AgentWindow | None:
         clean = agent_id.strip()
         if not clean:
@@ -2864,7 +2885,10 @@ class ZeusApp(App):
             sessions.extend(agent.tmux_sessions)
         return sessions
 
-    def _resolve_queue_targets(self, envelope: OutboundEnvelope) -> list[QueueDeliveryTarget]:
+    def _resolve_queue_targets(
+        self,
+        envelope: OutboundEnvelope,
+    ) -> tuple[list[QueueDeliveryTarget], str | None]:
         kind = (envelope.target_kind or "agent").strip().lower()
         targets: list[QueueDeliveryTarget] = []
 
@@ -2872,7 +2896,7 @@ class ZeusApp(App):
             target_id = (envelope.target_ref or envelope.target_agent_id).strip()
             target = self._get_agent_by_id(target_id)
             if target is None:
-                return []
+                return [], f"agent target not active: {target_id or '<missing>'}"
             recipient_key = f"agent:{self._agent_identity_key(target)}"
             targets.append(
                 QueueDeliveryTarget(
@@ -2882,52 +2906,58 @@ class ZeusApp(App):
                     agent=target,
                 )
             )
-            return targets
+            return targets, None
 
         sessions = self._iter_all_tmux_sessions()
 
         if kind == "hoplite":
             hoplite_id = envelope.target_ref.strip()
+            if not hoplite_id:
+                return [], "hoplite target id is empty"
+
+            missing_id_count = 0
             for sess in sessions:
                 if (sess.role or "").strip().lower() != "hoplite":
                     continue
-                if not sess.name.strip():
-                    continue
-                sess_agent_id = (sess.agent_id or sess.env_agent_id or "").strip()
-                if sess_agent_id != hoplite_id:
-                    continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
+                if not sess.name.strip():
+                    continue
 
-                if sess_agent_id:
-                    recipient_key = f"hoplite:{sess_agent_id}"
-                    targets.append(
-                        QueueDeliveryTarget(
-                            recipient_key=recipient_key,
-                            label=sess.name,
-                            kind="hoplite",
-                            hoplite_agent_id=sess_agent_id,
-                            tmux_session=sess.name,
-                        )
+                sess_agent_id = (sess.agent_id or "").strip()
+                if not sess_agent_id:
+                    missing_id_count += 1
+                    continue
+                if sess_agent_id != hoplite_id:
+                    continue
+
+                recipient_key = f"hoplite:{sess_agent_id}"
+                targets.append(
+                    QueueDeliveryTarget(
+                        recipient_key=recipient_key,
+                        label=sess.name,
+                        kind="hoplite",
+                        hoplite_agent_id=sess_agent_id,
+                        tmux_session=sess.name,
                     )
-                else:
-                    recipient_key = f"tmux:{sess.name}"
-                    targets.append(
-                        QueueDeliveryTarget(
-                            recipient_key=recipient_key,
-                            label=sess.name,
-                            kind="tmux",
-                            tmux_session=sess.name,
-                        )
-                    )
+                )
                 break
-            return targets
+
+            if targets:
+                return targets, None
+            if missing_id_count:
+                return [], (
+                    "hoplite delivery blocked: "
+                    f"{missing_id_count} hoplite session(s) missing @zeus_agent id"
+                )
+            return [], f"hoplite target not active: {hoplite_id}"
 
         if kind == "phalanx":
             phalanx_id = envelope.target_ref.strip()
             if not phalanx_id:
-                return []
+                return [], "phalanx target id is empty"
 
+            missing_id_count = 0
             for sess in sessions:
                 if (sess.role or "").strip().lower() != "hoplite":
                     continue
@@ -2935,38 +2965,38 @@ class ZeusApp(App):
                     continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
-                sess_agent_id = (sess.agent_id or sess.env_agent_id or "").strip()
-                if envelope.source_agent_id and sess_agent_id == envelope.source_agent_id:
-                    continue
                 if not sess.name.strip():
                     continue
 
-                if sess_agent_id:
-                    recipient_key = f"hoplite:{sess_agent_id}"
-                    targets.append(
-                        QueueDeliveryTarget(
-                            recipient_key=recipient_key,
-                            label=sess.name,
-                            kind="hoplite",
-                            hoplite_agent_id=sess_agent_id,
-                            tmux_session=sess.name,
-                        )
-                    )
-                else:
-                    recipient_key = f"tmux:{sess.name}"
-                    targets.append(
-                        QueueDeliveryTarget(
-                            recipient_key=recipient_key,
-                            label=sess.name,
-                            kind="tmux",
-                            tmux_session=sess.name,
-                        )
-                    )
+                sess_agent_id = (sess.agent_id or "").strip()
+                if not sess_agent_id:
+                    missing_id_count += 1
+                    continue
+                if envelope.source_agent_id and sess_agent_id == envelope.source_agent_id:
+                    continue
 
-            targets.sort(key=lambda t: (t.hoplite_agent_id or t.tmux_session))
-            return targets
+                recipient_key = f"hoplite:{sess_agent_id}"
+                targets.append(
+                    QueueDeliveryTarget(
+                        recipient_key=recipient_key,
+                        label=sess.name,
+                        kind="hoplite",
+                        hoplite_agent_id=sess_agent_id,
+                        tmux_session=sess.name,
+                    )
+                )
 
-        return []
+            if targets:
+                targets.sort(key=lambda t: t.hoplite_agent_id)
+                return targets, None
+            if missing_id_count:
+                return [], (
+                    "phalanx delivery blocked: "
+                    f"{missing_id_count} hoplite session(s) missing @zeus_agent id"
+                )
+            return [], f"phalanx target has no deliverable hoplites: {phalanx_id}"
+
+        return [], f"unsupported queue target kind: {kind}"
 
     def _deliver_queue_target(
         self,
@@ -3056,8 +3086,9 @@ class ZeusApp(App):
                 if envelope.next_attempt_at > now:
                     continue
 
-                pre_targets = self._resolve_queue_targets(envelope)
+                pre_targets, pre_error = self._resolve_queue_targets(envelope)
                 if not pre_targets:
+                    self._notify_queue_unresolved(envelope, pre_error)
                     continue
 
                 inflight = claim_envelope(path)
@@ -3069,8 +3100,9 @@ class ZeusApp(App):
                     ack_envelope(inflight)
                     continue
 
-                targets = self._resolve_queue_targets(claimed)
+                targets, resolve_error = self._resolve_queue_targets(claimed)
                 if not targets:
+                    self._notify_queue_unresolved(claimed, resolve_error)
                     requeue_envelope(
                         inflight,
                         claimed,
@@ -3111,6 +3143,7 @@ class ZeusApp(App):
 
                 if all_delivered:
                     ack_envelope(inflight)
+                    self._queue_unresolved_notice_at.pop(claimed.id, None)
                     continue
 
                 requeue_envelope(
