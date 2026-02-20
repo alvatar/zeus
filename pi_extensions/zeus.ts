@@ -408,9 +408,9 @@ function ensureInboxWatcher(pi: ExtensionAPI): void {
   const agentId = getAgentId();
   if (!agentId) return;
 
-  const watchDir = getAgentInboxRoot(agentId);
+  const watchDir = getAgentInboxNewDir(agentId);
   try {
-    fs.mkdirSync(getAgentInboxNewDir(agentId), { recursive: true });
+    fs.mkdirSync(watchDir, { recursive: true });
     fs.mkdirSync(getAgentInboxProcessingDir(agentId), { recursive: true });
   } catch {
     return;
