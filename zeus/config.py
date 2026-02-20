@@ -94,9 +94,11 @@ USAGE_CACHE = STATE_DIR / "claude-usage-cache.json"
 OPENAI_USAGE_CACHE = STATE_DIR / "openai-usage-cache.json"
 MESSAGE_QUEUE_DIR = STATE_DIR / "zeus-message-queue"
 MESSAGE_RECEIPTS_FILE = STATE_DIR / "zeus-message-receipts.json"
+HOPLITE_INBOX_DIR = STATE_DIR / "zeus-hoplite-inbox"
 
 INPUT_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 MESSAGE_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+HOPLITE_INBOX_DIR.mkdir(parents=True, exist_ok=True)
 
 # Pi spinner frames (from pi-tui Loader component)
 SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\S")

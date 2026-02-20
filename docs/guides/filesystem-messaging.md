@@ -8,7 +8,7 @@ Zeus uses a filesystem-backed outbound queue so message delivery survives Zeus r
 
 Design goals:
 - no always-on broker daemon
-- transport safety (remove only after injection ACK)
+- transport safety (remove only after delivery handoff ACK)
 - eventual delivery after Zeus restarts
 - `inotify` wakeups for low-latency draining
 
@@ -62,6 +62,10 @@ Address resolution notes:
 <state_dir>/zeus-message-queue/
   new/        # pending envelopes
   inflight/   # claimed envelopes currently being delivered
+
+<state_dir>/zeus-hoplite-inbox/
+  <hoplite-agent-id>/
+    *.json    # pending hoplite inbox entries
 ```
 
 Envelope payload (JSON) includes:
@@ -79,7 +83,9 @@ Envelope payload (JSON) includes:
 
 1. **enqueue**: write envelope into `new/`
 2. **claim**: atomically move `new/<file>` -> `inflight/<file>`
-3. **inject**: Zeus sends message to target terminal with queue semantics (Alt+Enter path)
+3. **deliver**:
+   - `agent` targets: Zeus injects terminal keys with queue semantics
+   - `hoplite` targets: Zeus writes to per-hoplite inbox files; hoplite pi extension consumes and submits as follow-up user messages
 4. **ack**:
    - success -> remove envelope from `inflight/`
    - failure -> update attempts/backoff and move envelope back to `new/`
@@ -91,7 +97,7 @@ Crash recovery:
 ## ACK semantics
 
 ACK is **transport ACK**:
-- envelope is removed when injection commands succeed
+- envelope is removed when delivery handoff succeeds (terminal inject for `agent`, inbox file write for `hoplite`)
 - ACK does **not** mean the receiver model understood or executed the task
 
 This is intentional for current stage; app-level ACK can be added later.
@@ -99,7 +105,7 @@ This is intentional for current stage; app-level ACK can be added later.
 Dedupe behavior:
 - Zeus records per-recipient message receipts by envelope `id`.
 - If an envelope with the same id is retried after a successful delivery,
-  Zeus skips duplicate injection and ACKs it.
+  Zeus skips duplicate handoff and ACKs it.
 - Receipt entries are pruned with a TTL window.
 
 ## Wakeups and catch-up

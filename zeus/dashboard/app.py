@@ -32,7 +32,7 @@ class SortMode(Enum):
     PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE
+from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE, STATE_DIR
 from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
@@ -94,6 +94,7 @@ from ..windowing import (
     kill_pid,
     move_pid_to_workspace_and_focus_later,
 )
+from ..hoplite_inbox import enqueue_hoplite_inbox_message
 from ..snapshots import (
     default_snapshot_name,
     list_snapshot_files,
@@ -149,8 +150,9 @@ class QueueDeliveryTarget:
 
     recipient_key: str
     label: str
-    kind: str  # "agent" | "tmux"
+    kind: str  # "agent" | "hoplite" | "tmux"
     agent: AgentWindow | None = None
+    hoplite_agent_id: str = ""
     tmux_session: str = ""
 
 
@@ -2896,15 +2898,28 @@ class ZeusApp(App):
                     continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
-                recipient_key = f"tmux:{sess.name}"
-                targets.append(
-                    QueueDeliveryTarget(
-                        recipient_key=recipient_key,
-                        label=sess.name,
-                        kind="tmux",
-                        tmux_session=sess.name,
+
+                if sess_agent_id:
+                    recipient_key = f"hoplite:{sess_agent_id}"
+                    targets.append(
+                        QueueDeliveryTarget(
+                            recipient_key=recipient_key,
+                            label=sess.name,
+                            kind="hoplite",
+                            hoplite_agent_id=sess_agent_id,
+                            tmux_session=sess.name,
+                        )
                     )
-                )
+                else:
+                    recipient_key = f"tmux:{sess.name}"
+                    targets.append(
+                        QueueDeliveryTarget(
+                            recipient_key=recipient_key,
+                            label=sess.name,
+                            kind="tmux",
+                            tmux_session=sess.name,
+                        )
+                    )
                 break
             return targets
 
@@ -2920,22 +2935,35 @@ class ZeusApp(App):
                     continue
                 if envelope.target_owner_id and sess.owner_id != envelope.target_owner_id:
                     continue
-                sess_agent_id = (sess.agent_id or "").strip()
+                sess_agent_id = (sess.agent_id or sess.env_agent_id or "").strip()
                 if envelope.source_agent_id and sess_agent_id == envelope.source_agent_id:
                     continue
                 if not sess.name.strip():
                     continue
-                recipient_key = f"tmux:{sess.name}"
-                targets.append(
-                    QueueDeliveryTarget(
-                        recipient_key=recipient_key,
-                        label=sess.name,
-                        kind="tmux",
-                        tmux_session=sess.name,
-                    )
-                )
 
-            targets.sort(key=lambda t: t.tmux_session)
+                if sess_agent_id:
+                    recipient_key = f"hoplite:{sess_agent_id}"
+                    targets.append(
+                        QueueDeliveryTarget(
+                            recipient_key=recipient_key,
+                            label=sess.name,
+                            kind="hoplite",
+                            hoplite_agent_id=sess_agent_id,
+                            tmux_session=sess.name,
+                        )
+                    )
+                else:
+                    recipient_key = f"tmux:{sess.name}"
+                    targets.append(
+                        QueueDeliveryTarget(
+                            recipient_key=recipient_key,
+                            label=sess.name,
+                            kind="tmux",
+                            tmux_session=sess.name,
+                        )
+                    )
+
+            targets.sort(key=lambda t: (t.hoplite_agent_id or t.tmux_session))
             return targets
 
         return []
@@ -2947,6 +2975,7 @@ class ZeusApp(App):
         *,
         source_agent_id: str = "",
         source_name: str = "",
+        message_id: str = "",
     ) -> bool:
         if target.kind == "agent" and target.agent is not None:
             dependency_cleared = self._clear_dependency_if_blocked_by_source(
@@ -2957,8 +2986,19 @@ class ZeusApp(App):
             if not dependency_cleared:
                 self._resume_agent_if_paused(target.agent)
             return self._queue_text_to_agent(target.agent, message)
+
+        if target.kind == "hoplite" and target.hoplite_agent_id:
+            return enqueue_hoplite_inbox_message(
+                target.hoplite_agent_id,
+                message,
+                message_id=message_id,
+                source_name=source_name,
+                source_agent_id=source_agent_id,
+            )
+
         if target.kind == "tmux" and target.tmux_session:
             return self._dispatch_tmux_text(target.tmux_session, message, queue=True)
+
         return False
 
     def _enqueue_outbound_agent_message(
@@ -3055,6 +3095,7 @@ class ZeusApp(App):
                         claimed.message,
                         source_agent_id=claimed.source_agent_id,
                         source_name=claimed.source_name,
+                        message_id=claimed.id,
                     )
                     if not delivered:
                         all_delivered = False
@@ -3895,6 +3936,7 @@ class ZeusApp(App):
 
     def _polemarch_bootstrap_message(self, polemarch_name: str) -> str:
         msg_file_hint = f"{MESSAGE_TMP_DIR}/zeus-msg-<uuid>.md"
+        state_dir_hint = shlex.quote(str(STATE_DIR))
         return textwrap.dedent(
             f"""
             You are the agent named {polemarch_name}.
@@ -3927,7 +3969,7 @@ class ZeusApp(App):
             HOPLITE_NAME="hoplite-${{HOPLITE_ID:0:4}}"
 
             tmux new-session -d -s "$SESSION" -c "$PWD" \
-              "ZEUS_AGENT_NAME=$HOPLITE_NAME ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite exec pi"
+              "ZEUS_AGENT_NAME=$HOPLITE_NAME ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite ZEUS_STATE_DIR={state_dir_hint} exec pi"
 
             tmux set-option -t "$SESSION" @zeus_owner "$POLEMARCH_ID"
             tmux set-option -t "$SESSION" @zeus_agent "$HOPLITE_ID"
