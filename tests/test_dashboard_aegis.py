@@ -40,6 +40,13 @@ def test_aegis_post_check_delay_is_20_seconds() -> None:
     assert ZeusApp._AEGIS_CHECK_S == 20.0
 
 
+def test_aegis_completion_prompt_default_text() -> None:
+    assert ZeusApp._AEGIS_COMPLETION_PROMPT == (
+        "did you do everything I asked you to? "
+        "If not do it without stopping again."
+    )
+
+
 def test_toggle_aegis_opens_config_dialog_and_disable_still_works(monkeypatch) -> None:
     app = _new_app()
     hippeus = _agent("alpha", 1)
@@ -65,6 +72,7 @@ def test_toggle_aegis_opens_config_dialog_and_disable_still_works(monkeypatch) -
 
     assert pushed
     assert isinstance(pushed[0], AegisConfigureScreen)
+    assert pushed[0]._prompt_by_mode["completion"] == app._AEGIS_COMPLETION_PROMPT
     assert key not in app._aegis_enabled
     assert renders == []
 

@@ -554,6 +554,10 @@ class ZeusApp(App):
         "high-confidence ones immediately. Remember the low-confidence ones "
         "so you can summarize them to me when I ask to"
     )
+    _AEGIS_COMPLETION_PROMPT = (
+        "did you do everything I asked you to? "
+        "If not do it without stopping again."
+    )
     _PREMADE_MESSAGES: tuple[tuple[str, str], ...] = (
         ("Self-review", "Review your output against your own claims again"),
     )
@@ -4442,6 +4446,7 @@ class ZeusApp(App):
                 agent,
                 continue_prompt=self._AEGIS_PROMPT,
                 iterate_prompt=self._AEGIS_ITERATE_PROMPT,
+                completion_prompt=self._AEGIS_COMPLETION_PROMPT,
             )
         )
 

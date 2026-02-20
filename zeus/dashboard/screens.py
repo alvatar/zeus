@@ -1226,6 +1226,7 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
         *,
         continue_prompt: str,
         iterate_prompt: str,
+        completion_prompt: str,
     ) -> None:
         super().__init__()
         self.agent = agent
@@ -1233,6 +1234,7 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
         self._prompt_by_mode: dict[str, str] = {
             "continue": continue_prompt,
             "iterate": iterate_prompt,
+            "completion": completion_prompt,
         }
 
     def compose(self) -> ComposeResult:
@@ -1242,6 +1244,7 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
             yield RadioSet(
                 RadioButton("Continue", value=True, id="aegis-config-continue"),
                 RadioButton("Iterate", id="aegis-config-iterate"),
+                RadioButton("Completion", id="aegis-config-completion"),
                 id="aegis-config-mode",
                 compact=False,
             )
@@ -1262,6 +1265,8 @@ class AegisConfigureScreen(_ZeusScreenMixin, ModalScreen):
         pressed = mode_set.pressed_button
         if pressed is not None and pressed.id == "aegis-config-iterate":
             return "iterate"
+        if pressed is not None and pressed.id == "aegis-config-completion":
+            return "completion"
         return "continue"
 
     def _current_prompt(self) -> str:

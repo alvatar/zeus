@@ -129,6 +129,7 @@ def test_aegis_config_dialog_uses_radio_options_and_textarea() -> None:
     assert "RadioSet(" in source
     assert "aegis-config-continue" in source
     assert "aegis-config-iterate" in source
+    assert "aegis-config-completion" in source
     assert "ZeusTextArea(" in source
     assert "aegis-config-prompt" in source
 
@@ -148,6 +149,7 @@ def test_aegis_config_switching_mode_loads_different_prompt(monkeypatch) -> None
         agent,
         continue_prompt="continue-default",
         iterate_prompt="iterate-default",
+        completion_prompt="completion-default",
     )
 
     mode_set = _RadioSetStub("aegis-config-iterate")
@@ -170,6 +172,44 @@ def test_aegis_config_switching_mode_loads_different_prompt(monkeypatch) -> None
     assert mode_set.focused is True
 
 
+def test_aegis_config_switching_to_completion_loads_completion_prompt(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = AegisConfigureScreen(
+        agent,
+        continue_prompt="continue-default",
+        iterate_prompt="iterate-default",
+        completion_prompt="completion-default",
+    )
+
+    mode_set = _RadioSetStub("aegis-config-completion")
+    prompt = _TextAreaStub("edited-continue")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#aegis-config-mode":
+            return mode_set
+        if selector == "#aegis-config-prompt":
+            return prompt
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    event = SimpleNamespace(radio_set=SimpleNamespace(id="aegis-config-mode"))
+    screen.on_radio_set_changed(event)
+
+    assert prompt.text == "completion-default"
+    assert screen._prompt_by_mode["continue"] == "edited-continue"
+    assert mode_set.focused is True
+
+
 def test_aegis_config_mount_focuses_mode_selection(monkeypatch) -> None:
     from zeus.models import AgentWindow
 
@@ -185,6 +225,7 @@ def test_aegis_config_mount_focuses_mode_selection(monkeypatch) -> None:
         agent,
         continue_prompt="continue-default",
         iterate_prompt="iterate-default",
+        completion_prompt="completion-default",
     )
 
     mode_set = _RadioSetStub("aegis-config-continue")
