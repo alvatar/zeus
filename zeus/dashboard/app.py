@@ -602,7 +602,10 @@ class ZeusApp(App):
     _agent_bus_capability_max_age_s: float = 20.0
     _message_receipts_ttl_s: float = 24 * 3600.0
     _message_receipts: dict[str, dict[str, float]] = {}
+    _queue_capability_retry_s: float = 2.0
+    _queue_unresolved_drop_age_s: float = 24 * 3600.0
     _queue_unresolved_notice_at: dict[str, float] = {}
+    _queue_unresolved_notice_reason: dict[str, str] = {}
     _queue_unresolved_notice_interval_s: float = 30.0
     _message_queue_watch_thread: threading.Thread | None = None
     _message_queue_watch_stop: threading.Event | None = None
@@ -2855,6 +2858,11 @@ class ZeusApp(App):
     def _queue_retry_delay_s(attempts: int) -> float:
         return min(30.0, float(2 ** max(0, min(attempts, 4))))
 
+    def _is_unresolved_queue_stale(self, envelope: OutboundEnvelope, *, now: float) -> bool:
+        created_at = envelope.created_at if envelope.created_at > 0 else now
+        age = max(0.0, now - created_at)
+        return age >= self._queue_unresolved_drop_age_s
+
     def _notify_queue_unresolved(
         self,
         envelope: OutboundEnvelope,
@@ -2863,15 +2871,21 @@ class ZeusApp(App):
         envelope_id = envelope.id.strip() or (
             f"{envelope.target_kind}:{envelope.target_ref}:{envelope.message[:24]}"
         )
+        detail = reason or (
+            f"target unresolved ({envelope.target_kind}:{envelope.target_ref})"
+        )
+
+        # Do not spam repeated identical notices for the same envelope.
+        if self._queue_unresolved_notice_reason.get(envelope_id) == detail:
+            return
+
         now = time.time()
         last = self._queue_unresolved_notice_at.get(envelope_id, 0.0)
         if (now - last) < self._queue_unresolved_notice_interval_s:
             return
 
         self._queue_unresolved_notice_at[envelope_id] = now
-        detail = reason or (
-            f"target unresolved ({envelope.target_kind}:{envelope.target_ref})"
-        )
+        self._queue_unresolved_notice_reason[envelope_id] = detail
         self.notify_force(f"Queue blocked: {detail}", timeout=4)
 
     def _get_agent_by_id(self, agent_id: str) -> AgentWindow | None:
@@ -3099,7 +3113,33 @@ class ZeusApp(App):
                 pre_targets, pre_error = self._resolve_queue_targets(envelope)
                 if not pre_targets:
                     self._notify_queue_unresolved(envelope, pre_error)
+
+                    inflight = claim_envelope(path)
+                    if inflight is None:
+                        continue
+
+                    claimed = load_envelope(inflight)
+                    if claimed is None:
+                        ack_envelope(inflight)
+                        continue
+
+                    now_ts = time.time()
+                    if self._is_unresolved_queue_stale(claimed, now=now_ts):
+                        ack_envelope(inflight)
+                        self._queue_unresolved_notice_at.pop(claimed.id, None)
+                        self._queue_unresolved_notice_reason.pop(claimed.id, None)
+                        continue
+
+                    requeue_envelope(
+                        inflight,
+                        claimed,
+                        now=now_ts,
+                        delay_seconds=self._queue_retry_delay_s(claimed.attempts),
+                    )
                     continue
+
+                self._queue_unresolved_notice_at.pop(envelope.id, None)
+                self._queue_unresolved_notice_reason.pop(envelope.id, None)
 
                 inflight = claim_envelope(path)
                 if inflight is None:
@@ -3113,17 +3153,29 @@ class ZeusApp(App):
                 targets, resolve_error = self._resolve_queue_targets(claimed)
                 if not targets:
                     self._notify_queue_unresolved(claimed, resolve_error)
+
+                    now_ts = time.time()
+                    if self._is_unresolved_queue_stale(claimed, now=now_ts):
+                        ack_envelope(inflight)
+                        self._queue_unresolved_notice_at.pop(claimed.id, None)
+                        self._queue_unresolved_notice_reason.pop(claimed.id, None)
+                        continue
+
                     requeue_envelope(
                         inflight,
                         claimed,
-                        now=time.time(),
-                        delay_seconds=1.0,
+                        now=now_ts,
+                        delay_seconds=self._queue_retry_delay_s(claimed.attempts),
                     )
                     continue
+
+                self._queue_unresolved_notice_at.pop(claimed.id, None)
+                self._queue_unresolved_notice_reason.pop(claimed.id, None)
 
                 all_delivered = True
                 pending_receipts = False
                 hard_failure = False
+                soft_block = False
                 unresolved_reason: str | None = None
 
                 for target in targets:
@@ -3164,7 +3216,7 @@ class ZeusApp(App):
                     )
                     if not cap_ok:
                         all_delivered = False
-                        hard_failure = True
+                        soft_block = True
                         if unresolved_reason is None:
                             unresolved_reason = cap_reason
                         continue
@@ -3192,16 +3244,18 @@ class ZeusApp(App):
                 if all_delivered:
                     ack_envelope(inflight)
                     self._queue_unresolved_notice_at.pop(claimed.id, None)
+                    self._queue_unresolved_notice_reason.pop(claimed.id, None)
                     continue
 
-                if hard_failure:
+                if hard_failure or soft_block:
                     self._notify_queue_unresolved(claimed, unresolved_reason)
 
-                retry_delay = (
-                    1.0
-                    if (pending_receipts and not hard_failure)
-                    else self._queue_retry_delay_s(claimed.attempts)
-                )
+                if pending_receipts and not hard_failure and not soft_block:
+                    retry_delay = 1.0
+                elif soft_block and not hard_failure:
+                    retry_delay = self._queue_capability_retry_s
+                else:
+                    retry_delay = self._queue_retry_delay_s(claimed.attempts)
                 requeue_envelope(
                     inflight,
                     claimed,

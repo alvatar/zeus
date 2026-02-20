@@ -186,6 +186,71 @@ def test_drain_message_queue_hoplite_without_agent_id_is_blocked_with_notice(
     assert mq.list_inflight_envelopes() == []
 
 
+def test_drain_message_queue_unresolved_notice_emits_once_for_same_reason(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    _advance_clock(monkeypatch)
+
+    app = ZeusApp()
+    app.agents = []
+    app._message_receipts = {}
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    envelope = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="hoplite",
+        target_ref="missing-hoplite",
+        target_owner_id="polemarch-1",
+        message="payload",
+    )
+    mq.enqueue_envelope(envelope)
+
+    app._drain_message_queue()
+    app._drain_message_queue()
+
+    assert len(notices) == 1
+    assert "Queue blocked:" in notices[0]
+
+
+def test_drain_message_queue_drops_stale_unresolved_envelope(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    _advance_clock(monkeypatch, start=200_000.0)
+
+    app = ZeusApp()
+    app.agents = []
+    app._message_receipts = {}
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    envelope = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="hoplite",
+        target_ref="missing-hoplite",
+        target_owner_id="polemarch-1",
+        message="payload",
+    )
+    envelope.created_at = 1.0
+    envelope.updated_at = 1.0
+    mq.enqueue_envelope(envelope)
+
+    app._drain_message_queue()
+
+    assert notices
+    assert "Queue blocked:" in notices[-1]
+    assert mq.list_new_envelopes() == []
+    assert mq.list_inflight_envelopes() == []
+
+
 def test_drain_message_queue_blocks_when_capability_missing(
     monkeypatch,
     tmp_path: Path,
@@ -219,6 +284,38 @@ def test_drain_message_queue_blocks_when_capability_missing(
     assert len(mq.list_new_envelopes()) == 1
     assert mq.list_inflight_envelopes() == []
     assert list((tmp_path / "bus" / "inbox").rglob("*.json")) == []
+
+
+def test_drain_message_queue_capability_block_uses_short_retry_delay(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 100.0)
+
+    app = ZeusApp()
+    target = _agent("target", 2, agent_id="agent-target")
+    app.agents = [target]
+    app._message_receipts = {}
+
+    env = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="agent",
+        target_ref="agent-target",
+        target_agent_id="agent-target",
+        message="wake-up",
+    )
+    mq.enqueue_envelope(env)
+
+    app._drain_message_queue()
+
+    queued = mq.list_new_envelopes()
+    assert len(queued) == 1
+    deferred = mq.load_envelope(queued[0])
+    assert deferred is not None
+    assert deferred.attempts == 1
+    assert deferred.next_attempt_at == 102.0
 
 
 def test_drain_message_queue_unpauses_paused_agent_targets_before_bus_handoff(
