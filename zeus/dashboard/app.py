@@ -4298,7 +4298,11 @@ class ZeusApp(App):
             return False
 
         live, clean = prepared
-        self._queue_text_to_agent_interact(live, clean)
+        queued = self._queue_text_to_agent_interact(live, clean)
+        if not queued:
+            self.notify_force(f"Failed to queue message: {live.name}", timeout=3)
+            return False
+
         self.do_clear_agent_message_draft(live)
         return True
 
@@ -5108,7 +5112,6 @@ class ZeusApp(App):
         return text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
 
     _QUEUE_SEQUENCE_DEFAULT: tuple[str, ...] = ("\x1b[13;3u", "\x03", "\x15")
-    _QUEUE_SEQUENCE_LEGACY_W: tuple[str, ...] = ("\x1b[13;3u", "\x15", "\x15")
 
     def _dispatch_agent_text(
         self,
@@ -5207,11 +5210,11 @@ class ZeusApp(App):
         )
 
     def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> bool:
-        """Queue via Ctrl+W path (kept as legacy known-good behavior)."""
+        """Queue via Ctrl+W path with robust remote-editor clear sequence."""
         return self._dispatch_agent_text(
             agent,
             text,
-            queue_sequence=self._QUEUE_SEQUENCE_LEGACY_W,
+            queue_sequence=self._QUEUE_SEQUENCE_DEFAULT,
         )
 
     def action_send_interact(self) -> None:
@@ -5280,7 +5283,13 @@ class ZeusApp(App):
             self._resume_agent_if_paused(target_agent)
 
         if self._interact_tmux_name:
-            self._dispatch_tmux_text(self._interact_tmux_name, text, queue=True)
+            queued = self._dispatch_tmux_text(self._interact_tmux_name, text, queue=True)
+            if not queued:
+                self.notify_force(
+                    f"Failed to queue message: {self._interact_tmux_name}",
+                    timeout=3,
+                )
+                return
             ta.clear()
             ta.styles.height = 3
             self._reset_history_nav()
@@ -5290,8 +5299,10 @@ class ZeusApp(App):
         if not agent:
             self.notify("Hippeus no longer available", timeout=2)
             return
-        # Keep Ctrl+W semantics on the long-standing queue path.
-        self._queue_text_to_agent_interact(agent, text)
+        queued = self._queue_text_to_agent_interact(agent, text)
+        if not queued:
+            self.notify_force(f"Failed to queue message: {agent.name}", timeout=3)
+            return
         ta.clear()
         ta.styles.height = 3
         self._reset_history_nav()

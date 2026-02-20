@@ -16,7 +16,7 @@ def _agent(name: str, kitty_id: int) -> AgentWindow:
     )
 
 
-def test_queue_text_to_agent_interact_keeps_ctrl_w_clear_sequence(monkeypatch) -> None:
+def test_queue_text_to_agent_interact_uses_robust_clear_sequence(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("target", 2)
 
@@ -27,6 +27,6 @@ def test_queue_text_to_agent_interact_keeps_ctrl_w_clear_sequence(monkeypatch) -
     assert sent == [
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello")),
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x1b[13;3u")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
+        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x03")),
         (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
     ]
