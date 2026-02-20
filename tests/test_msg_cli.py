@@ -286,7 +286,11 @@ def test_msg_cli_send_wait_delivery_timeout_keeps_message_queued(
 def test_msg_cli_send_wait_delivery_success(monkeypatch, tmp_path: Path, capsys) -> None:
     _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
     monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
-    monkeypatch.setattr(msg_cli, "_wait_for_delivery", lambda _p, _t: True)
+    monkeypatch.setattr(
+        msg_cli,
+        "_wait_for_delivery",
+        lambda _p, _t, envelope: bool(envelope.id),
+    )
 
     rc = msg_cli.cmd_send(
         _args(
@@ -303,3 +307,31 @@ def test_msg_cli_send_wait_delivery_success(monkeypatch, tmp_path: Path, capsys)
     assert "ZEUS_MSG_DELIVERED=" in out
     env = _single_envelope(queue_root)
     assert env.message == "ok"
+
+
+def test_wait_for_delivery_accepts_agent_bus_receipt_without_queue_ack(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    queue_root = tmp_path / "queue"
+    new_dir = queue_root / "new"
+    inflight_dir = queue_root / "inflight"
+    new_dir.mkdir(parents=True)
+    inflight_dir.mkdir(parents=True)
+
+    enqueue_path = new_dir / "123-msg.json"
+    enqueue_path.write_text("{}")
+
+    envelope = mq.OutboundEnvelope.new(
+        source_name="sender",
+        source_agent_id="sender-1",
+        target_kind="agent",
+        target_ref="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        target_agent_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        message="payload",
+    )
+
+    monkeypatch.setattr(msg_cli, "has_agent_bus_receipt", lambda *_args, **_kwargs: True)
+
+    ok = msg_cli._wait_for_delivery(enqueue_path, 0.01, envelope=envelope)
+    assert ok is True

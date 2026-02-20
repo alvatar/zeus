@@ -9,6 +9,7 @@ import re
 import sys
 import time
 
+from .agent_bus import has_agent_bus_receipt
 from .config import MESSAGE_TMP_DIR
 from .kitty import discover_agents
 from .message_queue import OutboundEnvelope, enqueue_envelope, ensure_queue_dirs
@@ -178,18 +179,44 @@ def _payload_from_args(args: argparse.Namespace) -> tuple[str | None, str | None
     return None, "missing payload: provide --file, --text, --stdin, or pipe stdin"
 
 
-def _wait_for_delivery(enqueue_path: Path, timeout_s: float) -> bool:
-    """Wait until Zeus acks delivery by removing queue envelope file."""
+def _wait_for_delivery(
+    enqueue_path: Path,
+    timeout_s: float,
+    *,
+    envelope: OutboundEnvelope,
+) -> bool:
+    """Wait for accepted-delivery ACK.
+
+    Primary signal remains queue ACK (envelope removed). For single-recipient
+    deterministic targets (`agent`, `hoplite`), also accept extension receipt
+    visibility to avoid false timeout races when queue ACK lags by one drain tick.
+    """
+
     queue_root = enqueue_path.parent.parent
     inflight_path = queue_root / "inflight" / enqueue_path.name
 
+    target_kind = (envelope.target_kind or "").strip().lower()
+    target_ref = envelope.target_ref.strip()
+    message_id = envelope.id.strip()
+
+    def _has_receipt_ack() -> bool:
+        if target_kind not in {"agent", "hoplite"}:
+            return False
+        if not (target_ref and message_id):
+            return False
+        return has_agent_bus_receipt(target_ref, message_id)
+
     deadline = time.monotonic() + max(0.0, timeout_s)
     while time.monotonic() <= deadline:
+        if _has_receipt_ack():
+            return True
         if not enqueue_path.exists() and not inflight_path.exists():
             return True
         time.sleep(0.1)
 
-    return not enqueue_path.exists() and not inflight_path.exists()
+    return _has_receipt_ack() or (
+        not enqueue_path.exists() and not inflight_path.exists()
+    )
 
 
 def cmd_send(args: argparse.Namespace) -> int:
@@ -245,7 +272,7 @@ def cmd_send(args: argparse.Namespace) -> int:
 
     if bool(getattr(args, "wait_delivery", False)):
         timeout_s = float(getattr(args, "timeout", 30.0))
-        if _wait_for_delivery(enqueue_path, timeout_s):
+        if _wait_for_delivery(enqueue_path, timeout_s, envelope=envelope):
             print(f"ZEUS_MSG_DELIVERED={envelope.id}")
             return 0
         return _err(
@@ -292,7 +319,7 @@ def main() -> int:
     p_send.add_argument(
         "--wait-delivery",
         action="store_true",
-        help="Block until Zeus transport-acks delivery",
+        help="Block until accepted-delivery ACK",
     )
     p_send.add_argument(
         "--timeout",
