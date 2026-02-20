@@ -4971,16 +4971,36 @@ class ZeusApp(App):
         *,
         queue: bool,
     ) -> bool:
-        """Send text to tmux target as Enter or Alt+Enter queue."""
+        """Send text to tmux target as Enter or queued follow-up.
+
+        Queue mode sends Alt+Enter then explicit editor clear to avoid
+        lingering draft text in hoplite panes.
+        """
         wire_text = self._normalize_outgoing_text(text)
-        key = "M-Enter" if queue else "Enter"
-        try:
-            r = subprocess.run(
-                ["tmux", "send-keys", "-t", sess_name, wire_text, key],
-                capture_output=True,
-                timeout=3,
+        commands: list[list[str]] = [
+            ["tmux", "send-keys", "-t", sess_name, wire_text],
+        ]
+
+        if queue:
+            commands.extend(
+                [
+                    ["tmux", "send-keys", "-t", sess_name, "M-Enter"],
+                    ["tmux", "send-keys", "-t", sess_name, "C-c"],
+                ]
             )
-            return r.returncode == 0
+        else:
+            commands.append(["tmux", "send-keys", "-t", sess_name, "Enter"])
+
+        try:
+            for cmd in commands:
+                r = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=3,
+                )
+                if r.returncode != 0:
+                    return False
+            return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 

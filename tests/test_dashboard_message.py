@@ -735,6 +735,51 @@ def test_do_queue_agent_message_uses_interact_ctrl_w_sequence(monkeypatch) -> No
     assert app._agent_message_drafts == {}
 
 
+def test_dispatch_tmux_text_queue_sends_followup_then_clear(monkeypatch) -> None:
+    app = _new_app()
+    calls: list[list[str]] = []
+
+    class _Result:
+        def __init__(self, returncode: int = 0) -> None:
+            self.returncode = returncode
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.subprocess.run",
+        lambda cmd, capture_output=True, timeout=3: calls.append(cmd) or _Result(),
+    )
+
+    ok = app._dispatch_tmux_text("hoplite-a", "hello", queue=True)
+
+    assert ok is True
+    assert calls == [
+        ["tmux", "send-keys", "-t", "hoplite-a", "hello"],
+        ["tmux", "send-keys", "-t", "hoplite-a", "M-Enter"],
+        ["tmux", "send-keys", "-t", "hoplite-a", "C-c"],
+    ]
+
+
+def test_dispatch_tmux_text_send_uses_enter_only(monkeypatch) -> None:
+    app = _new_app()
+    calls: list[list[str]] = []
+
+    class _Result:
+        def __init__(self, returncode: int = 0) -> None:
+            self.returncode = returncode
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.subprocess.run",
+        lambda cmd, capture_output=True, timeout=3: calls.append(cmd) or _Result(),
+    )
+
+    ok = app._dispatch_tmux_text("hoplite-a", "hello", queue=False)
+
+    assert ok is True
+    assert calls == [
+        ["tmux", "send-keys", "-t", "hoplite-a", "hello"],
+        ["tmux", "send-keys", "-t", "hoplite-a", "Enter"],
+    ]
+
+
 def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     app = _new_app()
     paused = _agent("paused", 1)
