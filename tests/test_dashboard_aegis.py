@@ -42,7 +42,7 @@ def test_aegis_post_check_delay_is_20_seconds() -> None:
 
 def test_aegis_completion_prompt_default_text() -> None:
     assert ZeusApp._AEGIS_COMPLETION_PROMPT == (
-        "did you do everything I asked you to? "
+        "Did you do everything I asked you to? "
         "If not do it without stopping again."
     )
 
