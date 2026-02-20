@@ -5,7 +5,7 @@ from pathlib import Path
 
 from zeus.dashboard.app import ZeusApp, _extract_share_file_path, _extract_share_payload
 from zeus.models import AgentWindow
-from tests.helpers import capture_kitty_cmd, capture_notify
+from tests.helpers import capture_notify
 
 
 def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindow:
@@ -16,6 +16,7 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
         pid=100 + kitty_id,
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
+        agent_id=f"agent-{kitty_id}",
     )
 
 
@@ -191,38 +192,20 @@ def test_do_enqueue_broadcast_queues_active_and_paused_recipients(monkeypatch) -
     app.agents = [source, a1, a2, paused]
     app._agent_priorities = {"paused": 4}
 
-    sent = capture_kitty_cmd(monkeypatch)
+    queued: list[str] = []
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda agent_id, *_args, **_kwargs: queued.append(agent_id) or True,
+    )
+
     notices = capture_notify(app, monkeypatch)
 
     recipients = [app._agent_key(a1), app._agent_key(a2), app._agent_key(paused)]
     app.do_enqueue_broadcast("source", recipients, "payload")
 
-    assert len(sent) == 12
-
-    expected_first = [
-        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "payload")),
-        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x1b[13;3u")),
-        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x03")),
-        (a1.socket, ("send-text", "--match", f"id:{a1.kitty_id}", "\x15")),
-    ]
-    assert sent[:4] == expected_first
-
-    expected_second = [
-        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "payload")),
-        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x1b[13;3u")),
-        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x03")),
-        (a2.socket, ("send-text", "--match", f"id:{a2.kitty_id}", "\x15")),
-    ]
-    assert sent[4:8] == expected_second
-
-    expected_third = [
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "payload")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x1b[13;3u")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x03")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x15")),
-    ]
-    assert sent[8:] == expected_third
-
+    assert queued == ["agent-2", "agent-3", "agent-4"]
     assert app._agent_priorities.get(paused.name, 3) == 3
     assert notices[-1] == "Broadcast from source queued to 3 Hippeis"
 

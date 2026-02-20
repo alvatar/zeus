@@ -94,7 +94,11 @@ from ..windowing import (
     kill_pid,
     move_pid_to_workspace_and_focus_later,
 )
-from ..hoplite_inbox import enqueue_hoplite_inbox_message
+from ..agent_bus import (
+    capability_health,
+    enqueue_agent_bus_message,
+    has_agent_bus_receipt,
+)
 from ..snapshots import (
     default_snapshot_name,
     list_snapshot_files,
@@ -150,10 +154,9 @@ class QueueDeliveryTarget:
 
     recipient_key: str
     label: str
-    kind: str  # "agent" | "hoplite" | "tmux"
+    kind: str  # "agent" | "hoplite"
+    recipient_agent_id: str = ""
     agent: AgentWindow | None = None
-    hoplite_agent_id: str = ""
-    tmux_session: str = ""
 
 
 def _compact_name(name: str, maxlen: int) -> str:
@@ -596,6 +599,7 @@ class ZeusApp(App):
     _message_queue_draining: bool = False
     _message_queue_inflight_lease_s: float = 30.0
     _message_queue_backoff_max_s: float = 30.0
+    _agent_bus_capability_max_age_s: float = 20.0
     _message_receipts_ttl_s: float = 24 * 3600.0
     _message_receipts: dict[str, dict[str, float]] = {}
     _queue_unresolved_notice_at: dict[str, float] = {}
@@ -2897,12 +2901,20 @@ class ZeusApp(App):
             target = self._get_agent_by_id(target_id)
             if target is None:
                 return [], f"agent target not active: {target_id or '<missing>'}"
-            recipient_key = f"agent:{self._agent_identity_key(target)}"
+            recipient_agent_id = (target.agent_id or "").strip()
+            if not recipient_agent_id:
+                return [], (
+                    "agent delivery blocked: "
+                    f"target missing @zeus_agent id ({target.name})"
+                )
+
+            recipient_key = f"agent:{recipient_agent_id}"
             targets.append(
                 QueueDeliveryTarget(
                     recipient_key=recipient_key,
                     label=target.name,
                     kind="agent",
+                    recipient_agent_id=recipient_agent_id,
                     agent=target,
                 )
             )
@@ -2937,8 +2949,7 @@ class ZeusApp(App):
                         recipient_key=recipient_key,
                         label=sess.name,
                         kind="hoplite",
-                        hoplite_agent_id=sess_agent_id,
-                        tmux_session=sess.name,
+                        recipient_agent_id=sess_agent_id,
                     )
                 )
                 break
@@ -2981,13 +2992,12 @@ class ZeusApp(App):
                         recipient_key=recipient_key,
                         label=sess.name,
                         kind="hoplite",
-                        hoplite_agent_id=sess_agent_id,
-                        tmux_session=sess.name,
+                        recipient_agent_id=sess_agent_id,
                     )
                 )
 
             if targets:
-                targets.sort(key=lambda t: t.hoplite_agent_id)
+                targets.sort(key=lambda t: t.recipient_agent_id)
                 return targets, None
             if missing_id_count:
                 return [], (
@@ -3005,6 +3015,7 @@ class ZeusApp(App):
         *,
         source_agent_id: str = "",
         source_name: str = "",
+        source_role: str = "",
         message_id: str = "",
     ) -> bool:
         if target.kind == "agent" and target.agent is not None:
@@ -3015,21 +3026,20 @@ class ZeusApp(App):
             )
             if not dependency_cleared:
                 self._resume_agent_if_paused(target.agent)
-            return self._queue_text_to_agent(target.agent, message)
 
-        if target.kind == "hoplite" and target.hoplite_agent_id:
-            return enqueue_hoplite_inbox_message(
-                target.hoplite_agent_id,
-                message,
-                message_id=message_id,
-                source_name=source_name,
-                source_agent_id=source_agent_id,
-            )
+        recipient_agent_id = target.recipient_agent_id.strip()
+        if not recipient_agent_id:
+            return False
 
-        if target.kind == "tmux" and target.tmux_session:
-            return self._dispatch_tmux_text(target.tmux_session, message, queue=True)
-
-        return False
+        return enqueue_agent_bus_message(
+            recipient_agent_id,
+            message,
+            message_id=message_id,
+            source_name=source_name,
+            source_agent_id=source_agent_id,
+            source_role=source_role,
+            deliver_as="followUp",
+        )
 
     def _enqueue_outbound_agent_message(
         self,
@@ -3039,7 +3049,7 @@ class ZeusApp(App):
         source_name: str,
         source_agent_id: str = "",
     ) -> bool:
-        target_id = self._agent_identity_key(target).strip()
+        target_id = (target.agent_id or "").strip()
         if not target_id:
             return False
 
@@ -3112,14 +3122,51 @@ class ZeusApp(App):
                     continue
 
                 all_delivered = True
+                pending_receipts = False
+                hard_failure = False
+                unresolved_reason: str | None = None
+
                 for target in targets:
+                    now_ts = time.time()
                     if has_message_receipt(
                         self._message_receipts,
                         recipient_key=target.recipient_key,
                         message_id=claimed.id,
-                        now=time.time(),
+                        now=now_ts,
                         ttl_seconds=self._message_receipts_ttl_s,
                     ):
+                        continue
+
+                    recipient_agent_id = target.recipient_agent_id.strip()
+                    if not recipient_agent_id:
+                        all_delivered = False
+                        hard_failure = True
+                        if unresolved_reason is None:
+                            unresolved_reason = (
+                                f"recipient missing deterministic id: {target.recipient_key}"
+                            )
+                        continue
+
+                    if has_agent_bus_receipt(recipient_agent_id, claimed.id):
+                        record_message_receipt(
+                            self._message_receipts,
+                            recipient_key=target.recipient_key,
+                            message_id=claimed.id,
+                            now=now_ts,
+                        )
+                        receipts_changed = True
+                        continue
+
+                    cap_ok, cap_reason = capability_health(
+                        recipient_agent_id,
+                        max_age_s=self._agent_bus_capability_max_age_s,
+                        now=now_ts,
+                    )
+                    if not cap_ok:
+                        all_delivered = False
+                        hard_failure = True
+                        if unresolved_reason is None:
+                            unresolved_reason = cap_reason
                         continue
 
                     delivered = self._deliver_queue_target(
@@ -3127,30 +3174,39 @@ class ZeusApp(App):
                         claimed.message,
                         source_agent_id=claimed.source_agent_id,
                         source_name=claimed.source_name,
+                        source_role=claimed.source_role,
                         message_id=claimed.id,
                     )
                     if not delivered:
                         all_delivered = False
-                        break
+                        hard_failure = True
+                        if unresolved_reason is None:
+                            unresolved_reason = (
+                                f"delivery handoff failed: {target.recipient_key}"
+                            )
+                        continue
 
-                    record_message_receipt(
-                        self._message_receipts,
-                        recipient_key=target.recipient_key,
-                        message_id=claimed.id,
-                        now=time.time(),
-                    )
-                    receipts_changed = True
+                    all_delivered = False
+                    pending_receipts = True
 
                 if all_delivered:
                     ack_envelope(inflight)
                     self._queue_unresolved_notice_at.pop(claimed.id, None)
                     continue
 
+                if hard_failure:
+                    self._notify_queue_unresolved(claimed, unresolved_reason)
+
+                retry_delay = (
+                    1.0
+                    if (pending_receipts and not hard_failure)
+                    else self._queue_retry_delay_s(claimed.attempts)
+                )
                 requeue_envelope(
                     inflight,
                     claimed,
                     now=time.time(),
-                    delay_seconds=self._queue_retry_delay_s(claimed.attempts),
+                    delay_seconds=retry_delay,
                 )
         finally:
             if receipts_changed:

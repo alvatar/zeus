@@ -3,7 +3,7 @@
 from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import ConfirmDirectMessageScreen
 from zeus.models import AgentWindow
-from tests.helpers import capture_kitty_cmd, capture_notify
+from tests.helpers import capture_notify
 
 
 def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindow:
@@ -14,6 +14,7 @@ def _agent(name: str, kitty_id: int, socket: str = "/tmp/kitty-1") -> AgentWindo
         pid=100 + kitty_id,
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
+        agent_id=f"agent-{kitty_id}",
     )
 
 
@@ -30,29 +31,22 @@ def test_do_enqueue_direct_queues_to_selected_target(monkeypatch) -> None:
     target = _agent("target", 2)
     app.agents = [target]
 
-    sent = capture_kitty_cmd(monkeypatch)
+    queued: list[tuple[str, str, str, str]] = []
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda agent_id, message, message_id="", source_name="", source_agent_id="", source_role="", deliver_as="followUp": queued.append(
+            (agent_id, message, source_name, source_agent_id)
+        )
+        or True,
+    )
+
     notices = capture_notify(app, monkeypatch)
 
     app.do_enqueue_direct("source", app._agent_key(target), "hello")
 
-    assert len(sent) == 4
-
-    socket, args = sent[0]
-    assert socket == target.socket
-    assert args == ("send-text", "--match", f"id:{target.kitty_id}", "hello")
-
-    queue_socket, queue_args = sent[1]
-    assert queue_socket == target.socket
-    assert queue_args == ("send-text", "--match", f"id:{target.kitty_id}", "\x1b[13;3u")
-
-    clear_socket_1, clear_args_1 = sent[2]
-    assert clear_socket_1 == target.socket
-    assert clear_args_1 == ("send-text", "--match", f"id:{target.kitty_id}", "\x03")
-
-    clear_socket_2, clear_args_2 = sent[3]
-    assert clear_socket_2 == target.socket
-    assert clear_args_2 == ("send-text", "--match", f"id:{target.kitty_id}", "\x15")
-
+    assert queued == [("agent-2", "hello", "source", "")]
     assert notices[-1] == "Message from source queued to target"
 
 
@@ -61,11 +55,17 @@ def test_do_enqueue_direct_strips_nul_bytes_before_queueing(monkeypatch) -> None
     target = _agent("target", 2)
     app.agents = [target]
 
-    sent = capture_kitty_cmd(monkeypatch)
+    payloads: list[str] = []
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda _agent_id, message, **_kwargs: payloads.append(message) or True,
+    )
 
     app.do_enqueue_direct("source", app._agent_key(target), "hi\x00there")
 
-    assert sent[0][1] == ("send-text", "--match", f"id:{target.kitty_id}", "hithere")
+    assert payloads == ["hithere"]
 
 
 def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
@@ -73,16 +73,17 @@ def test_do_enqueue_direct_normalizes_crlf_before_queueing(monkeypatch) -> None:
     target = _agent("target", 2)
     app.agents = [target]
 
-    sent = capture_kitty_cmd(monkeypatch)
+    payloads: list[str] = []
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda _agent_id, message, **_kwargs: payloads.append(message) or True,
+    )
 
     app.do_enqueue_direct("source", app._agent_key(target), "a\r\nb\r\nc\r")
 
-    assert sent[0][1] == (
-        "send-text",
-        "--match",
-        f"id:{target.kitty_id}",
-        "a\nb\nc\n",
-    )
+    assert payloads == ["a\nb\nc\n"]
 
 
 def test_do_enqueue_direct_unpauses_paused_target(monkeypatch) -> None:
@@ -91,12 +92,14 @@ def test_do_enqueue_direct_unpauses_paused_target(monkeypatch) -> None:
     app.agents = [target]
     app._agent_priorities = {"target": 4}
 
-    sent = capture_kitty_cmd(monkeypatch)
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("zeus.dashboard.app.enqueue_agent_bus_message", lambda *_args, **_kwargs: True)
+
     notices = capture_notify(app, monkeypatch)
 
     app.do_enqueue_direct("source", app._agent_key(target), "hello")
 
-    assert len(sent) == 4
     assert app._agent_priorities.get(target.name, 3) == 3
     assert notices[-1] == "Message from source queued to target"
 
@@ -110,12 +113,17 @@ def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
         app._agent_dependency_key(target): app._agent_dependency_key(source)
     }
 
-    sent = capture_kitty_cmd(monkeypatch)
+    queued: list[str] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda agent_id, *_args, **_kwargs: queued.append(agent_id) or True,
+    )
+
     notices = capture_notify(app, monkeypatch)
 
     app.do_enqueue_direct("source", app._agent_key(target), "hello")
 
-    assert sent == []
+    assert queued == []
     assert notices[-1] == "Target is no longer active"
 
 
@@ -157,7 +165,14 @@ def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_depende
     app._agent_dependencies[target_dep_key] = app._agent_dependency_key(source)
     app._agent_priorities = {target.name: 4}
 
-    sent = capture_kitty_cmd(monkeypatch)
+    queued: list[str] = []
+    monkeypatch.setattr("zeus.dashboard.app.capability_health", lambda *_args, **_kwargs: (True, None))
+    monkeypatch.setattr("zeus.dashboard.app.has_agent_bus_receipt", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_agent_bus_message",
+        lambda agent_id, *_args, **_kwargs: queued.append(agent_id) or True,
+    )
+
     notices = capture_notify(app, monkeypatch)
     saves: list[dict[str, str]] = []
 
@@ -170,7 +185,7 @@ def test_do_enqueue_direct_allows_blocked_target_from_blocker_and_clears_depende
 
     app.do_enqueue_direct("source", target_key, "hello", source_key=source_key)
 
-    assert len(sent) == 4
+    assert queued == ["agent-2"]
     assert target_dep_key not in app._agent_dependencies
     assert app._agent_priorities.get(target.name, 3) == 4
     assert saves == [{}]

@@ -5,8 +5,8 @@ Queue layout (all under ``MESSAGE_QUEUE_DIR``):
 - ``inflight/`` claimed envelopes being delivered
 
 Ack semantics:
-- Envelope is removed only after successful transport injection.
-- Failed deliveries are re-queued with backoff.
+- Envelope is removed only after the dispatcher confirms recipient completion.
+- Failed or pending deliveries are re-queued with backoff.
 """
 
 from __future__ import annotations

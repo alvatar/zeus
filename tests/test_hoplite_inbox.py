@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-import json
-
 import zeus.hoplite_inbox as inbox
 
 
-def test_enqueue_hoplite_inbox_message_writes_json_file(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(inbox, "HOPLITE_INBOX_DIR", tmp_path)
+def test_enqueue_hoplite_inbox_message_forwards_to_agent_bus(monkeypatch) -> None:
+    calls: list[tuple[str, str, str, str, str, str]] = []
+
+    monkeypatch.setattr(
+        inbox,
+        "enqueue_agent_bus_message",
+        lambda agent_id, message, message_id="", source_name="", source_agent_id="", deliver_as="followUp": calls.append(
+            (agent_id, message, message_id, source_name, source_agent_id, deliver_as)
+        )
+        or True,
+    )
 
     ok = inbox.enqueue_hoplite_inbox_message(
         "hoplite-1",
@@ -17,29 +24,27 @@ def test_enqueue_hoplite_inbox_message_writes_json_file(monkeypatch, tmp_path) -
     )
 
     assert ok is True
-
-    files = sorted((tmp_path / "hoplite-1").glob("*.json"))
-    assert len(files) == 1
-
-    payload = json.loads(files[0].read_text())
-    assert payload["id"] == "msg-1"
-    assert payload["message"] == "hello"
-    assert payload["source_name"] == "polemarch"
-    assert payload["source_agent_id"] == "agent-polemarch"
-
-
-def test_enqueue_hoplite_inbox_message_rejects_empty_inputs(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(inbox, "HOPLITE_INBOX_DIR", tmp_path)
-
-    assert inbox.enqueue_hoplite_inbox_message("", "hello") is False
-    assert inbox.enqueue_hoplite_inbox_message("hoplite-1", "   ") is False
-    assert list(tmp_path.rglob("*.json")) == []
+    assert calls == [
+        (
+            "hoplite-1",
+            "hello",
+            "msg-1",
+            "polemarch",
+            "agent-polemarch",
+            "followUp",
+        )
+    ]
 
 
-def test_enqueue_hoplite_inbox_message_sanitizes_agent_id(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(inbox, "HOPLITE_INBOX_DIR", tmp_path)
+def test_enqueue_hoplite_inbox_message_sanitizes_agent_id(monkeypatch) -> None:
+    calls: list[str] = []
 
-    ok = inbox.enqueue_hoplite_inbox_message("../hoplite-1", "payload")
+    monkeypatch.setattr(
+        inbox,
+        "enqueue_agent_bus_message",
+        lambda agent_id, *_args, **_kwargs: calls.append(agent_id) or True,
+    )
 
-    assert ok is True
-    assert (tmp_path / "hoplite-1").is_dir()
+    inbox.enqueue_hoplite_inbox_message("../hoplite-1", "payload")
+
+    assert calls == ["hoplite-1"]

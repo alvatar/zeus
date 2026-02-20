@@ -94,11 +94,20 @@ USAGE_CACHE = STATE_DIR / "claude-usage-cache.json"
 OPENAI_USAGE_CACHE = STATE_DIR / "openai-usage-cache.json"
 MESSAGE_QUEUE_DIR = STATE_DIR / "zeus-message-queue"
 MESSAGE_RECEIPTS_FILE = STATE_DIR / "zeus-message-receipts.json"
-HOPLITE_INBOX_DIR = STATE_DIR / "zeus-hoplite-inbox"
+AGENT_BUS_DIR = STATE_DIR / "zeus-agent-bus"
+AGENT_BUS_INBOX_DIR = AGENT_BUS_DIR / "inbox"
+AGENT_BUS_RECEIPTS_DIR = AGENT_BUS_DIR / "receipts"
+AGENT_BUS_CAPS_DIR = AGENT_BUS_DIR / "caps"
+AGENT_BUS_PROCESSED_DIR = AGENT_BUS_DIR / "processed"
+# Backward-compat alias (to be retired):
+HOPLITE_INBOX_DIR = AGENT_BUS_INBOX_DIR
 
 INPUT_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 MESSAGE_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-HOPLITE_INBOX_DIR.mkdir(parents=True, exist_ok=True)
+AGENT_BUS_INBOX_DIR.mkdir(parents=True, exist_ok=True)
+AGENT_BUS_RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+AGENT_BUS_CAPS_DIR.mkdir(parents=True, exist_ok=True)
+AGENT_BUS_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 # Pi spinner frames (from pi-tui Loader component)
 SPINNER_RE = re.compile(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s+\S")

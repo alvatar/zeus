@@ -8,7 +8,7 @@ Zeus uses a filesystem-backed outbound queue so message delivery survives Zeus r
 
 Design goals:
 - no always-on broker daemon
-- transport safety (remove only after delivery handoff ACK)
+- robust queue ACK (remove only after extension accepted receipts)
 - eventual delivery after Zeus restarts
 - `inotify` wakeups for low-latency draining
 
@@ -58,14 +58,22 @@ Address resolution notes:
 
 ## Queue layout
 
+Canonical schemas and file contracts are defined in:
+- `docs/interfaces/agent-bus-v1.md`
+
+Runtime layout:
+
 ```
 <state_dir>/zeus-message-queue/
   new/        # pending envelopes
   inflight/   # claimed envelopes currently being delivered
 
-<state_dir>/zeus-hoplite-inbox/
-  <hoplite-agent-id>/
-    *.json    # pending hoplite inbox entries
+<state_dir>/zeus-agent-bus/
+  inbox/<agent-id>/new/*.json
+  inbox/<agent-id>/processing/*.json
+  receipts/<agent-id>/<message-id>.json
+  caps/<agent-id>.json
+  processed/<agent-id>.json
 ```
 
 Envelope payload (JSON) includes:
@@ -83,12 +91,17 @@ Envelope payload (JSON) includes:
 
 1. **enqueue**: write envelope into `new/`
 2. **claim**: atomically move `new/<file>` -> `inflight/<file>`
-3. **deliver**:
-   - `agent` targets: Zeus injects terminal keys with queue semantics
-   - `hoplite` targets: Zeus writes to per-hoplite inbox files; hoplite pi extension consumes and submits as follow-up user messages
-4. **ack**:
-   - success -> remove envelope from `inflight/`
-   - failure -> update attempts/backoff and move envelope back to `new/`
+3. **handoff to agent bus**:
+   - Zeus resolves deterministic recipient agent IDs
+   - Zeus gates delivery on fresh extension capability heartbeat
+   - Zeus writes bus inbox files for recipients
+4. **extension consume**:
+   - extension atomically claims inbox file (`new -> processing`)
+   - submits payload via `sendUserMessage(..., deliverAs=followUp)`
+   - writes accepted receipt and updates processed-id ledger
+5. **ack**:
+   - success (all recipient accepted receipts observed) -> remove envelope from `inflight/`
+   - failure/pending -> requeue with retry policy
 
 Crash recovery:
 - stale `inflight/` envelopes are reclaimed back to `new/` after lease timeout
@@ -96,16 +109,15 @@ Crash recovery:
 
 ## ACK semantics
 
-ACK is **transport ACK**:
-- envelope is removed when delivery handoff succeeds (terminal inject for `agent`, inbox file write for `hoplite`)
-- ACK does **not** mean the receiver model understood or executed the task
-
-This is intentional for current stage; app-level ACK can be added later.
+ACK is **extension acceptance ACK**:
+- envelope is removed only when all recipients have accepted receipt files
+- accepted receipt means extension successfully handed payload to `sendUserMessage`
+- this is still not task-completion ACK by recipient model
 
 Dedupe behavior:
 - Zeus records per-recipient message receipts by envelope `id`.
-- If an envelope with the same id is retried after a successful delivery,
-  Zeus skips duplicate handoff and ACKs it.
+- Extension maintains durable processed-id ledger per recipient agent.
+- Duplicate retries with same `id` are consumed idempotently.
 - Receipt entries are pruned with a TTL window.
 
 ## Wakeups and catch-up
