@@ -55,6 +55,8 @@ def test_snapshot_and_interact_send_bindings() -> None:
     assert bindings["ctrl+shift+r"].priority is True
     assert bindings["ctrl+s"].action == "send_interact"
     assert bindings["ctrl+s"].priority is True
+    assert bindings["ctrl+g"].action == "premade_message"
+    assert bindings["ctrl+g"].priority is True
 
 
 def test_kill_tmux_session_binding_action() -> None:

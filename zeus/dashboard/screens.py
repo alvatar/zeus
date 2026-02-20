@@ -37,6 +37,7 @@ from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
     AGENT_MESSAGE_CSS,
+    PREMADE_MESSAGE_CSS,
     LAST_SENT_MESSAGE_CSS,
     EXPANDED_OUTPUT_CSS,
     DEPENDENCY_SELECT_CSS,
@@ -619,6 +620,102 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
         self._forward_scroll_to_expanded_output("down", event)
+
+
+class PremadeMessageScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = PREMADE_MESSAGE_CSS
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("ctrl+s", "send", "Send", show=False),
+        Binding("ctrl+w", "queue", "Queue", show=False),
+    ]
+
+    def __init__(self, agent: AgentWindow, templates: list[tuple[str, str]]) -> None:
+        super().__init__()
+        self.agent = agent
+
+        seen_titles: set[str] = set()
+        normalized_templates: list[tuple[str, str]] = []
+        for title, body in templates:
+            clean_title = title.strip()
+            if not clean_title or clean_title in seen_titles:
+                continue
+            seen_titles.add(clean_title)
+            normalized_templates.append((clean_title, body))
+
+        if not normalized_templates:
+            normalized_templates = [
+                ("Self-review", "Review your output against your own claims again")
+            ]
+
+        self._template_options = normalized_templates
+        self._message_by_title: dict[str, str] = {
+            title: body for title, body in self._template_options
+        }
+        self._selected_title = self._template_options[0][0]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="premade-message-dialog"):
+            with Horizontal(id="premade-message-title-row"):
+                yield Label(
+                    f"Message [bold]{self.agent.name}[/bold]",
+                    id="premade-message-title",
+                )
+                yield Label("", id="premade-message-title-spacer")
+                yield Label(
+                    "(Control-S send | Control-W queue)",
+                    id="premade-message-shortcuts-hint",
+                )
+            yield Label("Preset:")
+            yield Select(
+                [(title, title) for title, _body in self._template_options],
+                allow_blank=False,
+                value=self._selected_title,
+                id="premade-message-template-select",
+            )
+            yield ZeusTextArea(
+                self._message_by_title[self._selected_title],
+                id="premade-message-input",
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#premade-message-template-select", Select).focus()
+
+    def _selected_template_title(self) -> str:
+        value = self.query_one("#premade-message-template-select", Select).value
+        if value is Select.BLANK:
+            return self._selected_title
+        return str(value)
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "premade-message-template-select":
+            return
+        if event.value is Select.BLANK:
+            return
+
+        text_area = self.query_one("#premade-message-input", ZeusTextArea)
+        self._message_by_title[self._selected_title] = text_area.text
+
+        self._selected_title = str(event.value)
+        text_area.load_text(self._message_by_title[self._selected_title])
+        text_area.move_cursor(text_area.document.end)
+
+    def action_send(self) -> None:
+        title = self._selected_template_title()
+        text = self.query_one("#premade-message-input", ZeusTextArea).text
+        self._message_by_title[title] = text
+        if self.zeus.do_send_agent_message(self.agent, text):
+            self.dismiss()
+
+    def action_queue(self) -> None:
+        title = self._selected_template_title()
+        text = self.query_one("#premade-message-input", ZeusTextArea).text
+        self._message_by_title[title] = text
+        if self.zeus.do_queue_agent_message(self.agent, text):
+            self.dismiss()
+
+    def action_cancel(self) -> None:
+        self.dismiss()
 
 
 class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):
@@ -1588,6 +1685,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+p", "Promote selected sub-Hippeus / Hoplite"),
     ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
+    ("Ctrl+g", "Open preset message dialog for selected Hippeus"),
     ("h", "History for selected Hippeus"),
     ("k", "Kill Hippeus / tmux session"),
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
@@ -1619,8 +1717,8 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Dialogs ───"),
     ("Esc (dialog)", "Close/cancel active dialog"),
     ("Ctrl+s (tasks dialog)", "Save tasks in Hippeus Tasks dialog"),
-    ("Ctrl+s (message dialog)", "Send message in Hippeus Message dialog"),
-    ("Ctrl+w (message dialog)", "Queue message in Hippeus Message dialog"),
+    ("Ctrl+s (message dialog)", "Send message in Hippeus Message / Preset dialog"),
+    ("Ctrl+w (message dialog)", "Queue message in Hippeus Message / Preset dialog"),
     ("y / n / Enter (kill confirm)", "Confirm or cancel kill confirmation dialogs"),
     ("", "─── Settings ───"),
     ("F4", "Toggle sort mode (priority / alpha)"),

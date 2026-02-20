@@ -9,6 +9,7 @@ from zeus.config import MESSAGE_TMP_DIR
 from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import (
     AgentMessageScreen,
+    PremadeMessageScreen,
     LastSentMessageScreen,
     ExpandedOutputScreen,
 )
@@ -187,6 +188,36 @@ def test_action_agent_message_restores_saved_draft(monkeypatch) -> None:
     screen = pushed[0]
     assert isinstance(screen, AgentMessageScreen)
     assert screen.draft == "draft body"
+
+
+def test_action_premade_message_pushes_preset_screen(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    pushed: list[object] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_premade_message()
+
+    assert len(pushed) == 1
+    screen = pushed[0]
+    assert isinstance(screen, PremadeMessageScreen)
+    assert screen.agent is agent
+
+
+def test_action_premade_message_requires_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
+
+    app.action_premade_message()
+
+    assert notices[-1] == "Select a Hippeus row to message"
 
 
 def test_action_message_history_pushes_history_view_screen(monkeypatch) -> None:
@@ -935,6 +966,40 @@ def test_app_ctrl_s_routes_to_message_modal_when_open(monkeypatch) -> None:
 def test_app_ctrl_w_routes_to_message_modal_when_open(monkeypatch) -> None:
     app = _new_app()
     modal = AgentMessageScreen(_agent("alpha", 1))
+
+    called: list[bool] = []
+    monkeypatch.setattr(modal, "action_queue", lambda: called.append(True))
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: modal))
+
+    app.action_queue_interact()
+
+    assert called == [True]
+
+
+def test_app_ctrl_s_routes_to_premade_message_modal_when_open(monkeypatch) -> None:
+    app = _new_app()
+    modal = PremadeMessageScreen(
+        _agent("alpha", 1),
+        templates=[("Self-review", "Review your output against your own claims again")],
+    )
+
+    called: list[bool] = []
+    monkeypatch.setattr(modal, "action_send", lambda: called.append(True))
+    monkeypatch.setattr(app, "_has_modal_open", lambda: True)
+    monkeypatch.setattr(ZeusApp, "screen", property(lambda self: modal))
+
+    app.action_send_interact()
+
+    assert called == [True]
+
+
+def test_app_ctrl_w_routes_to_premade_message_modal_when_open(monkeypatch) -> None:
+    app = _new_app()
+    modal = PremadeMessageScreen(
+        _agent("alpha", 1),
+        templates=[("Self-review", "Review your output against your own claims again")],
+    )
 
     called: list[bool] = []
     monkeypatch.setattr(modal, "action_queue", lambda: called.append(True))

@@ -419,6 +419,63 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
 )}
 """
 
+PREMADE_MESSAGE_CSS = """
+PremadeMessageScreen {
+    align: center middle;
+    background: transparent;
+}
+
+#premade-message-dialog {
+    width: 110;
+    height: auto;
+    max-height: 40;
+    border: thick #9acb7a;
+    background: #0a0a0a;
+    padding: 1 2;
+}
+
+#premade-message-dialog Label {
+    margin: 0 0 1 0;
+    color: #dddddd;
+}
+
+#premade-message-title-row {
+    width: 100%;
+    height: 1;
+    align: left middle;
+    margin: 0 0 1 0;
+}
+
+#premade-message-title,
+#premade-message-title-spacer,
+#premade-message-shortcuts-hint {
+    margin: 0;
+    height: 1;
+}
+
+#premade-message-title-spacer {
+    width: 1fr;
+}
+
+#premade-message-shortcuts-hint {
+    color: #93ad83;
+    content-align: right middle;
+}
+
+#premade-message-template-select {
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
+#premade-message-input {
+    height: 16;
+    margin: 0;
+    border: solid #444444;
+    background: #0a1018;
+    color: #dddddd;
+}
+"""
+
 LAST_SENT_MESSAGE_CSS = """
 LastSentMessageScreen {
     align: center middle;

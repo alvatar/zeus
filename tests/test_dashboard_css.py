@@ -53,6 +53,7 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.NEW_AGENT_CSS,
         css.AGENT_TASKS_CSS,
         css.AGENT_MESSAGE_CSS,
+        css.PREMADE_MESSAGE_CSS,
         css.LAST_SENT_MESSAGE_CSS,
         css.DEPENDENCY_SELECT_CSS,
         css.SUBAGENT_CSS,
@@ -114,6 +115,16 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "max-height: 30;" in css.AGENT_MESSAGE_CSS
     assert "AgentMessageScreen.from-expanded-output #agent-message-input {" in css.AGENT_MESSAGE_CSS
     assert "height: 12;" in css.AGENT_MESSAGE_CSS
+
+
+def test_premade_message_dialog_css_uses_soft_pear_green_border() -> None:
+    assert "PremadeMessageScreen {" in css.PREMADE_MESSAGE_CSS
+    assert "background: transparent;" in css.PREMADE_MESSAGE_CSS
+    assert "#premade-message-dialog {" in css.PREMADE_MESSAGE_CSS
+    assert "border: thick #9acb7a;" in css.PREMADE_MESSAGE_CSS
+    assert "#premade-message-template-select {" in css.PREMADE_MESSAGE_CSS
+    assert "#premade-message-input {" in css.PREMADE_MESSAGE_CSS
+    assert "#premade-message-shortcuts-hint {" in css.PREMADE_MESSAGE_CSS
 
 
 def test_last_sent_message_dialog_css_uses_cyan_shell_without_buttons() -> None:

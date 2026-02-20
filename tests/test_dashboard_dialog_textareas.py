@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from zeus.dashboard.screens import (
     AegisConfigureScreen,
     AgentMessageScreen,
+    PremadeMessageScreen,
     AgentTasksScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
@@ -75,6 +76,16 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert "agent-message-shortcuts-hint" in source
     assert "(Control-S send | Control-W queue)" in source
     assert "agent-message-title-row" in source
+
+
+def test_premade_message_dialog_uses_select_and_editable_textarea() -> None:
+    source = _compose_source(PremadeMessageScreen)
+    assert "Select(" in source
+    assert "premade-message-template-select" in source
+    assert "ZeusTextArea(" in source
+    assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
+    assert "premade-message-input" in source
+    assert "(Control-S send | Control-W queue)" in source
 
 
 def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
@@ -187,6 +198,76 @@ def test_aegis_config_mount_focuses_mode_selection(monkeypatch) -> None:
     screen.on_mount()
 
     assert mode_set.focused is True
+
+
+def test_premade_message_switching_template_loads_selected_text(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = PremadeMessageScreen(
+        agent,
+        templates=[
+            ("Self-review", "Review your output against your own claims again"),
+            ("Escalate", "Escalate blockers with concrete options"),
+        ],
+    )
+
+    select = _SelectStub("Escalate")
+    text_area = _TextAreaStub("custom self-review")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#premade-message-template-select":
+            return select
+        if selector == "#premade-message-input":
+            return text_area
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    event = SimpleNamespace(
+        select=SimpleNamespace(id="premade-message-template-select"),
+        value="Escalate",
+    )
+    screen.on_select_changed(event)
+
+    assert screen._message_by_title["Self-review"] == "custom self-review"
+    assert text_area.text == "Escalate blockers with concrete options"
+
+
+def test_premade_message_mount_focuses_template_select(monkeypatch) -> None:
+    from zeus.models import AgentWindow
+
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    screen = PremadeMessageScreen(
+        agent,
+        templates=[("Self-review", "Review your output against your own claims again")],
+    )
+
+    select = _SelectStub("Self-review")
+
+    monkeypatch.setattr(
+        screen,
+        "query_one",
+        lambda selector, cls=None: select if selector == "#premade-message-template-select" else (_ for _ in ()).throw(LookupError(selector)),
+    )
+
+    screen.on_mount()
+
+    assert select.focused is True
 
 
 def test_new_agent_dir_suggestions_match_prefix() -> None:
@@ -408,6 +489,15 @@ class _OptionListStub:
 class _RadioSetStub:
     def __init__(self, pressed_id: str) -> None:
         self.pressed_button = SimpleNamespace(id=pressed_id)
+        self.focused = False
+
+    def focus(self) -> None:
+        self.focused = True
+
+
+class _SelectStub:
+    def __init__(self, value: str) -> None:
+        self.value = value
         self.focused = False
 
     def focus(self) -> None:

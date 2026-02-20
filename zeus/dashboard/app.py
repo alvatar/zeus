@@ -112,6 +112,7 @@ from .screens import (
     NewAgentScreen,
     AgentTasksScreen,
     AgentMessageScreen,
+    PremadeMessageScreen,
     LastSentMessageScreen,
     ExpandedOutputScreen,
     DependencySelectScreen,
@@ -494,6 +495,7 @@ class ZeusApp(App):
         Binding("a", "toggle_aegis", "Aegis"),
         Binding("n", "queue_next_task", "Queue Task"),
         Binding("g", "go_ahead", "Go ahead"),
+        Binding("ctrl+g", "premade_message", "Preset message", show=False, priority=True),
         Binding("t", "agent_tasks", "Tasks"),
         Binding("e", "expand_output", "Expand output", show=False),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
@@ -546,6 +548,9 @@ class ZeusApp(App):
         "classify them into high-confidence and low-confidence. Execute the "
         "high-confidence ones immediately. Remember the low-confidence ones "
         "so you can summarize them to me when I ask to"
+    )
+    _PREMADE_MESSAGES: tuple[tuple[str, str], ...] = (
+        ("Self-review", "Review your output against your own claims again"),
     )
     _CELEBRATION_COOLDOWN_S = 3600.0
     _CELEBRATION_MIN_ACTIVE_AGENTS = 4
@@ -4008,6 +4013,15 @@ class ZeusApp(App):
             return
         self.push_screen(AgentMessageScreen(agent, self._message_draft_for_agent(agent)))
 
+    def action_premade_message(self) -> None:
+        if self._should_ignore_table_action():
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to message", timeout=2)
+            return
+        self.push_screen(PremadeMessageScreen(agent, list(self._PREMADE_MESSAGES)))
+
     def action_message_history(self) -> None:
         if self._should_ignore_table_action():
             return
@@ -4994,7 +5008,7 @@ class ZeusApp(App):
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if self._has_modal_open():
             modal = self.screen
-            if isinstance(modal, AgentMessageScreen):
+            if isinstance(modal, (AgentMessageScreen, PremadeMessageScreen)):
                 modal.action_send()
                 return
             if isinstance(modal, AgentTasksScreen):
@@ -5036,7 +5050,7 @@ class ZeusApp(App):
         """Send text + Alt+Enter (queue in pi) to agent/tmux."""
         if self._has_modal_open():
             modal = self.screen
-            if isinstance(modal, AgentMessageScreen):
+            if isinstance(modal, (AgentMessageScreen, PremadeMessageScreen)):
                 modal.action_queue()
             return
 

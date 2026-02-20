@@ -41,6 +41,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["a"] == "Bring Hippeus under the Aegis"
     assert entries["n"] == "Queue next task for selected Hippeus"
     assert entries["g"] == "Queue 'go ahead' for selected Hippeus"
+    assert entries["Ctrl+g"] == "Open preset message dialog for selected Hippeus"
     assert entries["t"] == "Edit tasks for selected Hippeus"
     assert entries["y"] == "Yank block between %%%% markers for selected Hippeus"
     assert entries["e"] == "Expand output for selected Hippeus"
@@ -90,6 +91,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("a", "Bring Hippeus under the Aegis"),
         ("n", "Queue next task for selected Hippeus"),
         ("g", "Queue 'go ahead' for selected Hippeus"),
+        ("Ctrl+g", "Open preset message dialog for selected Hippeus"),
         ("t", "Edit tasks for selected Hippeus"),
         ("y", "Yank block between %%%% markers for selected Hippeus"),
         ("e", "Expand output for selected Hippeus"),
@@ -128,6 +130,7 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "Ctrl+p",
         "d",
         "g",
+        "Ctrl+g",
         "h",
         "k",
         "Ctrl+k (tmux row)",
@@ -154,6 +157,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "a",
         "n",
         "g",
+        "Ctrl+g",
         "t",
         "y",
         "e",
@@ -191,8 +195,8 @@ def test_help_lists_modal_only_bindings() -> None:
 
     assert entries["Esc (dialog)"] == "Close/cancel active dialog"
     assert entries["Ctrl+s (tasks dialog)"] == "Save tasks in Hippeus Tasks dialog"
-    assert entries["Ctrl+s (message dialog)"] == "Send message in Hippeus Message dialog"
-    assert entries["Ctrl+w (message dialog)"] == "Queue message in Hippeus Message dialog"
+    assert entries["Ctrl+s (message dialog)"] == "Send message in Hippeus Message / Preset dialog"
+    assert entries["Ctrl+w (message dialog)"] == "Queue message in Hippeus Message / Preset dialog"
     assert "m (expanded output)" not in entries
     assert entries["y / n / Enter (kill confirm)"] == (
         "Confirm or cancel kill confirmation dialogs"
