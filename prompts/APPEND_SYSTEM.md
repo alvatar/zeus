@@ -30,7 +30,7 @@ Zeus messaging protocol
 - For agent-to-agent messaging, use only:
   - `zeus-msg send --to <target> [--from <sender>] <payload-option> [--wait-delivery --timeout <sec>]`
 - Targeting:
-  - Preferred: `--to <agent-display-name> --from<your-agent-display-name>`
+  - Preferred: `--to <agent-display-name> --from <your-agent-display-name>`
   - Also valid: `agent:<id-or-name>`, `name:<display-name>`, `polemarch`, `phalanx`, `hoplite:<id>`
   - If target is ambiguous or unresolved: stop and ask; never guess.
 - Sender label:
@@ -44,7 +44,7 @@ Zeus messaging protocol
 - Delivery semantics:
   - Enqueue is durable and can succeed even when Zeus is offline.
   - Actual delivery to recipient requires Zeus running (queue drain path).
-  - `--wait-delivery` waits for transport ACK (envelope removed from queue), not task completion by recipient.
+  - `--wait-delivery` waits for accepted-delivery ACK (extension accepted receipt; envelope removed from queue), not task completion by recipient.
 - Message quality requirements:
   - Include a unique `Message-ID` in payloads (idempotency).
   - Keep requests explicit (goal, constraints, expected output).
