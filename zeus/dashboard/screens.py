@@ -24,6 +24,7 @@ from textual.widgets import (
     RadioSet,
     RichLog,
     Select,
+    Static,
 )
 
 from .widgets import ZeusTextArea
@@ -60,6 +61,8 @@ from .stream import (
 )
 
 if TYPE_CHECKING:
+    from textual.timer import Timer
+
     from .app import ZeusApp
 
 
@@ -812,10 +815,12 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("g", "go_ahead", "Go ahead", show=False),
         Binding("enter", "message", "Message", show=False),
     ]
+    _SCROLL_FLASH_DURATION_S = 0.35
 
     def __init__(self, agent: AgentWindow) -> None:
         super().__init__()
         self.agent = agent
+        self._scroll_flash_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="expanded-output-dialog"):
@@ -835,6 +840,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 markup=False,
                 auto_scroll=False,
             )
+            yield Static("", id="expanded-output-scroll-flash", classes="hidden")
             yield Label(
                 "↑/↓ PgUp/PgDn Home/End scroll",
                 id="expanded-output-footer",
@@ -844,7 +850,13 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         stream = self.query_one("#expanded-output-stream", RichLog)
         stream.can_focus = True
         stream.focus()
+        self._hide_scroll_flash()
         self._fetch_output()
+
+    def on_unmount(self) -> None:
+        if self._scroll_flash_timer is not None:
+            self._scroll_flash_timer.stop()
+            self._scroll_flash_timer = None
 
     @work(thread=True, exclusive=True, group="expanded_output_stream")
     def _fetch_output(self) -> None:
@@ -861,12 +873,65 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         stream = self.query_one("#expanded-output-stream", RichLog)
         content = trim_trailing_blank_lines(strip_pi_input_chrome(screen_text))
         stream.clear()
+        self._hide_scroll_flash()
         if not content.strip():
             stream.write(f"[{self.agent.name}] (no output)")
             return
         raw = kitty_ansi_to_standard(content)
         stream.write(Text.from_ansi(raw))
         stream.scroll_end(animate=False)
+
+    def _hide_scroll_flash(self) -> None:
+        self._scroll_flash_timer = None
+        try:
+            flash = self.query_one("#expanded-output-scroll-flash", Static)
+        except Exception:
+            return
+        flash.add_class("hidden")
+
+    def _refresh_scroll_flash_geometry(self) -> bool:
+        stream = self.query_one("#expanded-output-stream", RichLog)
+        flash = self.query_one("#expanded-output-scroll-flash", Static)
+        dialog = self.query_one("#expanded-output-dialog", Vertical)
+
+        viewport_h = int(getattr(stream.size, "height", 0) or 0)
+        max_scroll = float(getattr(stream, "max_scroll_y", 0.0) or 0.0)
+        if viewport_h <= 0 or max_scroll <= 0.0:
+            flash.add_class("hidden")
+            return False
+
+        scroll_y = float(getattr(stream, "scroll_y", 0.0) or 0.0)
+        scroll_y = max(0.0, min(scroll_y, max_scroll))
+        content_h = float(viewport_h) + max_scroll
+        thumb_h = max(
+            1,
+            min(viewport_h, int(round((viewport_h * viewport_h) / max(content_h, 1.0)))),
+        )
+        track_h = max(0, viewport_h - thumb_h)
+        ratio = 0.0 if max_scroll <= 0.0 else (scroll_y / max_scroll)
+        thumb_top = int(round(track_h * ratio))
+
+        stream_top = max(0, stream.region.y - dialog.region.y)
+        flash.styles.offset = (0, stream_top + thumb_top)
+        flash.styles.height = thumb_h
+        flash.update("\n".join("▐▐" for _ in range(thumb_h)))
+        return True
+
+    def _show_scroll_flash(self) -> None:
+        if not self.is_attached:
+            return
+        if not self._refresh_scroll_flash_geometry():
+            return
+
+        flash = self.query_one("#expanded-output-scroll-flash", Static)
+        flash.remove_class("hidden")
+
+        if self._scroll_flash_timer is not None:
+            self._scroll_flash_timer.stop()
+        self._scroll_flash_timer = self.set_timer(
+            self._SCROLL_FLASH_DURATION_S,
+            self._hide_scroll_flash,
+        )
 
     def _scroll_stream_by_key(self, key: str) -> bool:
         stream = self.query_one("#expanded-output-stream", RichLog)
@@ -884,6 +949,8 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             stream.scroll_end(animate=False)
         else:
             return False
+
+        self._show_scroll_flash()
         return True
 
     def action_refresh(self) -> None:

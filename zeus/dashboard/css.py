@@ -542,6 +542,7 @@ ExpandedOutputScreen {
     border: none;
     background: #000000;
     padding: 0 0;
+    position: relative;
 }
 
 #expanded-output-title-row {
@@ -575,7 +576,22 @@ ExpandedOutputScreen {
     border-top: solid #1a3030;
     padding: 0 0;
     overflow-y: auto;
-    scrollbar-size: 0 1;
+    scrollbar-size: 0 0;
+}
+
+#expanded-output-scroll-flash {
+    position: absolute;
+    layer: overlay;
+    width: 2;
+    height: 1;
+    margin: 0;
+    padding: 0;
+    color: #9dfefe;
+    background: transparent;
+}
+
+#expanded-output-scroll-flash.hidden {
+    display: none;
 }
 
 #expanded-output-footer {

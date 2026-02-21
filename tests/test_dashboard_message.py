@@ -80,6 +80,10 @@ class _DummyRichLog:
         self.writes: list[str] = []
         self.can_focus = False
         self.focused = False
+        self.scroll_y = 0.0
+        self.max_scroll_y = 0.0
+        self.size = SimpleNamespace(height=10)
+        self.region = SimpleNamespace(y=1)
 
     def clear(self) -> None:
         self.writes = []
@@ -95,22 +99,25 @@ class _DummyRichLog:
         self.focused = True
 
     def scroll_up(self, animate: bool = False) -> None:
-        return
+        self.scroll_y = max(0.0, self.scroll_y - 1.0)
 
     def scroll_down(self, animate: bool = False) -> None:
-        return
+        self.scroll_y = min(float(self.max_scroll_y), self.scroll_y + 1.0)
 
     def scroll_page_up(self, animate: bool = False) -> None:
-        return
+        step = max(1, int(self.size.height) - 1)
+        self.scroll_y = max(0.0, self.scroll_y - float(step))
 
     def scroll_page_down(self, animate: bool = False) -> None:
-        return
+        step = max(1, int(self.size.height) - 1)
+        self.scroll_y = min(float(self.max_scroll_y), self.scroll_y + float(step))
 
     def scroll_home(self, animate: bool = False) -> None:
-        return
+        self.scroll_y = 0.0
 
     def scroll_end(self, animate: bool = False) -> None:
         self.scrolled_to_end = True
+        self.scroll_y = float(self.max_scroll_y)
 
 
 class _DummyLabel:
@@ -119,6 +126,22 @@ class _DummyLabel:
 
     def update(self, text: str) -> None:
         self.text = text
+
+
+class _DummyFlash:
+    def __init__(self) -> None:
+        self.classes = {"hidden"}
+        self.content = ""
+        self.styles = SimpleNamespace(offset=(0, 0), height=1)
+
+    def add_class(self, name: str) -> None:
+        self.classes.add(name)
+
+    def remove_class(self, name: str) -> None:
+        self.classes.discard(name)
+
+    def update(self, text: str) -> None:
+        self.content = text
 
 
 class _ScreenStackAppStub:
@@ -422,7 +445,15 @@ def test_expanded_output_apply_scrolls_to_bottom(monkeypatch) -> None:
     stream = _DummyRichLog()
 
     monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
-    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: stream)
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return _DummyFlash()
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
 
     screen._apply_output("line 1\nline 2\n")
 
@@ -434,11 +465,88 @@ def test_expanded_output_empty_state_has_no_leading_margin(monkeypatch) -> None:
     stream = _DummyRichLog()
 
     monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
-    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: stream)
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return _DummyFlash()
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
 
     screen._apply_output("\n\n")
 
     assert stream.writes == ["[alpha] (no output)"]
+
+
+def test_expanded_output_scroll_shows_transient_flash_indicator(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1))
+    stream = _DummyRichLog()
+    stream.max_scroll_y = 20.0
+    stream.size = SimpleNamespace(height=10)
+    stream.region = SimpleNamespace(y=3)
+    flash = _DummyFlash()
+    dialog = SimpleNamespace(region=SimpleNamespace(y=1))
+
+    class _FakeTimer:
+        def stop(self) -> None:
+            return
+
+    timers: list[tuple[float, object]] = []
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return flash
+        if selector == "#expanded-output-dialog":
+            return dialog
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(
+        screen,
+        "set_timer",
+        lambda delay, callback: timers.append((delay, callback)) or _FakeTimer(),
+    )
+
+    assert screen._scroll_stream_by_key("down") is True
+    assert "hidden" not in flash.classes
+    assert flash.styles.offset[0] == 0
+    assert int(flash.styles.height) >= 1
+    assert flash.content
+    assert timers and timers[0][0] == screen._SCROLL_FLASH_DURATION_S
+
+    callback = timers[0][1]
+    callback()
+    assert "hidden" in flash.classes
+
+
+def test_expanded_output_scroll_does_not_show_flash_without_overflow(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1))
+    stream = _DummyRichLog()
+    stream.max_scroll_y = 0.0
+    flash = _DummyFlash()
+    dialog = SimpleNamespace(region=SimpleNamespace(y=0))
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return flash
+        if selector == "#expanded-output-dialog":
+            return dialog
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    assert screen._scroll_stream_by_key("down") is True
+    assert "hidden" in flash.classes
 
 
 def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:

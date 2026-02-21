@@ -92,6 +92,7 @@ def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
     source = _compose_source(ExpandedOutputScreen)
     assert "RichLog(" in source
     assert "expanded-output-stream" in source
+    assert "expanded-output-scroll-flash" in source
 
     bindings = {binding.key: binding.action for binding in ExpandedOutputScreen.BINDINGS}
     assert bindings["escape"] == "dismiss"

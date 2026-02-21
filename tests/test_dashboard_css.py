@@ -137,16 +137,21 @@ def test_last_sent_message_dialog_css_uses_cyan_shell_without_buttons() -> None:
     assert "#last-sent-message-buttons" not in css.LAST_SENT_MESSAGE_CSS
 
 
-def test_expanded_output_hides_horizontal_scrollbar() -> None:
+def test_expanded_output_hides_native_scrollbars() -> None:
     assert "#expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
-    assert "scrollbar-size: 0 1;" in css.EXPANDED_OUTPUT_CSS
+    assert "scrollbar-size: 0 0;" in css.EXPANDED_OUTPUT_CSS
 
 
 def test_expanded_output_stream_uses_zero_side_padding_only_for_output_content() -> None:
     assert "#expanded-output-dialog {" in css.EXPANDED_OUTPUT_CSS
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
+    assert "position: relative;" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
+    assert "#expanded-output-scroll-flash {" in css.EXPANDED_OUTPUT_CSS
+    assert "width: 2;" in css.EXPANDED_OUTPUT_CSS
+    assert "position: absolute;" in css.EXPANDED_OUTPUT_CSS
+    assert "#expanded-output-scroll-flash.hidden {" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-title-row {" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-footer {" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-footer {\n    height: 1;\n    color: #6a9090;\n    margin: 1 0 0 0;\n    padding: 0 1;" in css.EXPANDED_OUTPUT_CSS
