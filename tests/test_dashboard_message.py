@@ -429,6 +429,18 @@ def test_expanded_output_apply_scrolls_to_bottom(monkeypatch) -> None:
     assert stream.scrolled_to_end is True
 
 
+def test_expanded_output_empty_state_has_no_leading_margin(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1))
+    stream = _DummyRichLog()
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: stream)
+
+    screen._apply_output("\n\n")
+
+    assert stream.writes == ["[alpha] (no output)"]
+
+
 def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:
     agent = _agent("alpha", 1)
     screen = ExpandedOutputScreen(agent)

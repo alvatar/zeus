@@ -541,7 +541,7 @@ ExpandedOutputScreen {
     height: 100%;
     border: none;
     background: #000000;
-    padding: 0 1;
+    padding: 0 0;
 }
 
 #expanded-output-title-row {
@@ -573,7 +573,7 @@ ExpandedOutputScreen {
 #expanded-output-stream {
     height: 1fr;
     border-top: solid #1a3030;
-    padding: 0 1;
+    padding: 0 0;
     overflow-y: auto;
     scrollbar-size: 0 1;
 }
@@ -582,6 +582,7 @@ ExpandedOutputScreen {
     height: 1;
     color: #6a9090;
     margin: 1 0 0 0;
+    padding: 0 1;
 }
 """
 

@@ -862,7 +862,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         content = trim_trailing_blank_lines(strip_pi_input_chrome(screen_text))
         stream.clear()
         if not content.strip():
-            stream.write(f"  [{self.agent.name}] (no output)")
+            stream.write(f"[{self.agent.name}] (no output)")
             return
         raw = kitty_ansi_to_standard(content)
         stream.write(Text.from_ansi(raw))
