@@ -3877,6 +3877,12 @@ class ZeusApp(App):
         else:
             self._agent_priorities[agent.name] = nxt
         self._save_priorities()
+
+        # Immediate local redraw so the priority column/order updates without
+        # waiting for the async poll worker to finish.
+        if self.is_running:
+            self._render_agent_table_and_status()
+
         self.poll_and_update()
         if self._interact_visible:
             self._refresh_interact_panel()
