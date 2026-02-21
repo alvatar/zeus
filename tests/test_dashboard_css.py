@@ -38,6 +38,14 @@ def test_confirm_promote_css_uses_distinct_border_color() -> None:
     assert "border: thick #ffb000;" in css.CONFIRM_PROMOTE_CSS
 
 
+def test_notice_css_uses_scrollable_modal_dialog() -> None:
+    assert "NoticeScreen {" in css.NOTICE_CSS
+    assert "#notice-dialog {" in css.NOTICE_CSS
+    assert "#notice-message-scroll {" in css.NOTICE_CSS
+    assert "scrollbar-size: 0 1;" in css.NOTICE_CSS
+    assert "#notice-buttons {" in css.NOTICE_CSS
+
+
 def test_app_css_can_hide_interact_input() -> None:
     assert "#interact-input.hidden {" in css.APP_CSS
     assert "display: none;" in css.APP_CSS
@@ -61,6 +69,7 @@ def test_modal_dialog_screens_use_transparent_overlay_background() -> None:
         css.HELP_CSS,
         css.CONFIRM_KILL_CSS,
         css.CONFIRM_PROMOTE_CSS,
+        css.NOTICE_CSS,
         css.AEGIS_CONFIG_CSS,
         css.SNAPSHOT_SAVE_CSS,
         css.SNAPSHOT_RESTORE_CSS,

@@ -15,6 +15,7 @@ import subprocess
 import textwrap
 import threading
 import time
+from typing import Literal, cast
 
 from textual import events, work
 from textual.app import App, ComposeResult
@@ -125,6 +126,7 @@ from .screens import (
     RenameScreen,
     RenameTmuxScreen,
     ConfirmKillScreen, ConfirmKillTmuxScreen, ConfirmPromoteScreen,
+    NoticeScreen,
     AegisConfigureScreen,
     BroadcastPreparingScreen,
     ConfirmBroadcastScreen,
@@ -807,6 +809,42 @@ class ZeusApp(App):
                     pass
             self._message_queue_inotify_proc = None
 
+    @staticmethod
+    def _notice_title_for_severity(severity: SeverityLevel) -> str:
+        if severity == "error":
+            return "Error"
+        if severity == "warning":
+            return "Warning"
+        return "Notice"
+
+    def _show_notice_modal(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "warning",
+        markup: bool = True,
+    ) -> None:
+        notice_title = title.strip() or self._notice_title_for_severity(severity)
+        if not self.is_running:
+            super().notify(
+                message,
+                title=notice_title,
+                severity=severity,
+                timeout=None,
+                markup=markup,
+            )
+            return
+
+        self.push_screen(
+            NoticeScreen(
+                message,
+                title=notice_title,
+                severity=cast(Literal["information", "warning", "error"], severity),
+                markup=markup,
+            )
+        )
+
     def notify(
         self,
         message: str,
@@ -816,7 +854,16 @@ class ZeusApp(App):
         timeout: float | None = None,
         markup: bool = True,
     ) -> None:
-        """Disable toast notifications unless ZEUS_NOTIFY is enabled."""
+        """Show toasts for info, modal notices for warning/error."""
+        if severity in {"warning", "error"}:
+            self._show_notice_modal(
+                message,
+                title=title,
+                severity=severity,
+                markup=markup,
+            )
+            return
+
         if not self._notifications_enabled:
             return
         super().notify(
@@ -836,12 +883,11 @@ class ZeusApp(App):
         timeout: float | None = None,
         markup: bool = True,
     ) -> None:
-        """Show a notification even when ZEUS_NOTIFY is disabled."""
-        super().notify(
+        """Show a modal notice even when ZEUS_NOTIFY is disabled."""
+        self._show_notice_modal(
             message,
             title=title,
             severity=severity,
-            timeout=timeout,
             markup=markup,
         )
 
@@ -2546,8 +2592,28 @@ class ZeusApp(App):
                 options.append((agent.name, key))
         return options
 
-    def _share_payload_for_source(self, source: AgentWindow) -> str | None:
-        """Extract share payload from file pointer first, then marker fallback.
+    def _share_pointer_failure_message(self, pointer: str) -> str:
+        clean_pointer = _normalize_share_file_candidate(pointer)
+        if "{MESSAGE_TMP_DIR}" in clean_pointer or "<uuid>" in clean_pointer:
+            return (
+                "Found ZEUS_MSG_FILE placeholder text "
+                f"({clean_pointer}). Replace it with a real file path under "
+                f"{MESSAGE_TMP_DIR}, or wrap payload between {_SHARE_MARKER} "
+                "marker lines."
+            )
+
+        return (
+            f"Found ZEUS_MSG_FILE={clean_pointer}, but the file is missing, "
+            f"unreadable, or outside {MESSAGE_TMP_DIR}. Use a readable file "
+            f"under {MESSAGE_TMP_DIR}, or wrap payload between "
+            f"{_SHARE_MARKER} marker lines."
+        )
+
+    def _share_payload_probe_for_source(
+        self,
+        source: AgentWindow,
+    ) -> tuple[str | None, str | None]:
+        """Extract share payload and provide actionable failure reason.
 
         Order matters:
         1) ZEUS_MSG_FILE pointer in session transcript
@@ -2555,6 +2621,8 @@ class ZeusApp(App):
         3) ZEUS_MSG_FILE pointer in full screen text
         4) wrapped %%%% marker block in full screen text
         """
+        pointer_failure: str | None = None
+
         session_path = resolve_agent_session_path(source)
         if session_path:
             session_all_text = read_session_text(session_path)
@@ -2563,13 +2631,14 @@ class ZeusApp(App):
                 if pointer:
                     payload = _read_share_file_payload(pointer)
                     if payload is not None:
-                        return payload.strip()
+                        return payload.strip(), None
+                    pointer_failure = self._share_pointer_failure_message(pointer)
 
             session_user_text = read_session_user_text(session_path)
             if session_user_text.strip():
                 payload = _extract_share_payload(session_user_text)
                 if payload is not None:
-                    return payload
+                    return payload, None
 
         screen_text = self._read_agent_screen_text(source, full=True)
         if screen_text.strip():
@@ -2577,10 +2646,18 @@ class ZeusApp(App):
             if pointer:
                 payload = _read_share_file_payload(pointer)
                 if payload is not None:
-                    return payload.strip()
-            return _extract_share_payload(screen_text)
+                    return payload.strip(), None
+                pointer_failure = self._share_pointer_failure_message(pointer)
 
-        return None
+            payload = _extract_share_payload(screen_text)
+            if payload is not None:
+                return payload, None
+
+        return None, pointer_failure or self._SHARE_MARKER_REMINDER
+
+    def _share_payload_for_source(self, source: AgentWindow) -> str | None:
+        payload, _reason = self._share_payload_probe_for_source(source)
+        return payload
 
     _SHARE_MARKER_REMINDER = (
         f"No payload found. Provide ZEUS_MSG_FILE={MESSAGE_TMP_DIR}/zeus-msg-<uuid>.md "
@@ -2771,12 +2848,12 @@ class ZeusApp(App):
             )
             return
 
-        payload = self._share_payload_for_source(source)
+        payload, payload_error = self._share_payload_probe_for_source(source)
         if payload is None:
             self.call_from_thread(
                 self._summary_prepare_failed,
                 job_id,
-                self._SHARE_MARKER_REMINDER,
+                payload_error or self._SHARE_MARKER_REMINDER,
                 4,
             )
             return
@@ -2824,7 +2901,7 @@ class ZeusApp(App):
         self._broadcast_active_job = None
         self._consume_prepare_target_selection(job_id)
         self._dismiss_broadcast_preparing_screen()
-        self.notify(message, timeout=timeout)
+        self.notify(message, timeout=timeout, severity="warning")
 
     def _show_broadcast_preview(
         self,

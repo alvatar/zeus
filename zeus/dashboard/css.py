@@ -780,6 +780,64 @@ CONFIRM_PROMOTE_CSS = _confirm_dialog_css(
     border_color="#ffb000",
 )
 
+NOTICE_CSS = f"""
+NoticeScreen {{
+    align: center middle;
+    background: transparent;
+}}
+
+#notice-dialog {{
+    width: 96;
+    height: auto;
+    max-height: 28;
+    border: thick #ffb000;
+    background: #0a0a0a;
+    padding: 1 2;
+}}
+
+#notice-dialog.severity-error {{
+    border: thick #ff3366;
+}}
+
+#notice-dialog.severity-information {{
+    border: thick #00d7d7;
+}}
+
+#notice-title {{
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #f0e0b0;
+    content-align: center middle;
+    text-style: bold;
+}}
+
+#notice-dialog.severity-error #notice-title {{
+    color: #ff9aa5;
+}}
+
+#notice-dialog.severity-information #notice-title {{
+    color: #8de8e8;
+}}
+
+#notice-message-scroll {{
+    width: 100%;
+    height: auto;
+    max-height: 14;
+    margin: 0 0 1 0;
+    padding: 0 1;
+    border: solid #444444;
+    background: #0a1018;
+    scrollbar-size: 0 1;
+}}
+
+#notice-message {{
+    width: 100%;
+    color: #dddddd;
+}}
+
+{_button_row_css("notice-buttons", align="center middle", button_margin="0 1")}
+"""
+
 AEGIS_CONFIG_CSS = f"""
 AegisConfigureScreen {{
     align: center middle;

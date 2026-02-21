@@ -47,6 +47,7 @@ from .css import (
     RENAME_CSS,
     CONFIRM_KILL_CSS,
     CONFIRM_PROMOTE_CSS,
+    NOTICE_CSS,
     AEGIS_CONFIG_CSS,
     SNAPSHOT_SAVE_CSS,
     SNAPSHOT_RESTORE_CSS,
@@ -1437,6 +1438,46 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.do_promote_hippeus_to_polemarch(self.agent)
         elif self.sess is not None:
             self.zeus.do_promote_hoplite_tmux(self.sess)
+        self.dismiss()
+
+
+class NoticeScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = NOTICE_CSS
+    BINDINGS = [
+        Binding("escape", "dismiss_notice", "Close", show=False),
+        Binding("enter", "dismiss_notice", "Close", show=False),
+    ]
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        title: str = "Notice",
+        severity: Literal["information", "warning", "error"] = "warning",
+        markup: bool = True,
+    ) -> None:
+        super().__init__()
+        self.message = message
+        self.title = title or "Notice"
+        self.severity = severity
+        self.markup = markup
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="notice-dialog", classes=f"severity-{self.severity}"):
+            yield Label(self.title, id="notice-title")
+            with VerticalScroll(id="notice-message-scroll"):
+                yield Static(self.message, id="notice-message", markup=self.markup)
+            with Horizontal(id="notice-buttons"):
+                yield Button("OK", variant="primary", id="notice-ok-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#notice-ok-btn", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss()
+        event.stop()
+
+    def action_dismiss_notice(self) -> None:
         self.dismiss()
 
 

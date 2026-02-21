@@ -183,6 +183,48 @@ def test_share_payload_falls_back_to_screen_when_session_has_no_pair(monkeypatch
     assert payload == "from screen"
 
 
+def test_share_payload_probe_reports_placeholder_file_pointer(monkeypatch) -> None:
+    app = ZeusApp()
+    source = _agent("source", 1)
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path",
+        lambda _agent: "/tmp/fake-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.read_session_text",
+        lambda _path: "ZEUS_MSG_FILE={MESSAGE_TMP_DIR}/zeus-msg-<uuid>.md\n",
+    )
+    monkeypatch.setattr("zeus.dashboard.app.read_session_user_text", lambda _path: "")
+    monkeypatch.setattr(app, "_read_agent_screen_text", lambda _agent, full=False: "")
+
+    payload, reason = app._share_payload_probe_for_source(source)
+
+    assert payload is None
+    assert reason is not None
+    assert "placeholder" in reason
+    assert "ZEUS_MSG_FILE" in reason
+
+
+def test_summary_prepare_failed_notifies_as_warning(monkeypatch) -> None:
+    app = ZeusApp()
+    app._broadcast_active_job = 1
+
+    notices: list[tuple[str, str, float]] = []
+    monkeypatch.setattr(app, "_dismiss_broadcast_preparing_screen", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "notify",
+        lambda message, timeout=0, severity="information": notices.append(
+            (message, severity, float(timeout))
+        ),
+    )
+
+    app._summary_prepare_failed(1, "missing payload", 4)
+
+    assert notices == [("missing payload", "warning", 4.0)]
+
+
 def test_do_enqueue_broadcast_queues_active_and_paused_recipients(monkeypatch) -> None:
     app = ZeusApp()
     source = _agent("source", 1)
