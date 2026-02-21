@@ -68,6 +68,60 @@ if TYPE_CHECKING:
 
 # ── New agent ─────────────────────────────────────────────────────────
 
+_MODEL_LIST_TIMEOUT_S = 3.0
+
+
+def _parse_available_models_table(raw: str) -> list[str]:
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    first = lines[0].casefold()
+    if first.startswith("no models available"):
+        return []
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for idx, line in enumerate(lines):
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+
+        provider = parts[0].strip()
+        model_id = parts[1].strip()
+
+        # Skip table header row.
+        if idx == 0 and provider.casefold() == "provider" and model_id.casefold() == "model":
+            continue
+
+        if not provider or not model_id:
+            continue
+
+        spec = f"{provider}/{model_id}"
+        if spec in seen:
+            continue
+        seen.add(spec)
+        out.append(spec)
+
+    return out
+
+
+def _list_available_model_specs() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["pi", "--list-models"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_MODEL_LIST_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    return _parse_available_models_table(result.stdout or "")
+
+
 class _ZeusScreenMixin:
     """Mixin providing typed access to the ZeusApp instance."""
 
@@ -87,6 +141,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self._dir_cycle_seed: str | None = None
         self._dir_cycle_index: int = -1
         self._dir_programmatic_change: bool = False
+        self._available_model_specs: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
@@ -101,6 +156,17 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 id="invoke-role",
                 compact=False,
             )
+            yield Label("Model:")
+            if not self._available_model_specs:
+                self._available_model_specs = _list_available_model_specs()
+            options: list[tuple[str, str]]
+            selected_value = "__default__"
+            if self._available_model_specs:
+                options = [(spec, spec) for spec in self._available_model_specs]
+                selected_value = self._available_model_specs[0]
+            else:
+                options = [("Default (auto)", "__default__")]
+            yield Select(options, value=selected_value, id="invoke-model", allow_blank=False)
             yield Label("Directory:")
             yield Input(
                 placeholder="e.g. /home/user/projects/backend",
@@ -411,6 +477,12 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
         session_path = make_new_session_path(directory)
 
+        raw_model = self.query_one("#invoke-model", Select).value
+        model_spec = raw_model if isinstance(raw_model, str) else ""
+        model_spec = model_spec.strip()
+        if model_spec == "__default__":
+            model_spec = ""
+
         env: dict[str, str] = os.environ.copy()
         env["ZEUS_AGENT_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
@@ -418,6 +490,10 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         env["ZEUS_SESSION_PATH"] = session_path
         if role == "polemarch":
             env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
+
+        pi_cmd = f"pi --session {shlex.quote(session_path)}"
+        if model_spec:
+            pi_cmd += f" --model {shlex.quote(model_spec)}"
 
         subprocess.Popen(
             [
@@ -427,7 +503,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 "--hold",
                 "bash",
                 "-lc",
-                f"pi --session {shlex.quote(session_path)}",
+                pi_cmd,
             ],
             env=env,
             start_new_session=True,

@@ -16,6 +16,7 @@ from zeus.dashboard.screens import (
     RenameScreen,
     RenameTmuxScreen,
     SaveSnapshotScreen,
+    _parse_available_models_table,
 )
 
 _PLAIN_TEXTAREA_CALL_RE = re.compile(r"(?<!Zeus)TextArea\(")
@@ -113,6 +114,9 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "invoke-role-stygian-hippeus" in source
     assert "invoke-role-polemarch" in source
     assert "compact=False" in source
+    assert "Select(" in source
+    assert "invoke-model" in source
+    assert source.index("invoke-model") < source.index("agent-dir")
     assert "OptionList(" in source
     assert "agent-dir-suggestions" in source
     assert "new-agent-buttons" not in source
@@ -123,6 +127,29 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "event.input.id == \"agent-dir\"" in submit_source
     assert "self._apply_highlighted_dir_suggestion" not in submit_source
     assert "self._launch()" in submit_source
+
+
+def test_parse_available_models_table_extracts_provider_model_pairs() -> None:
+    raw = (
+        "provider   model                            context  max-out  thinking  images\n"
+        "anthropic claude-sonnet-4-5                200K     16K      yes       yes\n"
+        "openai    gpt-4o                           128K     16K      yes       yes\n"
+    )
+
+    parsed = _parse_available_models_table(raw)
+
+    assert parsed == [
+        "anthropic/claude-sonnet-4-5",
+        "openai/gpt-4o",
+    ]
+
+
+def test_parse_available_models_table_handles_no_models_message() -> None:
+    parsed = _parse_available_models_table(
+        "No models available. Set API keys in environment variables.\n",
+    )
+
+    assert parsed == []
 
 
 def test_aegis_config_dialog_uses_radio_options_and_textarea() -> None:
@@ -641,6 +668,8 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
             return dir_input
         if selector == "#invoke-role":
             return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-hippeus"))
+        if selector == "#invoke-model":
+            return _SelectStub("openai/gpt-4o")
         raise LookupError(selector)
 
     monkeypatch.setattr(screen, "query_one", _query_one)
@@ -695,7 +724,7 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_ROLE"] == "hippeus"
     assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-1.jsonl"
     assert "ZEUS_PHALANX_ID" not in popen_env
-    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-1.jsonl"
+    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-1.jsonl --model openai/gpt-4o"
     assert schedule_calls == []
     assert notices[-1] == "Invoked Hippeus: alpha"
     assert timers == [1.5]
@@ -714,6 +743,8 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
             return dir_input
         if selector == "#invoke-role":
             return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-polemarch"))
+        if selector == "#invoke-model":
+            return _SelectStub("anthropic/claude-sonnet-4-5")
         raise LookupError(selector)
 
     monkeypatch.setattr(screen, "query_one", _query_one)
@@ -765,7 +796,7 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_ROLE"] == "polemarch"
     assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-2.jsonl"
     assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
-    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-2.jsonl"
+    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-2.jsonl --model anthropic/claude-sonnet-4-5"
     assert schedule_calls == [("agent-2", "planner")]
     assert notices[-1] == "Invoked Polemarch: planner"
 
