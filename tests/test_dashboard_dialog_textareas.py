@@ -815,6 +815,8 @@ def test_invoke_launch_stygian_hippeus_uses_tmux_backend(monkeypatch) -> None:
             return SimpleNamespace(
                 pressed_button=SimpleNamespace(id="invoke-role-stygian-hippeus")
             )
+        if selector == "#invoke-model":
+            return _SelectStub("openai/gpt-4o")
         raise LookupError(selector)
 
     monkeypatch.setattr(screen, "query_one", _query_one)
@@ -841,11 +843,11 @@ def test_invoke_launch_stygian_hippeus_uses_tmux_backend(monkeypatch) -> None:
 
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
 
-    launch_calls: list[tuple[str, str, str]] = []
+    launch_calls: list[tuple[str, str, str, str]] = []
     monkeypatch.setattr(
         "zeus.dashboard.screens.launch_stygian_hippeus",
-        lambda *, name, directory, agent_id: launch_calls.append(
-            (name, directory, agent_id)
+        lambda *, name, directory, agent_id, model_spec="": launch_calls.append(
+            (name, directory, agent_id, model_spec)
         )
         or ("stygian-agent-3", "/tmp/session.jsonl"),
     )
@@ -864,6 +866,7 @@ def test_invoke_launch_stygian_hippeus_uses_tmux_backend(monkeypatch) -> None:
     assert launch_calls[0][0] == "shadow"
     assert launch_calls[0][1].endswith("/code")
     assert launch_calls[0][2] == "agent-3"
+    assert launch_calls[0][3] == "openai/gpt-4o"
     assert popen_called == []
     assert notices[-1] == "Invoked Stygian Hippeus: shadow"
     assert timers == [1.5]
@@ -884,6 +887,8 @@ def test_invoke_launch_stygian_hippeus_notifies_on_failure(monkeypatch) -> None:
             return SimpleNamespace(
                 pressed_button=SimpleNamespace(id="invoke-role-stygian-hippeus")
             )
+        if selector == "#invoke-model":
+            return _SelectStub("anthropic/claude-sonnet-4-5")
         raise LookupError(selector)
 
     monkeypatch.setattr(screen, "query_one", _query_one)

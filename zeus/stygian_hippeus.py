@@ -95,6 +95,7 @@ def launch_stygian_hippeus(
     name: str,
     directory: str,
     agent_id: str,
+    model_spec: str = "",
 ) -> tuple[str, str]:
     """Launch a detached tmux-backed Stygian Hippeus and stamp Zeus metadata."""
     clean_id = agent_id.strip()
@@ -106,6 +107,8 @@ def launch_stygian_hippeus(
     session_name = stygian_tmux_session_name(clean_id)
     session_path = make_new_session_path(cwd)
 
+    clean_model = model_spec.strip()
+
     start_command = (
         f"ZEUS_AGENT_NAME={shlex.quote(clean_name)} "
         f"ZEUS_AGENT_ID={shlex.quote(clean_id)} "
@@ -113,6 +116,8 @@ def launch_stygian_hippeus(
         f"ZEUS_SESSION_PATH={shlex.quote(session_path)} "
         f"exec pi --session {shlex.quote(session_path)}"
     )
+    if clean_model:
+        start_command += f" --model {shlex.quote(clean_model)}"
 
     created = _run_tmux(
         [

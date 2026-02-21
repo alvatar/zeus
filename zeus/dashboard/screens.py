@@ -456,12 +456,19 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
 
+        raw_model = self.query_one("#invoke-model", Select).value
+        model_spec = raw_model if isinstance(raw_model, str) else ""
+        model_spec = model_spec.strip()
+        if model_spec == "__default__":
+            model_spec = ""
+
         if role == "stygian-hippeus":
             try:
                 launch_stygian_hippeus(
                     name=name,
                     directory=directory,
                     agent_id=agent_id,
+                    model_spec=model_spec,
                 )
             except (RuntimeError, ValueError) as exc:
                 self.zeus.notify(
@@ -476,12 +483,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         session_path = make_new_session_path(directory)
-
-        raw_model = self.query_one("#invoke-model", Select).value
-        model_spec = raw_model if isinstance(raw_model, str) else ""
-        model_spec = model_spec.strip()
-        if model_spec == "__default__":
-            model_spec = ""
 
         env: dict[str, str] = os.environ.copy()
         env["ZEUS_AGENT_NAME"] = name
