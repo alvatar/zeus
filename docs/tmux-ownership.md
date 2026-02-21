@@ -2,15 +2,16 @@
 
 ## Goal
 
-Map tmux sessions to Hippeis without relying primarily on fragile heuristics (cwd/screen text).
+Map tmux sessions to Hippeis using deterministic ids only.
 
 ## Ownership model
 
-Zeus uses three layers, in this order:
+Zeus uses deterministic sources only, in this order:
 
-1. `@zeus_owner` tmux session option (deterministic)
-2. `ZEUS_AGENT_ID` from tmux session environment (deterministic)
-3. Legacy heuristics (screen text / cwd)
+1. `@zeus_owner` tmux session option
+2. session agent id (`@zeus_agent` or `ZEUS_AGENT_ID` from pane start command or tmux env)
+
+Heuristic matching by cwd/screen text is disabled.
 
 ## Hippeus identity
 
@@ -27,8 +28,7 @@ When a tmux session is matched to a Hippeus and `@zeus_owner` is missing, Zeus b
 tmux set-option -t <session> @zeus_owner <agent_id>
 ```
 
-This is done only for high-confidence matches (`env-id`, `screen-exact`, `cwd`).
-Low-confidence `screen-fallback` matches are not auto-stamped.
+This is done only for deterministic-id matches (`option-agent-id`, `start-command-agent-id`, `env-agent-id`, `env-id`).
 
 ## tmux propagation
 
@@ -74,5 +74,5 @@ exec /path/to/real/pi "$@"
 
 ## Notes
 
-- Determinism is immediate when `@zeus_owner` or `ZEUS_AGENT_ID` exists.
-- For legacy/no-id sessions, determinism starts after first high-confidence match and backfill.
+- Determinism is immediate when `@zeus_owner` or session `ZEUS_AGENT_ID` exists.
+- Sessions without deterministic ids stay unassigned to avoid ambiguous ownership.

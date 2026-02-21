@@ -27,7 +27,7 @@ class TmuxSession:
     backend: str = ""         # tmux @zeus_backend tag
     display_name: str = ""    # tmux @zeus_name display alias
     session_path: str = ""    # tmux @zeus_session_path pointer
-    match_source: str = ""    # owner-id/env-id/cwd/screen-exact/screen-fallback
+    match_source: str = ""    # owner-id/*-agent-id/env-id
     _proc_metrics: Optional['ProcessMetrics'] = None
 
 
