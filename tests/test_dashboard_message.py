@@ -752,6 +752,29 @@ def test_do_queue_agent_message_enqueues_followup_delivery(monkeypatch) -> None:
     assert app._agent_message_drafts == {}
 
 
+def test_do_send_agent_message_reports_failure_and_keeps_draft(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1, agent_id="a" * 32)
+    app.agents = [agent]
+    draft_key = app._agent_message_draft_key(agent)
+    app._agent_message_drafts[draft_key] = "draft body"
+
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda _target, _message, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    ok = app.do_send_agent_message(agent, "hello")
+
+    assert ok is False
+    assert app._agent_message_drafts[draft_key] == "draft body"
+    assert notices[-1] == "Failed to send message: alpha"
+
+
 def test_do_queue_agent_message_reports_failure_and_keeps_draft(monkeypatch) -> None:
     app = _new_app()
     agent = _agent("alpha", 1, agent_id="a" * 32)
