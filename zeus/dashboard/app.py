@@ -132,6 +132,7 @@ from .screens import (
     SaveSnapshotScreen,
     RestoreSnapshotScreen,
     HelpScreen,
+    _list_available_model_specs,
 )
 
 
@@ -581,6 +582,8 @@ class ZeusApp(App):
     _dopamine_armed: bool = True
     _steady_armed: bool = True
     _last_invoke_model_spec: str = ""
+    _invoke_model_specs: list[str] = []
+    _invoke_model_specs_loaded: bool = False
     _celebration_cooldown_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
@@ -700,6 +703,7 @@ class ZeusApp(App):
         self._load_agent_tasks()
         self._load_agent_dependencies()
         self._load_panel_visibility()
+        self._warm_invoke_model_specs()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
         table.show_row_labels = False
@@ -4203,10 +4207,35 @@ class ZeusApp(App):
     def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
         self._last_invoke_model_spec = (model_spec or "").strip()
 
+    def do_get_invoke_model_specs(self) -> list[str]:
+        return list(self._invoke_model_specs)
+
+    def do_has_loaded_invoke_model_specs(self) -> bool:
+        return self._invoke_model_specs_loaded
+
+    def do_set_invoke_model_specs(self, specs: list[str]) -> None:
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for raw in specs:
+            spec = (raw or "").strip()
+            if not spec or spec in seen:
+                continue
+            seen.add(spec)
+            deduped.append(spec)
+        self._invoke_model_specs = deduped
+        self._invoke_model_specs_loaded = True
+
+    @work(thread=True, exclusive=True, group="invoke_models")
+    def _warm_invoke_model_specs(self) -> None:
+        specs = _list_available_model_specs()
+        self.call_from_thread(self.do_set_invoke_model_specs, specs)
+
     def action_new_agent(self) -> None:
         self.push_screen(
             NewAgentScreen(
                 preferred_model_spec=self.do_get_last_invoke_model_spec(),
+                available_model_specs=self.do_get_invoke_model_specs(),
+                model_specs_loaded=self.do_has_loaded_invoke_model_specs(),
             )
         )
 

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import threading
 from typing import TYPE_CHECKING, Literal, cast
 
 from rich.text import Text
@@ -69,6 +70,8 @@ if TYPE_CHECKING:
 # ── New agent ─────────────────────────────────────────────────────────
 
 _MODEL_LIST_TIMEOUT_S = 3.0
+_MODEL_LIST_CACHE: list[str] | None = None
+_MODEL_LIST_CACHE_LOCK = threading.Lock()
 
 
 def _parse_available_models_table(raw: str) -> list[str]:
@@ -108,18 +111,25 @@ def _parse_available_models_table(raw: str) -> list[str]:
 
 
 def _list_available_model_specs() -> list[str]:
-    try:
-        result = subprocess.run(
-            ["pi", "--list-models"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_MODEL_LIST_TIMEOUT_S,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
+    global _MODEL_LIST_CACHE
 
-    return _parse_available_models_table(result.stdout or "")
+    with _MODEL_LIST_CACHE_LOCK:
+        if _MODEL_LIST_CACHE is not None:
+            return list(_MODEL_LIST_CACHE)
+
+        try:
+            result = subprocess.run(
+                ["pi", "--list-models"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_MODEL_LIST_TIMEOUT_S,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+
+        _MODEL_LIST_CACHE = _parse_available_models_table(result.stdout or "")
+        return list(_MODEL_LIST_CACHE)
 
 
 class _ZeusScreenMixin:
@@ -135,13 +145,20 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
     _DIR_SUGGESTION_LIMIT = 12
 
-    def __init__(self, *, preferred_model_spec: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        preferred_model_spec: str = "",
+        available_model_specs: list[str] | None = None,
+        model_specs_loaded: bool = False,
+    ) -> None:
         super().__init__()
         self._dir_suggestion_values: list[str] = []
         self._dir_cycle_seed: str | None = None
         self._dir_cycle_index: int = -1
         self._dir_programmatic_change: bool = False
-        self._available_model_specs: list[str] = []
+        self._available_model_specs: list[str] = list(available_model_specs or [])
+        self._model_specs_loaded: bool = model_specs_loaded
         self._preferred_model_spec: str = preferred_model_spec.strip()
 
     def compose(self) -> ComposeResult:
@@ -158,15 +175,13 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 compact=False,
             )
             yield Label("Model:")
-            if not self._available_model_specs:
-                self._available_model_specs = _list_available_model_specs()
-            options: list[tuple[str, str]]
-            if self._available_model_specs:
-                options = [(spec, spec) for spec in self._available_model_specs]
-            else:
-                options = [("Default (auto)", "__default__")]
             selected_value = self._initial_model_select_value()
-            yield Select(options, value=selected_value, id="invoke-model", allow_blank=False)
+            yield Select(
+                self._model_select_options(),
+                value=selected_value,
+                id="invoke-model",
+                allow_blank=False,
+            )
             yield Label("Directory:")
             yield Input(
                 placeholder="e.g. /home/user/projects/backend",
@@ -182,6 +197,41 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if self._available_model_specs:
             return self._available_model_specs[0]
         return "__default__"
+
+    def _model_select_options(self) -> list[tuple[str, str]]:
+        if self._available_model_specs:
+            return [(spec, spec) for spec in self._available_model_specs]
+        return [("Default (auto)", "__default__")]
+
+    def _apply_available_model_specs(self, specs: list[str]) -> None:
+        if not self.is_attached:
+            return
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for raw in specs:
+            spec = (raw or "").strip()
+            if not spec or spec in seen:
+                continue
+            seen.add(spec)
+            deduped.append(spec)
+
+        self._available_model_specs = deduped
+        self._model_specs_loaded = True
+
+        if hasattr(self.zeus, "do_set_invoke_model_specs"):
+            self.zeus.do_set_invoke_model_specs(deduped)
+
+        model_select = self.query_one("#invoke-model", Select)
+        model_select.set_options(self._model_select_options())
+        model_select.value = self._initial_model_select_value()
+
+    @work(thread=True, exclusive=True, group="new_agent_models")
+    def _fetch_available_model_specs(self) -> None:
+        self.call_from_thread(
+            self._apply_available_model_specs,
+            _list_available_model_specs(),
+        )
 
     @staticmethod
     def _display_dir_path(path: str) -> str:
@@ -357,6 +407,17 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_mount(self) -> None:
         self.query_one("#agent-dir-suggestions", OptionList).add_class("hidden")
+
+        if (
+            hasattr(self.zeus, "do_has_loaded_invoke_model_specs")
+            and self.zeus.do_has_loaded_invoke_model_specs()
+            and hasattr(self.zeus, "do_get_invoke_model_specs")
+        ):
+            self._apply_available_model_specs(self.zeus.do_get_invoke_model_specs())
+            return
+
+        if not self._model_specs_loaded:
+            self._fetch_available_model_specs()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "agent-dir":

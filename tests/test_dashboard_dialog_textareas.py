@@ -17,6 +17,7 @@ from zeus.dashboard.screens import (
     RenameScreen,
     RenameTmuxScreen,
     SaveSnapshotScreen,
+    _list_available_model_specs,
     _parse_available_models_table,
 )
 
@@ -120,6 +121,7 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert source.index("invoke-model") < source.index("agent-dir")
     assert "OptionList(" in source
     assert "agent-dir-suggestions" in source
+    assert "_list_available_model_specs()" not in source
     assert "new-agent-buttons" not in source
     assert "launch-btn" not in source
     assert "cancel-btn" not in source
@@ -153,6 +155,29 @@ def test_parse_available_models_table_handles_no_models_message() -> None:
     assert parsed == []
 
 
+def test_list_available_model_specs_uses_in_process_cache(monkeypatch) -> None:
+    output = (
+        "provider model\n"
+        "anthropic claude-sonnet-4-5\n"
+    )
+    calls: list[bool] = []
+
+    monkeypatch.setattr("zeus.dashboard.screens._MODEL_LIST_CACHE", None)
+
+    def _run(*_args, **_kwargs):  # noqa: ANN001
+        calls.append(True)
+        return SimpleNamespace(stdout=output)
+
+    monkeypatch.setattr("zeus.dashboard.screens.subprocess.run", _run)
+
+    first = _list_available_model_specs()
+    second = _list_available_model_specs()
+
+    assert first == ["anthropic/claude-sonnet-4-5"]
+    assert second == ["anthropic/claude-sonnet-4-5"]
+    assert calls == [True]
+
+
 def test_new_agent_initial_model_select_prefers_last_used_when_available() -> None:
     screen = NewAgentScreen(preferred_model_spec="openai/gpt-4o")
     screen._available_model_specs = [
@@ -170,9 +195,15 @@ def test_new_agent_initial_model_select_falls_back_when_last_used_missing() -> N
     assert screen._initial_model_select_value() == "anthropic/claude-sonnet-4-5"
 
 
-def test_action_new_agent_passes_last_used_model_into_dialog(monkeypatch) -> None:
+def test_action_new_agent_passes_last_used_and_cached_models_into_dialog(
+    monkeypatch,
+) -> None:
     app = ZeusApp()
     app.do_set_last_invoke_model_spec("openai/gpt-4o")
+    app.do_set_invoke_model_specs([
+        "anthropic/claude-sonnet-4-5",
+        "openai/gpt-4o",
+    ])
 
     pushed: list[object] = []
     monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
@@ -182,6 +213,72 @@ def test_action_new_agent_passes_last_used_model_into_dialog(monkeypatch) -> Non
     assert pushed
     assert isinstance(pushed[0], NewAgentScreen)
     assert pushed[0]._preferred_model_spec == "openai/gpt-4o"
+    assert pushed[0]._available_model_specs == [
+        "anthropic/claude-sonnet-4-5",
+        "openai/gpt-4o",
+    ]
+    assert pushed[0]._model_specs_loaded is True
+
+
+def test_new_agent_on_mount_fetches_models_when_not_preloaded(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    options = _OptionListStub(hidden=False)
+    fetch_calls: list[bool] = []
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir-suggestions":
+            return options
+        raise LookupError(selector)
+
+    class _ZeusStub:
+        def do_has_loaded_invoke_model_specs(self) -> bool:
+            return False
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(screen, "_fetch_available_model_specs", lambda: fetch_calls.append(True))
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.on_mount()
+
+    assert fetch_calls == [True]
+
+
+def test_new_agent_on_mount_uses_cached_models_without_fetch(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    options = _OptionListStub(hidden=False)
+    model_select = _SelectStub("__default__")
+    fetch_calls: list[bool] = []
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir-suggestions":
+            return options
+        if selector == "#invoke-model":
+            return model_select
+        raise LookupError(selector)
+
+    class _ZeusStub:
+        def do_has_loaded_invoke_model_specs(self) -> bool:
+            return True
+
+        def do_get_invoke_model_specs(self) -> list[str]:
+            return ["anthropic/claude-sonnet-4-5", "openai/gpt-4o"]
+
+        def do_set_invoke_model_specs(self, _specs: list[str]) -> None:
+            return
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(screen, "_fetch_available_model_specs", lambda: fetch_calls.append(True))
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(NewAgentScreen, "is_attached", property(lambda _self: True))
+
+    screen.on_mount()
+
+    assert fetch_calls == []
+    assert model_select.options == [
+        ("anthropic/claude-sonnet-4-5", "anthropic/claude-sonnet-4-5"),
+        ("openai/gpt-4o", "openai/gpt-4o"),
+    ]
+    assert model_select.value == "anthropic/claude-sonnet-4-5"
 
 
 def test_aegis_config_dialog_uses_radio_options_and_textarea() -> None:
@@ -600,9 +697,13 @@ class _SelectStub:
     def __init__(self, value: str) -> None:
         self.value = value
         self.focused = False
+        self.options: list[tuple[str, str]] = []
 
     def focus(self) -> None:
         self.focused = True
+
+    def set_options(self, options: list[tuple[str, str]]) -> None:
+        self.options = list(options)
 
 
 class _TextAreaStub:
