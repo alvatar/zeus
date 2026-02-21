@@ -91,7 +91,7 @@ def test_extract_next_task_falls_back_when_only_inline_checkbox_text_exists() ->
 
 
 def test_extract_next_task_falls_back_to_first_non_empty_line() -> None:
-    note = "\nplain next step\n- [x] done item\n"
+    note = "\nplain next step\nplain follow-up\n"
 
     extracted = _extract_next_task(note)
     assert extracted is not None
@@ -99,6 +99,14 @@ def test_extract_next_task_falls_back_to_first_non_empty_line() -> None:
 
     assert message == "plain next step"
     assert "plain next step" not in updated
+
+
+def test_extract_next_task_does_not_fallback_when_checkbox_headers_exist() -> None:
+    note = "\nplain next step\n- [x] done item\n"
+
+    extracted = _extract_next_task(note)
+
+    assert extracted is None
 
 
 def test_action_queue_next_task_queues_and_marks_done(monkeypatch) -> None:
@@ -182,6 +190,33 @@ def test_action_queue_next_task_notifies_when_no_task(monkeypatch) -> None:
     app.action_queue_next_task()
 
     assert notices[-1] == "No task found for alpha"
+
+
+def test_action_queue_next_task_ignores_plain_lines_when_only_done_headers_remain(
+    monkeypatch,
+) -> None:
+    app = ZeusApp()
+    agent = _agent("alpha", 1, agent_id="agent-1")
+    app._agent_tasks = {
+        "agent-1": "legacy plain line\n- [x] done one\n- [x] done two"
+    }
+
+    notices: list[str] = []
+    attempted: list[bool] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda *args, **kwargs: attempted.append(True) or True,
+    )
+
+    app.action_queue_next_task()
+
+    assert notices[-1] == "No task found for alpha"
+    assert attempted == []
 
 
 def test_action_clear_done_tasks_clears_done_entries(monkeypatch) -> None:

@@ -421,7 +421,7 @@ def _extract_next_task(task_text: str) -> tuple[str, str] | None:
     1. First unchecked task block (``- []`` or ``- [ ]``), continuing until the
        next task header (unchecked or checked). The selected task is marked
        done in-place as ``- [x]``.
-    2. If no checkbox task exists, consume the first non-empty line.
+    2. If no checkbox headers exist at all, consume the first non-empty line.
     """
     lines = task_text.splitlines()
     if not lines:
@@ -455,6 +455,9 @@ def _extract_next_task(task_text: str) -> tuple[str, str] | None:
         )
         updated_task_text = "\n".join(lines).rstrip()
         return message, updated_task_text
+
+    if any(_TASK_HEADER_RE.match(line) for line in lines):
+        return None
 
     first_non_empty = next((idx for idx, line in enumerate(lines) if line.strip()), None)
     if first_non_empty is None:
