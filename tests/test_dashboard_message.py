@@ -14,7 +14,7 @@ from zeus.dashboard.screens import (
     ExpandedOutputScreen,
 )
 from zeus.models import AgentWindow
-from tests.helpers import capture_kitty_cmd, capture_notify
+from tests.helpers import capture_notify
 
 
 def _agent(
@@ -620,14 +620,25 @@ def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -
     polemarch = _agent("planner", 1, agent_id="polemarch-1")
     app.agents = [polemarch]
 
-    sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, text, source_name, source_agent_id="", delivery_mode="followUp": sent.append(
+            (target.name, text, delivery_mode)
+        )
+        or True,
+    )
+
+    drains: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
 
     app.schedule_polemarch_bootstrap("polemarch-1", "planner")
     app._deliver_pending_polemarch_bootstraps()
 
     assert sent
-    message = sent[0][1][-1]
+    message = sent[0][1]
     assert isinstance(message, str)
     assert "You are the agent named planner." in message
     assert "A polemarch is a coordinator role in Zeus, not your personal name." in message
@@ -638,6 +649,8 @@ def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -
     assert "DO NOT poll message-tmp files as a communication protocol." in message
     assert "@zeus_agent \"$HOPLITE_ID\"" in message
     assert "@zeus_role \"hoplite\"" in message
+    assert sent[0][2] == "steer"
+    assert drains == [True]
     assert notices[-1] == "Polemarch bootstrap sent: planner"
     assert app._pending_polemarch_bootstraps == {}
 
@@ -645,13 +658,30 @@ def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -
 def test_pending_polemarch_bootstrap_waits_until_agent_visible(monkeypatch) -> None:
     app = _new_app()
 
-    sent = capture_kitty_cmd(monkeypatch)
+    app.schedule_polemarch_bootstrap("polemarch-1", "planner")
+    app._deliver_pending_polemarch_bootstraps()
+
+    assert app._pending_polemarch_bootstraps == {"polemarch-1": "planner"}
+
+
+def test_pending_polemarch_bootstrap_keeps_pending_when_enqueue_fails(monkeypatch) -> None:
+    app = _new_app()
+    polemarch = _agent("planner", 1, agent_id="polemarch-1")
+    app.agents = [polemarch]
+
+    notices: list[str] = []
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, text, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
 
     app.schedule_polemarch_bootstrap("polemarch-1", "planner")
     app._deliver_pending_polemarch_bootstraps()
 
-    assert sent == []
     assert app._pending_polemarch_bootstraps == {"polemarch-1": "planner"}
+    assert notices[-1] == "Polemarch bootstrap failed: planner"
 
 
 def test_enter_on_table_opens_message_dialog_when_input_hidden(monkeypatch) -> None:

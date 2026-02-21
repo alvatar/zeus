@@ -13,7 +13,7 @@ class _FakeTimer:
         self.stopped = True
 
 
-def _agent(name: str, kitty_id: int) -> AgentWindow:
+def _agent(name: str, kitty_id: int, agent_id: str = "") -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
         socket="/tmp/kitty-1",
@@ -21,6 +21,7 @@ def _agent(name: str, kitty_id: int) -> AgentWindow:
         pid=100 + kitty_id,
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
+        agent_id=agent_id,
     )
 
 
@@ -214,21 +215,26 @@ def test_aegis_transition_schedules_single_delay_timer(monkeypatch) -> None:
 
 def test_aegis_delay_sends_prompt_once_and_starts_post_check(monkeypatch) -> None:
     app = _new_app()
-    hippeus = _agent("alpha", 1)
+    hippeus = _agent("alpha", 1, agent_id="a" * 32)
     hippeus.state = State.IDLE
     app.agents = [hippeus]
     key = app._agent_key(hippeus)
     app._aegis_enabled.add(key)
     app._aegis_modes[key] = app._AEGIS_MODE_PENDING_DELAY
 
-    sent: list[tuple[str, str]] = []
+    sent: list[tuple[str, str, str]] = []
+    drains: list[bool] = []
     timers: list[tuple[float, object]] = []
 
     monkeypatch.setattr(
         app,
-        "_send_text_to_agent",
-        lambda agent, text: sent.append((agent.name, text)),
+        "_enqueue_outbound_agent_message",
+        lambda agent, text, source_name, source_agent_id="", delivery_mode="followUp": sent.append(
+            (agent.name, text, delivery_mode)
+        )
+        or True,
     )
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
     monkeypatch.setattr(
         app,
         "set_timer",
@@ -237,18 +243,19 @@ def test_aegis_delay_sends_prompt_once_and_starts_post_check(monkeypatch) -> Non
 
     app._on_aegis_delay_elapsed(key)
 
-    assert sent == [("alpha", app._AEGIS_PROMPT)]
+    assert sent == [("alpha", app._AEGIS_PROMPT, "steer")]
+    assert drains == [True]
     assert app._aegis_modes[key] == app._AEGIS_MODE_POST_CHECK
     assert len(timers) == 1
     assert timers[0][0] == app._AEGIS_CHECK_S
 
     app._on_aegis_delay_elapsed(key)
-    assert sent == [("alpha", app._AEGIS_PROMPT)]
+    assert sent == [("alpha", app._AEGIS_PROMPT, "steer")]
 
 
 def test_aegis_delay_uses_configured_prompt(monkeypatch) -> None:
     app = _new_app()
-    hippeus = _agent("alpha", 1)
+    hippeus = _agent("alpha", 1, agent_id="a" * 32)
     hippeus.state = State.IDLE
     app.agents = [hippeus]
     key = app._agent_key(hippeus)
@@ -256,13 +263,17 @@ def test_aegis_delay_uses_configured_prompt(monkeypatch) -> None:
     app._aegis_modes[key] = app._AEGIS_MODE_PENDING_DELAY
     app._aegis_prompts[key] = "custom-aegis-prompt"
 
-    sent: list[tuple[str, str]] = []
+    sent: list[tuple[str, str, str]] = []
 
     monkeypatch.setattr(
         app,
-        "_send_text_to_agent",
-        lambda agent, text: sent.append((agent.name, text)),
+        "_enqueue_outbound_agent_message",
+        lambda agent, text, source_name, source_agent_id="", delivery_mode="followUp": sent.append(
+            (agent.name, text, delivery_mode)
+        )
+        or True,
     )
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: None)
     monkeypatch.setattr(
         app,
         "set_timer",
@@ -271,7 +282,39 @@ def test_aegis_delay_uses_configured_prompt(monkeypatch) -> None:
 
     app._on_aegis_delay_elapsed(key)
 
-    assert sent == [("alpha", "custom-aegis-prompt")]
+    assert sent == [("alpha", "custom-aegis-prompt", "steer")]
+
+
+def test_aegis_delay_halts_when_enqueue_fails(monkeypatch) -> None:
+    app = _new_app()
+    hippeus = _agent("alpha", 1, agent_id="a" * 32)
+    hippeus.state = State.IDLE
+    app.agents = [hippeus]
+    key = app._agent_key(hippeus)
+    app._aegis_enabled.add(key)
+    app._aegis_modes[key] = app._AEGIS_MODE_PENDING_DELAY
+
+    notices: list[str] = []
+    timers: list[tuple[float, object]] = []
+
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda agent, text, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: notices.append("drain"))
+    monkeypatch.setattr(
+        app,
+        "set_timer",
+        lambda delay, callback: timers.append((delay, callback)) or _FakeTimer(),
+    )
+
+    app._on_aegis_delay_elapsed(key)
+
+    assert app._aegis_modes[key] == app._AEGIS_MODE_HALTED
+    assert notices == ["Aegis send failed: alpha"]
+    assert timers == []
 
 
 def test_aegis_post_check_rearms_only_if_working_again() -> None:

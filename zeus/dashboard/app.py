@@ -1218,7 +1218,18 @@ class ZeusApp(App):
             return
 
         prompt_text = self._aegis_prompts.get(key, self._AEGIS_PROMPT)
-        self._send_text_to_agent(agent, prompt_text)
+        sent = self._enqueue_outbound_agent_message(
+            agent,
+            prompt_text,
+            source_name="oracle",
+            delivery_mode="steer",
+        )
+        if not sent:
+            self.notify_force(f"Aegis send failed: {agent.name}", timeout=3)
+            self._aegis_modes[key] = self._AEGIS_MODE_HALTED
+            return
+
+        self._drain_message_queue()
         self._aegis_modes[key] = self._AEGIS_MODE_POST_CHECK
         self._cancel_aegis_check_timer(key)
         self._aegis_check_timers[key] = self.set_timer(
@@ -4162,10 +4173,17 @@ class ZeusApp(App):
             if polemarch is None:
                 continue
 
-            self._send_text_to_agent(
+            enqueued = self._enqueue_outbound_agent_message(
                 polemarch,
                 self._polemarch_bootstrap_message(polemarch.name),
+                source_name="oracle",
+                delivery_mode="steer",
             )
+            if not enqueued:
+                self.notify_force(f"Polemarch bootstrap failed: {polemarch.name}", timeout=3)
+                continue
+
+            self._drain_message_queue()
             self.notify(f"Polemarch bootstrap sent: {polemarch.name}", timeout=3)
             self._pending_polemarch_bootstraps.pop(agent_id, None)
 
@@ -5246,10 +5264,6 @@ class ZeusApp(App):
             return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
-
-    def _send_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
-        """Send text to agent backend followed by Enter."""
-        return self._dispatch_agent_text(agent, text)
 
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""

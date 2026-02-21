@@ -9,6 +9,8 @@ Applies to Zeus delivery paths targeting deterministic agent ids:
 - dashboard broadcast/direct queued delivery paths
 - dashboard message dialog send/queue
 - dashboard interact send/queue when target is an agent row
+- dashboard Aegis automated prompts
+- dashboard polemarch bootstrap onboarding prompts
 
 Does not apply to tmux-row interact transport (no deterministic agent id contract).
 
