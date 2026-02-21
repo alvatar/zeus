@@ -80,7 +80,7 @@ def test_invoke_dialog_css_has_role_selector_layout() -> None:
     assert "layer: overlay;" in css.NEW_AGENT_CSS
     assert "#agent-dir-suggestions.hidden {" in css.NEW_AGENT_CSS
     assert "margin: 1 0;" in css.NEW_AGENT_CSS
-    assert "max-height: 30;" in css.NEW_AGENT_CSS
+    assert "max-height: 34;" in css.NEW_AGENT_CSS
 
 
 def test_dependency_dialog_css_has_expected_spacing() -> None:
@@ -147,6 +147,7 @@ def test_expanded_output_stream_uses_zero_side_padding_only_for_output_content()
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
     assert "position: relative;" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
+    assert "background: #161616;" in css.EXPANDED_OUTPUT_CSS
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-scroll-flash {" in css.EXPANDED_OUTPUT_CSS
     assert "width: 2;" in css.EXPANDED_OUTPUT_CSS
