@@ -1,11 +1,13 @@
-"""Tests for queue-send helper variants."""
+"""Tests for outbound queue helper behavior."""
+
+from pathlib import Path
 
 from zeus.dashboard.app import ZeusApp
+from zeus.message_queue import OutboundEnvelope
 from zeus.models import AgentWindow
-from tests.helpers import capture_kitty_cmd
 
 
-def _agent(name: str, kitty_id: int) -> AgentWindow:
+def _agent(name: str, kitty_id: int, agent_id: str = "") -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
         socket="/tmp/kitty-1",
@@ -13,20 +15,61 @@ def _agent(name: str, kitty_id: int) -> AgentWindow:
         pid=100 + kitty_id,
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
+        agent_id=agent_id,
     )
 
 
-def test_queue_text_to_agent_interact_uses_robust_clear_sequence(monkeypatch) -> None:
+def test_enqueue_outbound_agent_message_records_delivery_mode_and_history(
+    monkeypatch,
+) -> None:
+    app = ZeusApp()
+    agent = _agent("target", 2, agent_id="a" * 32)
+
+    queued: list[OutboundEnvelope] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_envelope",
+        lambda envelope: queued.append(envelope) or Path("/tmp/queue.json"),
+    )
+
+    history: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.append_history",
+        lambda key, text: history.append((key, text)) or [text],
+    )
+
+    ok = app._enqueue_outbound_agent_message(
+        agent,
+        "hello",
+        source_name="oracle",
+        delivery_mode="followUp",
+    )
+
+    assert ok is True
+    assert len(queued) == 1
+    envelope = queued[0]
+    assert envelope.delivery_mode == "followUp"
+    assert envelope.target_agent_id == "a" * 32
+    assert envelope.target_name == "target"
+    assert envelope.message == "hello"
+    assert history == [("agent:target", "hello")]
+
+
+def test_enqueue_outbound_agent_message_rejects_missing_target_agent_id(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("target", 2)
 
-    sent = capture_kitty_cmd(monkeypatch)
+    queued: list[OutboundEnvelope] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.app.enqueue_envelope",
+        lambda envelope: queued.append(envelope) or Path("/tmp/queue.json"),
+    )
 
-    app._queue_text_to_agent_interact(agent, "hello")
+    ok = app._enqueue_outbound_agent_message(
+        agent,
+        "hello",
+        source_name="oracle",
+        delivery_mode="steer",
+    )
 
-    assert sent == [
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x1b[13;3u")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x03")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
-    ]
+    assert ok is False
+    assert queued == []

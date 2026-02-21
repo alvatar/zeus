@@ -537,23 +537,31 @@ def test_message_screen_mouse_scroll_does_not_forward_inside_dialog(monkeypatch)
 
 def test_action_go_ahead_queues_fixed_message_to_selected_agent(monkeypatch) -> None:
     app = _new_app()
-    agent = _agent("alpha", 1)
+    agent = _agent("alpha", 1, agent_id="a" * 32)
     app.agents = [agent]
 
-    sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
+
+    calls: list[tuple[str, str, str, str]] = []
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, message, source_name, delivery_mode)
+        )
+        or True,
+    )
+
+    drains: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
 
     app.action_go_ahead()
 
-    assert sent == [
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "go ahead")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x1b[13;3u")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x03")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
-    ]
+    assert calls == [("alpha", "go ahead", "oracle", "followUp")]
+    assert drains == [True]
     assert notices[-1] == "Queued go ahead: alpha"
 
 
@@ -571,9 +579,9 @@ def test_action_go_ahead_requires_selected_agent(monkeypatch) -> None:
 
 def test_action_go_ahead_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
     app = _new_app()
-    paused = _agent("paused", 1)
-    blocked = _agent("blocked", 2)
-    blocker = _agent("blocker", 3)
+    paused = _agent("paused", 1, agent_id="1" * 32)
+    blocked = _agent("blocked", 2, agent_id="2" * 32)
+    blocker = _agent("blocker", 3, agent_id="3" * 32)
 
     app.agents = [paused, blocked, blocker]
     app._agent_priorities[paused.name] = 4
@@ -581,8 +589,17 @@ def test_action_go_ahead_unpauses_paused_target_and_rejects_blocked_target(monke
         blocker
     )
 
-    sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, delivery_mode)
+        )
+        or True,
+    )
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: None)
 
     monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
 
@@ -595,12 +612,7 @@ def test_action_go_ahead_unpauses_paused_target_and_rejects_blocked_target(monke
     app.action_go_ahead()
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
-    assert sent[:4] == [
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "go ahead")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x1b[13;3u")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x03")),
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "\x15")),
-    ]
+    assert calls == [("paused", "followUp")]
 
 
 def test_schedule_polemarch_bootstrap_delivers_when_agent_visible(monkeypatch) -> None:
@@ -845,7 +857,7 @@ def test_dispatch_tmux_text_send_uses_enter_only(monkeypatch) -> None:
 
 def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     app = _new_app()
-    paused = _agent("paused", 1)
+    paused = _agent("paused", 1, agent_id="a" * 32)
     app.agents = [paused]
     app._agent_priorities[paused.name] = 4
     app._interact_visible = True
@@ -856,25 +868,29 @@ def test_action_send_interact_unpauses_paused_target(monkeypatch) -> None:
     monkeypatch.setattr(app, "query_one", lambda selector, cls=None: ta)
     monkeypatch.setattr(app, "_append_interact_history", lambda _text: None)
 
-    sent = capture_kitty_cmd(monkeypatch)
-    history_calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "zeus.dashboard.app.append_history",
-        lambda key, text: history_calls.append((key, text)) or [text],
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, delivery_mode)
+        )
+        or True,
     )
+
+    drains: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
 
     app.action_send_interact()
 
     assert app._agent_priorities.get(paused.name, 3) == 3
-    assert sent == [
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
-    ]
-    assert history_calls == [("agent:paused", "hello")]
+    assert calls == [("paused", "steer")]
+    assert drains == [True]
 
 
 def test_action_queue_interact_failed_dispatch_keeps_input(monkeypatch) -> None:
     app = _new_app()
-    agent = _agent("alpha", 1)
+    agent = _agent("alpha", 1, agent_id="a" * 32)
     app.agents = [agent]
     app._interact_visible = True
     app._show_interact_input = True
@@ -888,7 +904,11 @@ def test_action_queue_interact_failed_dispatch_keeps_input(monkeypatch) -> None:
     monkeypatch.setattr(app, "_interact_target_agent", lambda: agent)
     monkeypatch.setattr(app, "_resume_agent_if_paused", lambda _agent: False)
     monkeypatch.setattr(app, "_get_agent_by_key", lambda _key: agent)
-    monkeypatch.setattr(app, "_queue_text_to_agent_interact", lambda _agent, _text: False)
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda _target, _text, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
 
     resets: list[bool] = []
     monkeypatch.setattr(app, "_reset_history_nav", lambda: resets.append(True))
@@ -901,6 +921,41 @@ def test_action_queue_interact_failed_dispatch_keeps_input(monkeypatch) -> None:
     assert ta.text == "hello"
     assert resets == []
     assert notices[-1] == "Failed to queue message: alpha"
+
+
+def test_action_send_interact_failed_dispatch_keeps_input(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1, agent_id="a" * 32)
+    app.agents = [agent]
+    app._interact_visible = True
+    app._show_interact_input = True
+    app._interact_agent_key = app._agent_key(agent)
+
+    ta = _DummyInteractInput("hello")
+    monkeypatch.setattr(app, "query_one", lambda selector, cls=None: ta)
+    monkeypatch.setattr(app, "_has_modal_open", lambda: False)
+    monkeypatch.setattr(app, "_current_interact_block_reason", lambda: None)
+    monkeypatch.setattr(app, "_append_interact_history", lambda _text: None)
+    monkeypatch.setattr(app, "_interact_target_agent", lambda: agent)
+    monkeypatch.setattr(app, "_resume_agent_if_paused", lambda _agent: False)
+    monkeypatch.setattr(app, "_get_agent_by_key", lambda _key: agent)
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda _target, _text, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
+
+    resets: list[bool] = []
+    monkeypatch.setattr(app, "_reset_history_nav", lambda: resets.append(True))
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    app.action_send_interact()
+
+    assert ta.text == "hello"
+    assert resets == []
+    assert notices[-1] == "Failed to send message: alpha"
 
 
 def test_resume_agent_if_paused_refreshes_ui_when_running(monkeypatch) -> None:

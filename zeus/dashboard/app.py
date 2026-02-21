@@ -3092,6 +3092,7 @@ class ZeusApp(App):
             message=clean,
         )
         enqueue_envelope(envelope)
+        append_history(self._history_key_for_agent(target), clean)
         return True
 
     def _drain_message_queue(self) -> None:
@@ -4245,7 +4246,17 @@ class ZeusApp(App):
             return
 
         live, clean = prepared
-        self._queue_text_to_agent_interact(live, clean)
+        enqueued = self._enqueue_outbound_agent_message(
+            live,
+            clean,
+            source_name="oracle",
+            delivery_mode="followUp",
+        )
+        if not enqueued:
+            self.notify_force(f"Failed to queue message: {live.name}", timeout=3)
+            return
+
+        self._drain_message_queue()
         self.notify(f"Queued go ahead: {live.name}", timeout=2)
 
     def _resume_agent_if_paused(self, agent: AgentWindow) -> bool:
@@ -4401,7 +4412,22 @@ class ZeusApp(App):
             self.notify("Next task is empty; nothing queued", timeout=2)
             return
 
-        self._queue_text_to_agent(agent, message)
+        prepared = self._prepare_message_dialog_send(agent, message)
+        if prepared is None:
+            return
+
+        live, clean = prepared
+        enqueued = self._enqueue_outbound_agent_message(
+            live,
+            clean,
+            source_name="oracle",
+            delivery_mode="followUp",
+        )
+        if not enqueued:
+            self.notify_force(f"Failed to queue message: {live.name}", timeout=3)
+            return
+
+        self._drain_message_queue()
 
         if updated_task_text.strip():
             self._agent_tasks[key] = updated_task_text
@@ -4409,7 +4435,7 @@ class ZeusApp(App):
             self._agent_tasks.pop(key, None)
 
         self._save_agent_tasks()
-        self.notify(f"Queued next task: {agent.name}", timeout=3)
+        self.notify(f"Queued next task: {live.name}", timeout=3)
         self._render_agent_table_and_status()
         if self._interact_visible:
             self._refresh_interact_panel()
@@ -5225,22 +5251,6 @@ class ZeusApp(App):
         """Send text to agent backend followed by Enter."""
         return self._dispatch_agent_text(agent, text)
 
-    def _queue_text_to_agent(self, agent: AgentWindow, text: str) -> bool:
-        """Queue cross-agent text and clear remote editor robustly."""
-        return self._dispatch_agent_text(
-            agent,
-            text,
-            queue_sequence=self._QUEUE_SEQUENCE_DEFAULT,
-        )
-
-    def _queue_text_to_agent_interact(self, agent: AgentWindow, text: str) -> bool:
-        """Queue via Ctrl+W path with robust remote-editor clear sequence."""
-        return self._dispatch_agent_text(
-            agent,
-            text,
-            queue_sequence=self._QUEUE_SEQUENCE_DEFAULT,
-        )
-
     def action_send_interact(self) -> None:
         """Send text from interact input to the agent/tmux (Ctrl+s)."""
         if self._has_modal_open():
@@ -5278,7 +5288,18 @@ class ZeusApp(App):
         if not agent:
             self.notify("Hippeus no longer available", timeout=2)
             return
-        self._send_text_to_agent(agent, text)
+
+        sent = self._enqueue_outbound_agent_message(
+            agent,
+            text,
+            source_name="oracle",
+            delivery_mode="steer",
+        )
+        if not sent:
+            self.notify_force(f"Failed to send message: {agent.name}", timeout=3)
+            return
+
+        self._drain_message_queue()
         ta.clear()
         ta.styles.height = 3
         self._reset_history_nav()
@@ -5323,10 +5344,18 @@ class ZeusApp(App):
         if not agent:
             self.notify("Hippeus no longer available", timeout=2)
             return
-        queued = self._queue_text_to_agent_interact(agent, text)
+
+        queued = self._enqueue_outbound_agent_message(
+            agent,
+            text,
+            source_name="oracle",
+            delivery_mode="followUp",
+        )
         if not queued:
             self.notify_force(f"Failed to queue message: {agent.name}", timeout=3)
             return
+
+        self._drain_message_queue()
         ta.clear()
         ta.styles.height = 3
         self._reset_history_nav()

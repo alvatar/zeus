@@ -4,11 +4,13 @@ Status: Interface (normative)
 
 ## Scope
 
-Applies to **queue-route** Zeus delivery only:
+Applies to Zeus delivery paths targeting deterministic agent ids:
 - `zeus-msg send`
 - dashboard broadcast/direct queued delivery paths
+- dashboard message dialog send/queue
+- dashboard interact send/queue when target is an agent row
 
-Does not apply to local interact editor direct keystroke send paths.
+Does not apply to tmux-row interact transport (no deterministic agent id contract).
 
 ## Storage Roots
 

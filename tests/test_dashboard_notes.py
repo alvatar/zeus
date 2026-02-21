@@ -104,11 +104,12 @@ def test_extract_next_task_falls_back_to_first_non_empty_line() -> None:
 def test_action_queue_next_task_queues_and_marks_done(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("alpha", 1, agent_id="agent-1")
+    app.agents = [agent]
     app._agent_tasks = {
         "agent-1": "- [ ] first line\n  detail line\n- [ ] second line"
     }
 
-    queued: list[tuple[str, str]] = []
+    queued: list[tuple[str, str, str, str]] = []
     notices: list[str] = []
     renders: list[bool] = []
 
@@ -116,9 +117,13 @@ def test_action_queue_next_task_queues_and_marks_done(monkeypatch) -> None:
     monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
     monkeypatch.setattr(
         app,
-        "_queue_text_to_agent",
-        lambda target, text: queued.append((target.name, text)),
+        "_enqueue_outbound_agent_message",
+        lambda target, text, source_name, source_agent_id="", delivery_mode="followUp": queued.append(
+            (target.name, text, source_name, delivery_mode)
+        )
+        or True,
     )
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: None)
     monkeypatch.setattr(app, "_save_agent_tasks", lambda: None)
     monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
     monkeypatch.setattr(
@@ -130,10 +135,37 @@ def test_action_queue_next_task_queues_and_marks_done(monkeypatch) -> None:
 
     app.action_queue_next_task()
 
-    assert queued == [("alpha", "first line\n  detail line")]
+    assert queued == [("alpha", "first line\n  detail line", "oracle", "followUp")]
     assert app._agent_tasks["agent-1"].splitlines()[0] == "- [x] first line"
     assert notices[-1] == "Queued next task: alpha"
     assert renders == [True]
+
+
+def test_action_queue_next_task_keeps_task_when_enqueue_fails(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent("alpha", 1, agent_id="agent-1")
+    app.agents = [agent]
+    original = "- [ ] first line\n  detail line\n- [ ] second line"
+    app._agent_tasks = {"agent-1": original}
+
+    notices: list[str] = []
+    saves: list[bool] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, text, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
+    monkeypatch.setattr(app, "notify_force", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "_save_agent_tasks", lambda: saves.append(True))
+
+    app.action_queue_next_task()
+
+    assert app._agent_tasks["agent-1"] == original
+    assert notices[-1] == "Failed to queue message: alpha"
+    assert saves == []
 
 
 def test_action_queue_next_task_notifies_when_no_task(monkeypatch) -> None:
