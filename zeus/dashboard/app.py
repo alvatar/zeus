@@ -3034,6 +3034,7 @@ class ZeusApp(App):
         source_agent_id: str = "",
         source_name: str = "",
         source_role: str = "",
+        delivery_mode: str = "followUp",
         message_id: str = "",
     ) -> bool:
         if target.kind == "agent" and target.agent is not None:
@@ -3049,6 +3050,10 @@ class ZeusApp(App):
         if not recipient_agent_id:
             return False
 
+        clean_mode = (delivery_mode or "followUp").strip()
+        if clean_mode not in {"followUp", "steer"}:
+            clean_mode = "followUp"
+
         return enqueue_agent_bus_message(
             recipient_agent_id,
             message,
@@ -3056,7 +3061,7 @@ class ZeusApp(App):
             source_name=source_name,
             source_agent_id=source_agent_id,
             source_role=source_role,
-            deliver_as="followUp",
+            deliver_as=clean_mode,
         )
 
     def _enqueue_outbound_agent_message(
@@ -3066,6 +3071,7 @@ class ZeusApp(App):
         *,
         source_name: str,
         source_agent_id: str = "",
+        delivery_mode: str = "followUp",
     ) -> bool:
         target_id = (target.agent_id or "").strip()
         if not target_id:
@@ -3082,6 +3088,7 @@ class ZeusApp(App):
             target_ref=target_id,
             target_agent_id=target_id,
             target_name=target.name,
+            delivery_mode=delivery_mode,
             message=clean,
         )
         enqueue_envelope(envelope)
@@ -3231,6 +3238,7 @@ class ZeusApp(App):
                         source_agent_id=claimed.source_agent_id,
                         source_name=claimed.source_name,
                         source_role=claimed.source_role,
+                        delivery_mode=claimed.delivery_mode,
                         message_id=claimed.id,
                     )
                     if not delivered:
@@ -4288,7 +4296,17 @@ class ZeusApp(App):
             return False
 
         live, clean = prepared
-        self._send_text_to_agent(live, clean)
+        enqueued = self._enqueue_outbound_agent_message(
+            live,
+            clean,
+            source_name="oracle",
+            delivery_mode="steer",
+        )
+        if not enqueued:
+            self.notify_force(f"Failed to send message: {live.name}", timeout=3)
+            return False
+
+        self._drain_message_queue()
         self.do_clear_agent_message_draft(live)
         return True
 
@@ -4298,11 +4316,17 @@ class ZeusApp(App):
             return False
 
         live, clean = prepared
-        queued = self._queue_text_to_agent_interact(live, clean)
-        if not queued:
+        enqueued = self._enqueue_outbound_agent_message(
+            live,
+            clean,
+            source_name="oracle",
+            delivery_mode="followUp",
+        )
+        if not enqueued:
             self.notify_force(f"Failed to queue message: {live.name}", timeout=3)
             return False
 
+        self._drain_message_queue()
         self.do_clear_agent_message_draft(live)
         return True
 

@@ -25,6 +25,10 @@ _TARGET_HOPLITE = "hoplite"
 _TARGET_PHALANX = "phalanx"
 _VALID_TARGET_KINDS = {_TARGET_AGENT, _TARGET_HOPLITE, _TARGET_PHALANX}
 
+_DELIVERY_FOLLOW_UP = "followUp"
+_DELIVERY_STEER = "steer"
+_VALID_DELIVERY_MODES = {_DELIVERY_FOLLOW_UP, _DELIVERY_STEER}
+
 
 @dataclass
 class OutboundEnvelope:
@@ -41,6 +45,7 @@ class OutboundEnvelope:
     target_owner_id: str
     target_agent_id: str
     target_name: str
+    delivery_mode: str
     message: str
     created_at: float
     updated_at: float
@@ -62,11 +67,15 @@ class OutboundEnvelope:
         target_owner_id: str = "",
         target_agent_id: str = "",
         target_name: str = "",
+        delivery_mode: str = _DELIVERY_FOLLOW_UP,
     ) -> "OutboundEnvelope":
         now = time.time()
         kind = target_kind.strip().lower() or _TARGET_AGENT
         ref = target_ref.strip()
         agent_id = target_agent_id.strip()
+        mode = delivery_mode.strip() or _DELIVERY_FOLLOW_UP
+        if mode not in _VALID_DELIVERY_MODES:
+            mode = _DELIVERY_FOLLOW_UP
 
         if kind == _TARGET_AGENT:
             if not ref:
@@ -86,6 +95,7 @@ class OutboundEnvelope:
             target_owner_id=target_owner_id.strip(),
             target_agent_id=agent_id,
             target_name=target_name.strip(),
+            delivery_mode=mode,
             message=message,
             created_at=now,
             updated_at=now,
@@ -117,6 +127,7 @@ class OutboundEnvelope:
         target_owner_id = _s("target_owner_id")
         target_agent_id = _s("target_agent_id")
         target_name = _s("target_name")
+        delivery_mode = _s("delivery_mode") or _DELIVERY_FOLLOW_UP
 
         if target_kind not in _VALID_TARGET_KINDS:
             return None
@@ -131,6 +142,9 @@ class OutboundEnvelope:
         else:
             if not target_ref:
                 return None
+
+        if delivery_mode not in _VALID_DELIVERY_MODES:
+            delivery_mode = _DELIVERY_FOLLOW_UP
 
         message_raw = raw.get("message")
         message = message_raw if isinstance(message_raw, str) else ""
@@ -152,6 +166,7 @@ class OutboundEnvelope:
             target_owner_id=target_owner_id,
             target_agent_id=target_agent_id,
             target_name=target_name,
+            delivery_mode=delivery_mode,
             message=message,
             created_at=_f("created_at"),
             updated_at=_f("updated_at"),
@@ -172,6 +187,7 @@ class OutboundEnvelope:
             "target_owner_id": self.target_owner_id,
             "target_agent_id": self.target_agent_id,
             "target_name": self.target_name,
+            "delivery_mode": self.delivery_mode,
             "message": self.message,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

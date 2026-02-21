@@ -41,7 +41,10 @@ Inbox message (`new/*.json`):
 Rules:
 - `id` MUST be stable per queue envelope recipient delivery attempt lineage.
 - `message` MUST be non-empty after trim.
-- `deliver_as` currently MUST be `followUp`.
+- `deliver_as` MUST be one of: `followUp` | `steer`.
+- UI mapping policy:
+  - send action => `steer`
+  - queue action => `followUp`
 
 ## Capability File Schema
 
@@ -94,7 +97,7 @@ Rules:
 1. Atomically claim inbox file: `new/ -> processing/`.
 2. Validate payload.
 3. If `id` already in processed ledger, ensure receipt exists and delete processing file.
-4. Submit via `sendUserMessage(..., { deliverAs: "followUp" })`.
+4. Submit via `sendUserMessage(..., { deliverAs })` where `deliverAs` is `followUp` or `steer` from payload.
 5. Persist processed-id ledger.
 6. Write accepted receipt.
 7. Delete processing file.

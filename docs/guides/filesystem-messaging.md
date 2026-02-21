@@ -97,7 +97,7 @@ Envelope payload (JSON) includes:
    - Zeus writes bus inbox files for recipients
 4. **extension consume**:
    - extension atomically claims inbox file (`new -> processing`)
-   - submits payload via `sendUserMessage(..., deliverAs=followUp)`
+   - submits payload via `sendUserMessage(..., deliverAs=<payload mode>)`
    - writes accepted receipt and updates processed-id ledger
 5. **ack**:
    - success (all recipient accepted receipts observed) -> remove envelope from `inflight/`

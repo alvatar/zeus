@@ -698,63 +698,72 @@ def test_do_save_agent_message_draft_roundtrip() -> None:
     assert app._message_draft_for_agent(agent) == ""
 
 
-def test_do_send_agent_message_dispatches_enter(monkeypatch) -> None:
+def test_do_send_agent_message_enqueues_steer_delivery(monkeypatch) -> None:
     app = _new_app()
-    agent = _agent("alpha", 1)
+    agent = _agent("alpha", 1, agent_id="a" * 32)
     app.agents = [agent]
     app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
-    sent = capture_kitty_cmd(monkeypatch)
-    history_calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str, str]] = []
     monkeypatch.setattr(
-        "zeus.dashboard.app.append_history",
-        lambda key, text: history_calls.append((key, text)) or [text],
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, message, source_name, delivery_mode)
+        )
+        or True,
     )
+
+    drains: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
 
     ok = app.do_send_agent_message(agent, "hello")
 
     assert ok is True
-    assert sent == [
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello\r"))
-    ]
-    assert history_calls == [("agent:alpha", "hello")]
+    assert calls == [("alpha", "hello", "oracle", "steer")]
+    assert drains == [True]
     assert app._agent_message_drafts == {}
 
 
-def test_do_queue_agent_message_uses_robust_queue_sequence(monkeypatch) -> None:
+def test_do_queue_agent_message_enqueues_followup_delivery(monkeypatch) -> None:
     app = _new_app()
-    agent = _agent("alpha", 1)
+    agent = _agent("alpha", 1, agent_id="a" * 32)
     app.agents = [agent]
     app._agent_message_drafts[app._agent_message_draft_key(agent)] = "draft body"
 
-    sent = capture_kitty_cmd(monkeypatch)
-    history_calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str, str]] = []
     monkeypatch.setattr(
-        "zeus.dashboard.app.append_history",
-        lambda key, text: history_calls.append((key, text)) or [text],
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, message, source_name, delivery_mode)
+        )
+        or True,
     )
+
+    drains: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drains.append(True))
 
     ok = app.do_queue_agent_message(agent, "hello")
 
     assert ok is True
-    assert sent == [
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "hello")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x1b[13;3u")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x03")),
-        (agent.socket, ("send-text", "--match", f"id:{agent.kitty_id}", "\x15")),
-    ]
-    assert history_calls == [("agent:alpha", "hello")]
+    assert calls == [("alpha", "hello", "oracle", "followUp")]
+    assert drains == [True]
     assert app._agent_message_drafts == {}
 
 
 def test_do_queue_agent_message_reports_failure_and_keeps_draft(monkeypatch) -> None:
     app = _new_app()
-    agent = _agent("alpha", 1)
+    agent = _agent("alpha", 1, agent_id="a" * 32)
     app.agents = [agent]
     draft_key = app._agent_message_draft_key(agent)
     app._agent_message_drafts[draft_key] = "draft body"
 
-    monkeypatch.setattr(app, "_queue_text_to_agent_interact", lambda _a, _t: False)
+    monkeypatch.setattr(
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda _target, _message, source_name, source_agent_id="", delivery_mode="followUp": False,
+    )
 
     notices: list[str] = []
     monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
@@ -900,10 +909,10 @@ def test_resume_agent_if_paused_refreshes_ui_when_running(monkeypatch) -> None:
 
 def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(monkeypatch) -> None:
     app = _new_app()
-    source = _agent("source", 1)
-    paused = _agent("paused", 2)
-    blocked = _agent("blocked", 3)
-    blocker = _agent("blocker", 4)
+    source = _agent("source", 1, agent_id="1" * 32)
+    paused = _agent("paused", 2, agent_id="2" * 32)
+    blocked = _agent("blocked", 3, agent_id="3" * 32)
+    blocker = _agent("blocker", 4, agent_id="4" * 32)
 
     app.agents = [source, paused, blocked, blocker]
     app._agent_priorities[paused.name] = 4
@@ -911,13 +920,18 @@ def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(m
         blocker
     )
 
-    sent = capture_kitty_cmd(monkeypatch)
     notices = capture_notify(app, monkeypatch)
-    history_calls: list[tuple[str, str]] = []
+
+    calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "zeus.dashboard.app.append_history",
-        lambda key, text: history_calls.append((key, text)) or [text],
+        app,
+        "_enqueue_outbound_agent_message",
+        lambda target, message, source_name, source_agent_id="", delivery_mode="followUp": calls.append(
+            (target.name, delivery_mode)
+        )
+        or True,
     )
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: None)
 
     assert app.do_send_agent_message(paused, "hello") is True
     assert app._agent_priorities.get(paused.name, 3) == 3
@@ -925,10 +939,7 @@ def test_message_dialog_send_unpauses_paused_target_and_rejects_blocked_target(m
     assert app.do_queue_agent_message(blocked, "hello") is False
     assert notices[-1] == "Hippeus is BLOCKED by dependency; input disabled"
 
-    assert sent == [
-        (paused.socket, ("send-text", "--match", f"id:{paused.kitty_id}", "hello\r")),
-    ]
-    assert history_calls == [("agent:paused", "hello")]
+    assert calls == [("paused", "steer")]
 
 
 def test_do_add_agent_message_task_appends_checkbox_item(monkeypatch) -> None:

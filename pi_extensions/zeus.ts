@@ -331,9 +331,8 @@ function processClaimedFile(
   }
 
   try {
-    pi.sendUserMessage(payload.message, {
-      deliverAs: payload.deliver_as === "followUp" ? "followUp" : "followUp",
-    });
+    const deliverAs = payload.deliver_as === "steer" ? "steer" : "followUp";
+    pi.sendUserMessage(payload.message, { deliverAs });
   } catch {
     const retryPath = path.join(getAgentInboxNewDir(agentId), fileNameForRetry);
     moveBackToNew(filePath, retryPath);
