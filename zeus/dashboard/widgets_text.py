@@ -107,6 +107,7 @@ class ZeusTextArea(TextArea):
             Binding("alt+backspace", "delete_word_left", "Delete word left", show=False),
             Binding("ctrl+k", "kill_to_end_of_line_or_delete_line", "Kill to end", show=False),
             Binding("ctrl+u", "kill_to_line_start_or_clear_all", "Kill line start", show=False),
+            Binding("ctrl+w", "queue_interact_or_delete_word_left", "Queue/Delete word", show=False),
             Binding("ctrl+y", "yank_kill_buffer", "Yank", show=False),
         ],
     )
@@ -244,6 +245,28 @@ class ZeusTextArea(TextArea):
         deleted = self.text
         self.clear()
         self._store_kill_text(deleted)
+
+    def action_queue_interact_or_delete_word_left(self) -> None:
+        """Ctrl+W: queue when appropriate, otherwise keep word-delete behavior."""
+        try:
+            app = self.app
+        except Exception:
+            self.action_delete_word_left()
+            return
+
+        screen = getattr(app, "screen", None)
+        queue_modal = getattr(screen, "action_queue", None)
+        if callable(queue_modal):
+            queue_modal()
+            return
+
+        if getattr(self, "id", "") == "interact-input":
+            queue_interact = getattr(app, "action_queue_interact", None)
+            if callable(queue_interact):
+                queue_interact()
+                return
+
+        self.action_delete_word_left()
 
     def action_yank_kill_buffer(self) -> None:
         """Ctrl+Y: yank from system clipboard, fallback to local kill buffer."""

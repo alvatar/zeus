@@ -70,13 +70,14 @@ def test_text_area_does_not_keep_global_ctrl_bindings() -> None:
     assert "ctrl+m" not in keys
 
 
-def test_text_area_ctrl_a_e_k_u_y_are_custom_bindings() -> None:
+def test_text_area_ctrl_a_e_k_u_w_y_are_custom_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusTextArea.BINDINGS}
 
     assert bindings["ctrl+a"].action == "line_start_or_previous_line"
     assert bindings["ctrl+e"].action == "line_end_or_next_line"
     assert bindings["ctrl+k"].action == "kill_to_end_of_line_or_delete_line"
     assert bindings["ctrl+u"].action == "kill_to_line_start_or_clear_all"
+    assert bindings["ctrl+w"].action == "queue_interact_or_delete_word_left"
     assert bindings["ctrl+y"].action == "yank_kill_buffer"
 
 
@@ -144,6 +145,57 @@ def test_ctrl_u_notifies_when_wl_copy_missing(monkeypatch) -> None:
 
     assert ta._kill_buffer == "hello"
     assert notified == [True]
+
+
+def test_ctrl_w_routes_to_modal_queue_action(monkeypatch) -> None:
+    ta = ZeusTextArea("hello world", id="agent-message-input")
+    queued: list[bool] = []
+
+    class _Screen:
+        def action_queue(self) -> None:
+            queued.append(True)
+
+    class _App:
+        screen = _Screen()
+
+    monkeypatch.setattr(ZeusTextArea, "app", property(lambda _self: _App()))
+
+    ta.action_queue_interact_or_delete_word_left()
+
+    assert queued == [True]
+    assert ta.text == "hello world"
+
+
+def test_ctrl_w_routes_interact_input_to_app_queue(monkeypatch) -> None:
+    ta = ZeusTextArea("hello world", id="interact-input")
+    queued: list[bool] = []
+
+    class _App:
+        screen = object()
+
+        def action_queue_interact(self) -> None:
+            queued.append(True)
+
+    monkeypatch.setattr(ZeusTextArea, "app", property(lambda _self: _App()))
+
+    ta.action_queue_interact_or_delete_word_left()
+
+    assert queued == [True]
+    assert ta.text == "hello world"
+
+
+def test_ctrl_w_falls_back_to_delete_word_left_when_no_queue_context(monkeypatch) -> None:
+    ta = ZeusTextArea("hello world", id="agent-tasks-input")
+    ta.move_cursor(ta.document.end)
+
+    class _App:
+        screen = object()
+
+    monkeypatch.setattr(ZeusTextArea, "app", property(lambda _self: _App()))
+
+    ta.action_queue_interact_or_delete_word_left()
+
+    assert ta.text == "hello "
 
 
 def test_widgets_module_exposes_clipboard_patch_targets() -> None:
