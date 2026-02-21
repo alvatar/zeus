@@ -37,7 +37,7 @@ def test_action_cycle_priority_renders_immediately_before_poll(monkeypatch) -> N
 
     app.action_cycle_priority()
 
-    assert app._agent_priorities["alpha"] == 2
+    assert app._agent_priorities[app._agent_priority_key(agent)] == 2
     assert calls == ["save", "render", "poll"]
 
 
@@ -88,5 +88,5 @@ def test_action_cycle_priority_skips_immediate_render_when_not_running(monkeypat
 
     app.action_cycle_priority()
 
-    assert app._agent_priorities["alpha"] == 2
+    assert app._agent_priorities[app._agent_priority_key(agent)] == 2
     assert calls == ["save", "poll"]

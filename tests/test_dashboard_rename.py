@@ -16,7 +16,7 @@ def _agent(name: str = "old") -> AgentWindow:
     )
 
 
-def test_do_rename_agent_preserves_priority_on_new_name(monkeypatch) -> None:
+def test_do_rename_agent_preserves_priority_on_stable_identity(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent("old")
     app._agent_priorities = {"old": 2}
@@ -34,13 +34,11 @@ def test_do_rename_agent_preserves_priority_on_new_name(monkeypatch) -> None:
     monkeypatch.setattr(app, "_save_priorities", lambda: saved_priorities.append(True))
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
     monkeypatch.setattr(app, "poll_and_update", lambda: polled.append(True))
-    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 1000.0)
 
     app.do_rename_agent(agent, "new")
 
     assert saved_overrides[-1] == {"/tmp/kitty-1:1": "new"}
-    assert app._agent_priorities == {"new": 2}
-    assert app._priority_name_aliases == {"old": ("new", 1005.0)}
+    assert app._agent_priorities == {app._agent_priority_key(agent): 2}
     assert saved_priorities == [True]
     assert notices[-1] == "Renamed: old → new"
     assert polled == [True]
@@ -62,27 +60,44 @@ def test_do_rename_agent_without_explicit_priority_keeps_priority_map(monkeypatc
     app.do_rename_agent(agent, "new")
 
     assert app._agent_priorities == {"other": 1}
-    assert app._priority_name_aliases == {}
     assert saved_priorities == []
 
 
-def test_get_priority_uses_rename_alias_for_inflight_old_name(monkeypatch) -> None:
+def test_get_priority_prefers_stable_identity_key_over_legacy_name() -> None:
     app = ZeusApp()
-    app._agent_priorities = {"new": 1}
-    app._priority_name_aliases = {"old": ("new", 1000.0)}
-    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 999.0)
+    agent = _agent("old")
+    app._agent_priorities = {
+        app._agent_priority_key(agent): 1,
+        "old": 4,
+    }
 
-    assert app._get_priority("old") == 1
+    assert app._get_priority(agent) == 1
 
 
-def test_get_priority_drops_expired_rename_alias(monkeypatch) -> None:
+def test_get_priority_falls_back_to_legacy_name_key() -> None:
     app = ZeusApp()
-    app._agent_priorities = {"new": 1}
-    app._priority_name_aliases = {"old": ("new", 1000.0)}
-    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 1000.1)
+    agent = _agent("old")
+    app._agent_priorities = {"old": 2}
 
-    assert app._get_priority("old") == 3
-    assert app._priority_name_aliases == {}
+    assert app._get_priority(agent) == 2
+
+
+def test_normalize_priority_keys_migrates_legacy_name_entries(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent("old")
+    app.agents = [agent]
+    app._agent_priorities = {"old": 2, "other": 1}
+
+    saved_priorities: list[bool] = []
+    monkeypatch.setattr(app, "_save_priorities", lambda: saved_priorities.append(True))
+
+    app._normalize_priority_keys_for_live_agents()
+
+    assert app._agent_priorities == {
+        app._agent_priority_key(agent): 2,
+        "other": 1,
+    }
+    assert saved_priorities == [True]
 
 
 def test_do_rename_agent_rejects_duplicate_name(monkeypatch) -> None:

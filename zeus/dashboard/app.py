@@ -571,8 +571,6 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
     _agent_priorities: dict[str, int] = {}
-    _priority_name_aliases: dict[str, tuple[str, float]] = {}
-    _priority_alias_ttl_s: float = 5.0
     _split_mode: bool = True
     _interact_visible: bool = True
     _highlight_timer: Timer | None = None
@@ -632,10 +630,6 @@ class ZeusApp(App):
     _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
         "1", "true", "yes", "on",
     }
-
-    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
-        super().__init__(*args, **kwargs)
-        self._priority_name_aliases = {}
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -1062,6 +1056,7 @@ class ZeusApp(App):
         self.state_changed_at = result.state_changed_at
         self.idle_since = result.idle_since
         self.idle_notified = result.idle_notified
+        self._normalize_priority_keys_for_live_agents()
         self._reconcile_agent_dependencies()
         self._prune_interact_histories()
 
@@ -1389,7 +1384,7 @@ class ZeusApp(App):
 
         def _priority_sort_key(a: AgentWindow) -> tuple[int, str]:
             # Priority first (1=high … 4=paused), then lexicographic.
-            return (self._get_priority(a.name), a.name.lower())
+            return (self._get_priority(a), a.name.lower())
 
         def _alpha_sort_key(a: AgentWindow) -> str:
             return a.name.lower()
@@ -1563,7 +1558,7 @@ class ZeusApp(App):
                 tok_cell = Text(str(tok_cell), style=row_style)
                 task_cell = Text(str(task_cell), style=row_style)
 
-            pri_val = self._get_priority(a.name)
+            pri_val = self._get_priority(a)
             _pri_colors = {1: "#ffffff", 2: "#999999", 3: "#555555", 4: "#333333"}
             pri_style = row_style or _pri_colors[pri_val]
             pri_cell: str | Text = Text(
@@ -1790,9 +1785,9 @@ class ZeusApp(App):
             else:
                 top_level.append(agent)
 
-        top_level.sort(key=lambda a: self._get_priority(a.name))
+        top_level.sort(key=lambda a: self._get_priority(a))
         for kids in children_of.values():
-            kids.sort(key=lambda a: self._get_priority(a.name))
+            kids.sort(key=lambda a: self._get_priority(a))
 
         def _agent_color(a: AgentWindow) -> str:
             akey = self._agent_key(a)
@@ -1803,7 +1798,7 @@ class ZeusApp(App):
             else:
                 waiting = a.state == State.IDLE and akey in self._action_needed
                 state_label = "WAITING" if waiting else a.state.value.upper()
-            pri = self._get_priority(a.name)
+            pri = self._get_priority(a)
             colors = _state_pri_colors.get(
                 state_label, ("#777777", "#555555", "#333333", "#1a1a1a"),
             )
@@ -1836,7 +1831,7 @@ class ZeusApp(App):
         cards: list[tuple[str, str, int]] = []
         for parent, kids in groups:
             pc = _agent_color(parent)
-            pri = self._get_priority(parent.name)
+            pri = self._get_priority(parent)
             style = f"bold {pc}" if pri == 1 else pc
             name = _compact_name(parent.name, SETTINGS.minimap.max_name_length)
             pidx = len(self._minimap_agents)
@@ -1847,7 +1842,7 @@ class ZeusApp(App):
             subs_plain: list[str] = []
             for child in kids:
                 cc = _agent_color(child)
-                cpri = self._get_priority(child.name)
+                cpri = self._get_priority(child)
                 cs = f"bold {cc}" if cpri == 1 else cc
                 cn = _compact_name(child.name, SETTINGS.minimap.max_sub_name_length)
                 cidx = len(self._minimap_agents)
@@ -1950,7 +1945,7 @@ class ZeusApp(App):
         ordered = sorted(
             self.agents,
             key=lambda a: (
-                self._get_priority(a.name),
+                self._get_priority(a),
                 _sparkline_parent_sort_key(a),
                 a.name,
             ),
@@ -1972,7 +1967,7 @@ class ZeusApp(App):
             if not samples:
                 continue
             active_agent_count += 1
-            w = _pri_weight.get(self._get_priority(agent.name), 1)
+            w = _pri_weight.get(self._get_priority(agent), 1)
             nw = sum(1 for s in samples if s == "WORKING")
             nwait = sum(1 for s in samples if s == "WAITING")
             w_working += nw * w
@@ -2352,6 +2347,25 @@ class ZeusApp(App):
             if sess:
                 return f"stygian-session:{sess}"
         return f"{agent.socket}:{agent.kitty_id}"
+
+    def _agent_priority_key(self, agent: AgentWindow) -> str:
+        return self._agent_identity_key(agent)
+
+    def _normalize_priority_keys_for_live_agents(self) -> None:
+        """Migrate legacy name-keyed priorities to stable identity keys."""
+        changed = False
+        for agent in self.agents:
+            stable_key = self._agent_priority_key(agent)
+            if stable_key in self._agent_priorities:
+                continue
+            legacy = self._agent_priorities.pop(agent.name, None)
+            if legacy is None:
+                continue
+            self._agent_priorities[stable_key] = legacy
+            changed = True
+
+        if changed:
+            self._save_priorities()
 
     def _agent_tasks_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
@@ -3846,29 +3860,20 @@ class ZeusApp(App):
         else:
             target.add_class("hidden")
 
-    def _get_priority(self, agent_name: str) -> int:
+    def _get_priority(self, agent: AgentWindow) -> int:
         """Return priority for an agent (1=high … 4=paused, default=3)."""
-        direct = self._agent_priorities.get(agent_name)
-        if direct is not None:
-            return direct
+        stable = self._agent_priorities.get(self._agent_priority_key(agent))
+        if stable is not None:
+            return stable
 
-        alias = self._priority_name_aliases.get(agent_name)
-        if alias is None:
-            return 3
-
-        alias_name, expires_at = alias
-        if time.time() > expires_at:
-            self._priority_name_aliases.pop(agent_name, None)
-            return 3
-
-        aliased = self._agent_priorities.get(alias_name)
-        if aliased is not None:
-            return aliased
+        legacy = self._agent_priorities.get(agent.name)
+        if legacy is not None:
+            return legacy
 
         return 3
 
     def _is_paused(self, agent: AgentWindow) -> bool:
-        return self._get_priority(agent.name) == 4
+        return self._get_priority(agent) == 4
 
     def _is_text_input_focused(self) -> bool:
         try:
@@ -3901,12 +3906,15 @@ class ZeusApp(App):
         agent = self._get_selected_agent()
         if not agent:
             return
-        cur = self._get_priority(agent.name)
+        key = self._agent_priority_key(agent)
+        cur = self._get_priority(agent)
         nxt = {4: 3, 3: 2, 2: 1, 1: 4}[cur]
         if nxt == 3:
+            self._agent_priorities.pop(key, None)
             self._agent_priorities.pop(agent.name, None)
         else:
-            self._agent_priorities[agent.name] = nxt
+            self._agent_priorities[key] = nxt
+            self._agent_priorities.pop(agent.name, None)
         self._save_priorities()
 
         # Immediate local redraw so the priority column/order updates without
@@ -4354,6 +4362,7 @@ class ZeusApp(App):
         if not self._is_paused(agent):
             return False
 
+        self._agent_priorities.pop(self._agent_priority_key(agent), None)
         self._agent_priorities.pop(agent.name, None)
         self._save_priorities()
 
@@ -5017,13 +5026,24 @@ class ZeusApp(App):
         overrides[key] = clean_name
         save_names(overrides)
 
-        if old_name in self._agent_priorities:
-            preserved_priority = self._agent_priorities.pop(old_name)
-            self._agent_priorities[clean_name] = preserved_priority
-            self._priority_name_aliases[old_name] = (
-                clean_name,
-                time.time() + self._priority_alias_ttl_s,
-            )
+        priority_changed = False
+        stable_priority_key = self._agent_priority_key(agent)
+        if stable_priority_key not in self._agent_priorities:
+            preserved_priority = self._agent_priorities.pop(old_name, None)
+            if preserved_priority is None:
+                preserved_priority = self._agent_priorities.pop(clean_name, None)
+            else:
+                self._agent_priorities.pop(clean_name, None)
+            if preserved_priority is not None:
+                self._agent_priorities[stable_priority_key] = preserved_priority
+                priority_changed = True
+        else:
+            if self._agent_priorities.pop(old_name, None) is not None:
+                priority_changed = True
+            if self._agent_priorities.pop(clean_name, None) is not None:
+                priority_changed = True
+
+        if priority_changed:
             self._save_priorities()
 
         self.notify(f"Renamed: {old_name} → {clean_name}", timeout=3)
