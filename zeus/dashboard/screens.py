@@ -135,13 +135,14 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
     _DIR_SUGGESTION_LIMIT = 12
 
-    def __init__(self) -> None:
+    def __init__(self, *, preferred_model_spec: str = "") -> None:
         super().__init__()
         self._dir_suggestion_values: list[str] = []
         self._dir_cycle_seed: str | None = None
         self._dir_cycle_index: int = -1
         self._dir_programmatic_change: bool = False
         self._available_model_specs: list[str] = []
+        self._preferred_model_spec: str = preferred_model_spec.strip()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
@@ -160,12 +161,11 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             if not self._available_model_specs:
                 self._available_model_specs = _list_available_model_specs()
             options: list[tuple[str, str]]
-            selected_value = "__default__"
             if self._available_model_specs:
                 options = [(spec, spec) for spec in self._available_model_specs]
-                selected_value = self._available_model_specs[0]
             else:
                 options = [("Default (auto)", "__default__")]
+            selected_value = self._initial_model_select_value()
             yield Select(options, value=selected_value, id="invoke-model", allow_blank=False)
             yield Label("Directory:")
             yield Input(
@@ -174,6 +174,14 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 id="agent-dir",
             )
             yield OptionList(id="agent-dir-suggestions", classes="hidden", compact=True)
+
+    def _initial_model_select_value(self) -> str:
+        preferred = self._preferred_model_spec.strip()
+        if preferred and preferred in self._available_model_specs:
+            return preferred
+        if self._available_model_specs:
+            return self._available_model_specs[0]
+        return "__default__"
 
     @staticmethod
     def _display_dir_path(path: str) -> str:
@@ -461,6 +469,9 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         model_spec = model_spec.strip()
         if model_spec == "__default__":
             model_spec = ""
+
+        if hasattr(self.zeus, "do_set_last_invoke_model_spec"):
+            self.zeus.do_set_last_invoke_model_spec(model_spec)
 
         if role == "stygian-hippeus":
             try:

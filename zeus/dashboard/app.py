@@ -580,6 +580,7 @@ class ZeusApp(App):
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
     _steady_armed: bool = True
+    _last_invoke_model_spec: str = ""
     _celebration_cooldown_started_at: float | None = None
     _sparkline_samples: dict[str, list[str]] = {}  # agent_name → state labels
     _screen_activity_sig: dict[str, str] = {}  # key -> normalized screen signature
@@ -4196,8 +4197,18 @@ class ZeusApp(App):
             self.notify(f"Polemarch bootstrap sent: {polemarch.name}", timeout=3)
             self._pending_polemarch_bootstraps.pop(agent_id, None)
 
+    def do_get_last_invoke_model_spec(self) -> str:
+        return (self._last_invoke_model_spec or "").strip()
+
+    def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
+        self._last_invoke_model_spec = (model_spec or "").strip()
+
     def action_new_agent(self) -> None:
-        self.push_screen(NewAgentScreen())
+        self.push_screen(
+            NewAgentScreen(
+                preferred_model_spec=self.do_get_last_invoke_model_spec(),
+            )
+        )
 
     def action_agent_tasks(self) -> None:
         if self._has_blocking_modal_open():

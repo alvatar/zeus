@@ -4,6 +4,7 @@ import inspect
 import re
 from types import SimpleNamespace
 
+from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import (
     AegisConfigureScreen,
     AgentMessageScreen,
@@ -150,6 +151,37 @@ def test_parse_available_models_table_handles_no_models_message() -> None:
     )
 
     assert parsed == []
+
+
+def test_new_agent_initial_model_select_prefers_last_used_when_available() -> None:
+    screen = NewAgentScreen(preferred_model_spec="openai/gpt-4o")
+    screen._available_model_specs = [
+        "anthropic/claude-sonnet-4-5",
+        "openai/gpt-4o",
+    ]
+
+    assert screen._initial_model_select_value() == "openai/gpt-4o"
+
+
+def test_new_agent_initial_model_select_falls_back_when_last_used_missing() -> None:
+    screen = NewAgentScreen(preferred_model_spec="openai/gpt-4o")
+    screen._available_model_specs = ["anthropic/claude-sonnet-4-5"]
+
+    assert screen._initial_model_select_value() == "anthropic/claude-sonnet-4-5"
+
+
+def test_action_new_agent_passes_last_used_model_into_dialog(monkeypatch) -> None:
+    app = ZeusApp()
+    app.do_set_last_invoke_model_spec("openai/gpt-4o")
+
+    pushed: list[object] = []
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_new_agent()
+
+    assert pushed
+    assert isinstance(pushed[0], NewAgentScreen)
+    assert pushed[0]._preferred_model_spec == "openai/gpt-4o"
 
 
 def test_aegis_config_dialog_uses_radio_options_and_textarea() -> None:
@@ -682,6 +714,7 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     schedule_calls: list[tuple[str, str]] = []
     notices: list[str] = []
     timers: list[float] = []
+    saved_models: list[str] = []
 
     class _ZeusStub:
         def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
@@ -695,6 +728,9 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
 
         def set_timer(self, delay: float, _callback) -> None:  # noqa: ANN001
             timers.append(delay)
+
+        def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
+            saved_models.append(model_spec)
 
         def poll_and_update(self) -> None:
             return
@@ -728,6 +764,7 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     assert schedule_calls == []
     assert notices[-1] == "Invoked Hippeus: alpha"
     assert timers == [1.5]
+    assert saved_models == ["openai/gpt-4o"]
     assert dismissed == [True]
 
 
