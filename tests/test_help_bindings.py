@@ -46,7 +46,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["y"] == "Yank block between %%%% markers for selected Hippeus"
     assert entries["e"] == "Expand output for selected Hippeus"
     assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
-    assert entries["Ctrl+p"] == "Promote selected sub-Hippeus / Hoplite"
+    assert entries["Ctrl+p"] == "Promote selected sub-Hippeus / Hippeus / Hoplite"
     assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
     assert entries["h"] == "History for selected Hippeus"
     assert entries["Ctrl+r"] == "Save snapshot of all restorable agents"
@@ -96,7 +96,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
         ("y", "Yank block between %%%% markers for selected Hippeus"),
         ("e", "Expand output for selected Hippeus"),
         ("Ctrl+t", "Clear done tasks for selected Hippeus"),
-        ("Ctrl+p", "Promote selected sub-Hippeus / Hoplite"),
+        ("Ctrl+p", "Promote selected sub-Hippeus / Hippeus / Hoplite"),
         ("d", "Set/remove blocking dependency for selected Hippeus"),
         ("h", "History for selected Hippeus"),
         ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),

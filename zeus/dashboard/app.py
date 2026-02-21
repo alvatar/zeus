@@ -4649,11 +4649,21 @@ class ZeusApp(App):
             self.notify(f"{agent.name} is already a Stygian Hippeus", timeout=3)
             return
 
-        if not self._has_promotable_parent(agent):
-            self.notify(f"{agent.name} is already a top-level Hippeus", timeout=3)
+        agent_id = (agent.agent_id or "").strip()
+        if not agent_id:
+            self.notify(f"Cannot promote {agent.name}: missing agent id", timeout=3)
             return
 
-        self.push_screen(ConfirmPromoteScreen(agent=agent))
+        role = (agent.role or "").strip().lower()
+        if role == "polemarch":
+            self.notify(f"{agent.name} is already a Polemarch", timeout=3)
+            return
+
+        if self._has_promotable_parent(agent):
+            self.push_screen(ConfirmPromoteScreen(agent=agent, promote_to="hippeus"))
+            return
+
+        self.push_screen(ConfirmPromoteScreen(agent=agent, promote_to="polemarch"))
 
     def do_promote_sub_hippeus(self, agent: AgentWindow) -> bool:
         agent_id = (agent.agent_id or "").strip()
@@ -4727,6 +4737,96 @@ class ZeusApp(App):
             )
 
         self.notify(f"Promoted sub-Hippeus to Hippeus: {agent.name}", timeout=3)
+        self.set_timer(1.0, self.poll_and_update)
+        if self._interact_visible:
+            self._refresh_interact_panel()
+        return True
+
+    def do_promote_hippeus_to_polemarch(self, agent: AgentWindow) -> bool:
+        if self._is_stygian_agent(agent):
+            self.notify(f"{agent.name} is already a Stygian Hippeus", timeout=3)
+            return False
+
+        agent_id = (agent.agent_id or "").strip()
+        if not agent_id:
+            self.notify(f"Cannot promote {agent.name}: missing agent id", timeout=3)
+            return False
+
+        role = (agent.role or "").strip().lower()
+        if role == "polemarch":
+            self.notify(f"{agent.name} is already a Polemarch", timeout=3)
+            return False
+
+        if self._has_promotable_parent(agent):
+            self.notify(
+                f"{agent.name} is a sub-Hippeus; promote to Hippeus first",
+                timeout=3,
+            )
+            return False
+
+        session_path, source = resolve_agent_session_path_with_source(agent)
+
+        if source == "cwd":
+            same_cwd = [a for a in self.agents if a.cwd == agent.cwd]
+            if len(same_cwd) > 1:
+                self.notify(
+                    "Cannot reliably promote this legacy Hippeus: multiple "
+                    "Hippeis share the same cwd without pinned sessions. "
+                    "Restart the Hippeus and try again.",
+                    timeout=4,
+                )
+                return False
+
+        if not session_path or not os.path.isfile(session_path):
+            if source == "env":
+                self.notify(
+                    f"Pinned session path is stale for {agent.name}. "
+                    "Run /reload in that Hippeus, then retry.",
+                    timeout=4,
+                )
+            else:
+                self.notify(f"No session found for {agent.name}", timeout=3)
+            return False
+
+        close_window(agent)
+
+        env: dict[str, str] = os.environ.copy()
+        env["ZEUS_AGENT_NAME"] = agent.name
+        env["ZEUS_AGENT_ID"] = agent_id
+        env["ZEUS_ROLE"] = "polemarch"
+        env["ZEUS_SESSION_PATH"] = session_path
+        env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
+        env.pop("ZEUS_PARENT_ID", None)
+
+        try:
+            proc = subprocess.Popen(
+                [
+                    "kitty",
+                    "--directory",
+                    agent.cwd,
+                    "--hold",
+                    "bash",
+                    "-lc",
+                    f"pi --session {shlex.quote(session_path)}",
+                ],
+                env=env,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (FileNotFoundError, OSError) as exc:
+            self.notify(f"Promote failed for {agent.name}: {exc}", timeout=3)
+            return False
+
+        if agent.workspace and agent.workspace != "?":
+            move_pid_to_workspace_and_focus_later(
+                proc.pid,
+                agent.workspace,
+                delay=0.5,
+            )
+
+        self.schedule_polemarch_bootstrap(agent_id, agent.name)
+        self.notify(f"Promoted Hippeus to Polemarch: {agent.name}", timeout=3)
         self.set_timer(1.0, self.poll_and_update)
         if self._interact_visible:
             self._refresh_interact_panel()

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from rich.text import Text
 from textual import events, work
@@ -1235,29 +1235,38 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
         *,
         agent: AgentWindow | None = None,
         sess: TmuxSession | None = None,
+        promote_to: Literal["hippeus", "polemarch", "stygian-hippeus"] = "hippeus",
     ) -> None:
         super().__init__()
         if (agent is None) == (sess is None):
             raise ValueError("provide exactly one promotion target")
+
         self.agent = agent
         self.sess = sess
 
+        target = (promote_to or "").strip().lower()
+        if agent is not None:
+            if target not in {"hippeus", "polemarch"}:
+                raise ValueError("invalid promotion target for agent")
+            self.promote_to = cast(
+                Literal["hippeus", "polemarch", "stygian-hippeus"],
+                target,
+            )
+        else:
+            self.promote_to = "stygian-hippeus"
+
+    def _prompt_text(self) -> str:
+        if self.agent is not None and self.promote_to == "hippeus":
+            return f"Promote sub-Hippeus [bold]{self.agent.name}[/bold] to Hippeus?"
+        if self.agent is not None and self.promote_to == "polemarch":
+            return f"Promote Hippeus [bold]{self.agent.name}[/bold] to Polemarch?"
+        if self.sess is not None:
+            return f"Promote Hoplite [bold]{self.sess.name}[/bold] to Stygian Hippeus?"
+        return "Promote selected target?"
+
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-promote-dialog"):
-            if self.agent is not None:
-                prompt = (
-                    f"Promote sub-Hippeus [bold]{self.agent.name}[/bold] "
-                    "to Hippeus?"
-                )
-            elif self.sess is not None:
-                prompt = (
-                    f"Promote Hoplite [bold]{self.sess.name}[/bold] "
-                    "to Stygian Hippeus?"
-                )
-            else:
-                prompt = "Promote selected target?"
-
-            yield Label(prompt)
+            yield Label(self._prompt_text())
             with Horizontal(id="confirm-promote-buttons"):
                 yield Button("Yes, promote", variant="warning", id="yes-btn")
                 yield Button("No", variant="default", id="no-btn")
@@ -1273,8 +1282,10 @@ class ConfirmPromoteScreen(_ZeusScreenMixin, ModalScreen):
         event.stop()
 
     def action_confirm(self) -> None:
-        if self.agent is not None:
+        if self.agent is not None and self.promote_to == "hippeus":
             self.zeus.do_promote_sub_hippeus(self.agent)
+        elif self.agent is not None and self.promote_to == "polemarch":
+            self.zeus.do_promote_hippeus_to_polemarch(self.agent)
         elif self.sess is not None:
             self.zeus.do_promote_hoplite_tmux(self.sess)
         self.dismiss()
@@ -1754,7 +1765,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("a", "Bring Hippeus under the Aegis"),
     ("s", "Spawn sub-Hippeus"),
-    ("Ctrl+p", "Promote selected sub-Hippeus / Hoplite"),
+    ("Ctrl+p", "Promote selected sub-Hippeus / Hippeus / Hoplite"),
     ("d", "Set/remove blocking dependency for selected Hippeus"),
     ("g", "Queue 'go ahead' for selected Hippeus"),
     ("Ctrl+g", "Open preset message dialog for selected Hippeus"),

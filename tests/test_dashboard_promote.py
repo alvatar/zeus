@@ -13,6 +13,7 @@ def _agent(
     kitty_id: int,
     agent_id: str,
     parent_id: str = "",
+    role: str = "",
 ) -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
@@ -23,6 +24,7 @@ def _agent(
         cwd="/tmp/project",
         agent_id=agent_id,
         parent_id=parent_id,
+        role=role,
     )
 
 
@@ -66,6 +68,44 @@ def test_action_promote_selected_pushes_confirm_for_sub_hippeus(monkeypatch) -> 
     assert pushed
     assert isinstance(pushed[0], ConfirmPromoteScreen)
     assert pushed[0].agent is child
+    assert pushed[0].promote_to == "hippeus"
+
+
+def test_action_promote_selected_pushes_confirm_for_top_level_hippeus(monkeypatch) -> None:
+    app = ZeusApp()
+    top = _agent("top", kitty_id=1, agent_id="top-1", role="hippeus")
+    app.agents = [top]
+
+    pushed: list[object] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_tmux", lambda: None)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: top)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_promote_selected()
+
+    assert pushed
+    assert isinstance(pushed[0], ConfirmPromoteScreen)
+    assert pushed[0].agent is top
+    assert pushed[0].promote_to == "polemarch"
+
+
+def test_action_promote_selected_rejects_agent_already_polemarch(monkeypatch) -> None:
+    app = ZeusApp()
+    polemarch = _agent("planner", kitty_id=1, agent_id="planner-1", role="polemarch")
+    app.agents = [polemarch]
+
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_tmux", lambda: None)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: polemarch)
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+
+    app.action_promote_selected()
+
+    assert notices[-1] == "planner is already a Polemarch"
 
 
 def test_do_promote_sub_hippeus_relaunches_as_top_level_hippeus(monkeypatch) -> None:
@@ -155,6 +195,79 @@ def test_do_promote_sub_hippeus_rejects_ambiguous_cwd_fallback(monkeypatch) -> N
 
     assert ok is False
     assert notices[-1].startswith("Cannot reliably promote this legacy sub-Hippeus")
+
+
+def test_do_promote_hippeus_to_polemarch_relaunches_with_confirmation_target(
+    monkeypatch,
+) -> None:
+    app = ZeusApp()
+    app._interact_visible = False
+    top = _agent("top", kitty_id=1, agent_id="top-1", role="hippeus")
+    top.workspace = "5"
+
+    notices: list[str] = []
+    closed: list[str] = []
+    timers: list[tuple[float, object]] = []
+    popen_calls: list[tuple[list[str], dict[str, str]]] = []
+    moved: list[tuple[int, str, float]] = []
+    scheduled: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "set_timer", lambda delay, cb: timers.append((delay, cb)))
+    monkeypatch.setattr(
+        "zeus.dashboard.app.resolve_agent_session_path_with_source",
+        lambda _agent: ("/tmp/top-session.jsonl", "env"),
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.os.path.isfile",
+        lambda path: path == "/tmp/top-session.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.app.close_window",
+        lambda agent: closed.append(f"{agent.socket}:{agent.kitty_id}"),
+    )
+
+    def _popen(cmd, **kwargs):  # noqa: ANN001
+        popen_calls.append((list(cmd), dict(kwargs["env"])))
+        return SimpleNamespace(pid=1234)
+
+    monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", _popen)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.move_pid_to_workspace_and_focus_later",
+        lambda pid, ws, delay: moved.append((pid, ws, delay)),
+    )
+    monkeypatch.setattr(
+        app,
+        "schedule_polemarch_bootstrap",
+        lambda agent_id, requested_name: scheduled.append((agent_id, requested_name)),
+    )
+
+    ok = app.do_promote_hippeus_to_polemarch(top)
+
+    assert ok is True
+    assert closed == ["/tmp/kitty-1:1"]
+
+    assert popen_calls
+    cmd, env = popen_calls[-1]
+    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert env["ZEUS_AGENT_NAME"] == "top"
+    assert env["ZEUS_AGENT_ID"] == "top-1"
+    assert env["ZEUS_ROLE"] == "polemarch"
+    assert env["ZEUS_SESSION_PATH"] == "/tmp/top-session.jsonl"
+    assert env["ZEUS_PHALANX_ID"] == "phalanx-top-1"
+    assert "ZEUS_PARENT_ID" not in env
+
+    assert moved == [(1234, "5", 0.5)]
+    assert scheduled == [("top-1", "top")]
+    assert notices[-1] == "Promoted Hippeus to Polemarch: top"
+    assert timers and timers[-1][0] == 1.0
+
+
+def test_confirm_promote_screen_polemarch_prompt_is_explicit() -> None:
+    agent = _agent("planner", kitty_id=1, agent_id="planner-1")
+    screen = ConfirmPromoteScreen(agent=agent, promote_to="polemarch")
+
+    assert screen._prompt_text() == "Promote Hippeus [bold]planner[/bold] to Polemarch?"
 
 
 def test_action_promote_selected_pushes_confirm_for_hoplite_tmux(monkeypatch) -> None:
