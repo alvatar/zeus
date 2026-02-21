@@ -34,11 +34,13 @@ def test_do_rename_agent_preserves_priority_on_new_name(monkeypatch) -> None:
     monkeypatch.setattr(app, "_save_priorities", lambda: saved_priorities.append(True))
     monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
     monkeypatch.setattr(app, "poll_and_update", lambda: polled.append(True))
+    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 1000.0)
 
     app.do_rename_agent(agent, "new")
 
     assert saved_overrides[-1] == {"/tmp/kitty-1:1": "new"}
     assert app._agent_priorities == {"new": 2}
+    assert app._priority_name_aliases == {"old": ("new", 1005.0)}
     assert saved_priorities == [True]
     assert notices[-1] == "Renamed: old → new"
     assert polled == [True]
@@ -60,7 +62,27 @@ def test_do_rename_agent_without_explicit_priority_keeps_priority_map(monkeypatc
     app.do_rename_agent(agent, "new")
 
     assert app._agent_priorities == {"other": 1}
+    assert app._priority_name_aliases == {}
     assert saved_priorities == []
+
+
+def test_get_priority_uses_rename_alias_for_inflight_old_name(monkeypatch) -> None:
+    app = ZeusApp()
+    app._agent_priorities = {"new": 1}
+    app._priority_name_aliases = {"old": ("new", 1000.0)}
+    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 999.0)
+
+    assert app._get_priority("old") == 1
+
+
+def test_get_priority_drops_expired_rename_alias(monkeypatch) -> None:
+    app = ZeusApp()
+    app._agent_priorities = {"new": 1}
+    app._priority_name_aliases = {"old": ("new", 1000.0)}
+    monkeypatch.setattr("zeus.dashboard.app.time.time", lambda: 1000.1)
+
+    assert app._get_priority("old") == 3
+    assert app._priority_name_aliases == {}
 
 
 def test_do_rename_agent_rejects_duplicate_name(monkeypatch) -> None:

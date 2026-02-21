@@ -571,6 +571,8 @@ class ZeusApp(App):
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
     _agent_priorities: dict[str, int] = {}
+    _priority_name_aliases: dict[str, tuple[str, float]] = {}
+    _priority_alias_ttl_s: float = 5.0
     _split_mode: bool = True
     _interact_visible: bool = True
     _highlight_timer: Timer | None = None
@@ -630,6 +632,10 @@ class ZeusApp(App):
     _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
         "1", "true", "yes", "on",
     }
+
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        super().__init__(*args, **kwargs)
+        self._priority_name_aliases = {}
 
     def compose(self) -> ComposeResult:
         yield Container(
@@ -3842,7 +3848,24 @@ class ZeusApp(App):
 
     def _get_priority(self, agent_name: str) -> int:
         """Return priority for an agent (1=high … 4=paused, default=3)."""
-        return self._agent_priorities.get(agent_name, 3)
+        direct = self._agent_priorities.get(agent_name)
+        if direct is not None:
+            return direct
+
+        alias = self._priority_name_aliases.get(agent_name)
+        if alias is None:
+            return 3
+
+        alias_name, expires_at = alias
+        if time.time() > expires_at:
+            self._priority_name_aliases.pop(agent_name, None)
+            return 3
+
+        aliased = self._agent_priorities.get(alias_name)
+        if aliased is not None:
+            return aliased
+
+        return 3
 
     def _is_paused(self, agent: AgentWindow) -> bool:
         return self._get_priority(agent.name) == 4
@@ -4997,6 +5020,10 @@ class ZeusApp(App):
         if old_name in self._agent_priorities:
             preserved_priority = self._agent_priorities.pop(old_name)
             self._agent_priorities[clean_name] = preserved_priority
+            self._priority_name_aliases[old_name] = (
+                clean_name,
+                time.time() + self._priority_alias_ttl_s,
+            )
             self._save_priorities()
 
         self.notify(f"Renamed: {old_name} → {clean_name}", timeout=3)
