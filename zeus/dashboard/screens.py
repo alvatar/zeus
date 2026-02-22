@@ -700,6 +700,15 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "send", "Send", show=False),
         Binding("ctrl+w", "queue", "Queue", show=False),
+        Binding("alt+1", "preset_1", "Preset 1", show=False),
+        Binding("alt+2", "preset_2", "Preset 2", show=False),
+        Binding("alt+3", "preset_3", "Preset 3", show=False),
+    ]
+
+    MESSAGE_PRESETS: list[tuple[str, str]] = [
+        ("Review", "Review the work done so far and report status."),
+        ("Continue", "Continue with the next step in the plan."),
+        ("Summarize", "Summarize your progress and list remaining tasks."),
     ]
 
     def __init__(
@@ -715,6 +724,15 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         self.compact_for_expanded_output = compact_for_expanded_output
         if self.compact_for_expanded_output:
             self.add_class("from-expanded-output")
+
+    def _apply_preset(self, index: int) -> None:
+        if index < 0 or index >= len(self.MESSAGE_PRESETS):
+            return
+        _title, text = self.MESSAGE_PRESETS[index]
+        ta = self.query_one("#agent-message-input", ZeusTextArea)
+        ta.clear()
+        ta.insert(text)
+        ta.focus()
 
     def compose(self) -> ComposeResult:
         dialog_classes = "from-expanded-output" if self.compact_for_expanded_output else ""
@@ -738,6 +756,13 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                     variant="warning",
                     id="agent-message-add-task-first-btn",
                 )
+                yield Label("", id="agent-message-btn-spacer")
+                for idx, (title, _text) in enumerate(self.MESSAGE_PRESETS):
+                    yield Button(
+                        title,
+                        classes="preset-btn",
+                        id=f"agent-message-preset-{idx}",
+                    )
 
     def on_mount(self) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)
@@ -749,7 +774,22 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
             self.action_add_task()
         elif event.button.id == "agent-message-add-task-first-btn":
             self.action_add_task_first()
+        elif (event.button.id or "").startswith("agent-message-preset-"):
+            try:
+                idx = int(event.button.id.rsplit("-", 1)[-1])
+                self._apply_preset(idx)
+            except (ValueError, IndexError):
+                pass
         event.stop()
+
+    def action_preset_1(self) -> None:
+        self._apply_preset(0)
+
+    def action_preset_2(self) -> None:
+        self._apply_preset(1)
+
+    def action_preset_3(self) -> None:
+        self._apply_preset(2)
 
     def action_send(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text

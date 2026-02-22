@@ -1343,3 +1343,59 @@ def test_app_ctrl_w_routes_to_premade_message_modal_when_open(monkeypatch) -> No
     app.action_queue_interact()
 
     assert called == [True]
+
+
+# ── Message preset buttons ──────────────────────────────────────────
+
+def test_message_screen_has_three_preset_class_entries() -> None:
+    assert len(AgentMessageScreen.MESSAGE_PRESETS) == 3
+    for title, text in AgentMessageScreen.MESSAGE_PRESETS:
+        assert title
+        assert text
+
+
+def test_message_screen_compose_includes_preset_buttons() -> None:
+    source = inspect.getsource(AgentMessageScreen.compose)
+    assert "preset-btn" in source
+    assert "agent-message-preset-" in source
+
+
+def test_message_screen_preset_bindings() -> None:
+    bindings = {b.key: b for b in AgentMessageScreen.BINDINGS}
+    assert bindings["alt+1"].action == "preset_1"
+    assert bindings["alt+2"].action == "preset_2"
+    assert bindings["alt+3"].action == "preset_3"
+
+
+def test_message_screen_preset_actions_exist() -> None:
+    assert callable(getattr(AgentMessageScreen, "action_preset_1", None))
+    assert callable(getattr(AgentMessageScreen, "action_preset_2", None))
+    assert callable(getattr(AgentMessageScreen, "action_preset_3", None))
+
+
+def test_message_screen_apply_preset_replaces_text() -> None:
+    from unittest.mock import MagicMock
+
+    screen = AgentMessageScreen(_agent("alpha", 1))
+    ta = MagicMock()
+    screen.query_one = lambda selector, cls=None: ta  # type: ignore[assignment]
+
+    screen._apply_preset(0)
+
+    ta.clear.assert_called_once()
+    ta.insert.assert_called_once_with(AgentMessageScreen.MESSAGE_PRESETS[0][1])
+    ta.focus.assert_called_once()
+
+
+def test_message_screen_apply_preset_ignores_out_of_range() -> None:
+    from unittest.mock import MagicMock
+
+    screen = AgentMessageScreen(_agent("alpha", 1))
+    ta = MagicMock()
+    screen.query_one = lambda selector, cls=None: ta  # type: ignore[assignment]
+
+    screen._apply_preset(99)
+    ta.clear.assert_not_called()
+
+    screen._apply_preset(-1)
+    ta.clear.assert_not_called()
