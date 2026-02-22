@@ -439,6 +439,7 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
 
 .preset-btn {{
     width: 12;
+    min-width: 12;
     height: 3;
     min-height: 3;
     padding: 0;
