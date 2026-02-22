@@ -341,3 +341,114 @@ def test_run_snapshot_save_catches_exception_and_finishes(monkeypatch) -> None:
     assert close_all is False
     assert result.ok is False
     assert "disk exploded" in result.errors[0]
+
+
+# ── Async restore ──────────────────────────────────────────────────
+
+def test_do_start_snapshot_restore_schedules_async_task(monkeypatch) -> None:
+    import asyncio
+
+    app = ZeusApp()
+    futures: list[object] = []
+    monkeypatch.setattr(
+        asyncio,
+        "ensure_future",
+        lambda coro: (futures.append(coro), coro.close()),
+    )
+
+    app.do_start_snapshot_restore(
+        "/tmp/snap.json",
+        workspace_mode="original",
+        if_running="skip",
+        dismiss_callback=lambda: None,
+    )
+    assert len(futures) == 1
+
+
+def test_run_snapshot_restore_calls_dismiss_and_handles_result(monkeypatch) -> None:
+    import asyncio
+
+    app = ZeusApp()
+    dismissed: list[bool] = []
+    handle_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.restore_snapshot",
+        lambda **_kw: RestoreSnapshotResult(
+            ok=True, path="/tmp/snap.json", restored_count=2,
+        ),
+    )
+    monkeypatch.setattr(
+        app,
+        "_handle_restore_result",
+        lambda result: handle_calls.append(result.ok),
+    )
+
+    asyncio.run(
+        app._run_snapshot_restore(
+            "/tmp/snap.json",
+            workspace_mode="original",
+            if_running="skip",
+            dismiss_callback=lambda: dismissed.append(True),
+        )
+    )
+
+    assert dismissed == [True]
+    assert handle_calls == [True]
+
+
+def test_run_snapshot_restore_catches_exception_and_dismisses(monkeypatch) -> None:
+    import asyncio
+
+    app = ZeusApp()
+    dismissed: list[bool] = []
+    handle_calls: list[object] = []
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.restore_snapshot",
+        lambda **_kw: (_ for _ in ()).throw(RuntimeError("kaboom")),
+    )
+    monkeypatch.setattr(
+        app,
+        "_handle_restore_result",
+        lambda result: handle_calls.append(result),
+    )
+
+    asyncio.run(
+        app._run_snapshot_restore(
+            "/tmp/snap.json",
+            workspace_mode="original",
+            if_running="skip",
+            dismiss_callback=lambda: dismissed.append(True),
+        )
+    )
+
+    assert dismissed == [True]
+    assert len(handle_calls) == 1
+    assert handle_calls[0].ok is False
+    assert "kaboom" in handle_calls[0].errors[0]
+
+
+# ── Restore default ────────────────────────────────────────────────
+
+def test_restore_dialog_defaults_to_skip_for_running_agents() -> None:
+    """The 'if running' Select in RestoreSnapshotScreen compose defaults to 'skip'."""
+    import inspect
+
+    source = inspect.getsource(RestoreSnapshotScreen.compose)
+    # The Select for snapshot-restore-running must have value="skip"
+    assert 'value="skip"' in source
+    assert 'id="snapshot-restore-running"' in source
+
+
+def test_restore_screen_blocks_dismiss_while_restoring(tmp_path: Path) -> None:
+    snap = tmp_path / "snap.json"
+    snap.write_text("{}", encoding="utf-8")
+    screen = RestoreSnapshotScreen(snapshot_files=[snap])
+    screen._restoring = True
+
+    safe_calls: list[bool] = []
+    screen._dismiss_safe = lambda: safe_calls.append(True)
+
+    screen.action_dismiss()
+    assert safe_calls == []  # dismiss blocked

@@ -1942,6 +1942,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
     def __init__(self, *, snapshot_files: list[Path]) -> None:
         super().__init__()
         self.snapshot_files = snapshot_files
+        self._restoring: bool = False
 
     def compose(self) -> ComposeResult:
         options = [(path.name, str(path)) for path in self.snapshot_files]
@@ -1974,7 +1975,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
                     ("Replace", "replace"),
                 ],
                 allow_blank=False,
-                value="error",
+                value="skip",
                 id="snapshot-restore-running",
             )
             with Horizontal(id="snapshot-restore-buttons"):
@@ -1999,7 +2000,27 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
     def action_dismiss(self) -> None:
         self._dismiss_safe()
 
+    def _enter_restoring_state(self) -> None:
+        self._restoring = True
+        for sel_id in (
+            "#snapshot-restore-file",
+            "#snapshot-restore-workspace",
+            "#snapshot-restore-running",
+        ):
+            self.query_one(sel_id, Select).disabled = True
+        self.query_one("#snapshot-restore-confirm", Button).disabled = True
+        self.query_one("#snapshot-restore-cancel", Button).label = "Restoring…"
+        self.query_one("#snapshot-restore-cancel", Button).disabled = True
+
+    def action_dismiss(self) -> None:
+        if self._restoring:
+            return
+        self._dismiss_safe()
+
     def action_confirm(self) -> None:
+        if getattr(self, "_restoring", False):
+            return
+
         snapshot_path = self._selected_value("#snapshot-restore-file")
         workspace_mode = self._selected_value("#snapshot-restore-workspace")
         if_running = self._selected_value("#snapshot-restore-running")
@@ -2008,13 +2029,13 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.notify_force("Restore settings are incomplete", timeout=3)
             return
 
-        ok = self.zeus.do_restore_snapshot(
+        self._enter_restoring_state()
+        self.zeus.do_start_snapshot_restore(
             snapshot_path,
             workspace_mode=workspace_mode,
             if_running=if_running,
+            dismiss_callback=self._dismiss_safe,
         )
-        if ok:
-            self._dismiss_safe()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "snapshot-restore-confirm":
@@ -2022,7 +2043,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             event.stop()
             return
 
-        self._dismiss_safe()
+        self.action_dismiss()
         event.stop()
 
 

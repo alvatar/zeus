@@ -5327,19 +5327,7 @@ class ZeusApp(App):
         )
         return self._handle_snapshot_save_result(result, close_all=close_all)
 
-    def do_restore_snapshot(
-        self,
-        snapshot_path: str,
-        *,
-        workspace_mode: str,
-        if_running: str,
-    ) -> bool:
-        result = restore_snapshot(
-            snapshot_path=snapshot_path,
-            workspace_mode=workspace_mode,
-            if_running=if_running,
-        )
-
+    def _handle_restore_result(self, result) -> bool:  # noqa: ANN001
         if not result.ok:
             detail = result.errors[0] if result.errors else "unknown error"
             self.notify_force(f"Snapshot restore failed: {detail}", timeout=5)
@@ -5366,6 +5354,86 @@ class ZeusApp(App):
 
         self.set_timer(0.7, self.poll_and_update)
         return True
+
+    def do_restore_snapshot(
+        self,
+        snapshot_path: str,
+        *,
+        workspace_mode: str,
+        if_running: str,
+    ) -> bool:
+        result = restore_snapshot(
+            snapshot_path=snapshot_path,
+            workspace_mode=workspace_mode,
+            if_running=if_running,
+        )
+        return self._handle_restore_result(result)
+
+    def do_start_snapshot_restore(
+        self,
+        snapshot_path: str,
+        *,
+        workspace_mode: str,
+        if_running: str,
+        dismiss_callback: object = None,
+    ) -> None:
+        import sys
+
+        print(
+            f"[zeus-restore] starting async restore path={snapshot_path!r} "
+            f"mode={workspace_mode} if_running={if_running}",
+            file=sys.stderr,
+            flush=True,
+        )
+        asyncio.ensure_future(
+            self._run_snapshot_restore(
+                snapshot_path,
+                workspace_mode=workspace_mode,
+                if_running=if_running,
+                dismiss_callback=dismiss_callback,
+            )
+        )
+
+    async def _run_snapshot_restore(
+        self,
+        snapshot_path: str,
+        *,
+        workspace_mode: str,
+        if_running: str,
+        dismiss_callback: object = None,
+    ) -> None:
+        import sys
+
+        try:
+            result = await asyncio.to_thread(
+                restore_snapshot,
+                snapshot_path=snapshot_path,
+                workspace_mode=workspace_mode,
+                if_running=if_running,
+            )
+            print(
+                f"[zeus-restore] done ok={result.ok} restored={result.restored_count} "
+                f"skipped={result.skipped_count} errors={result.errors}",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"[zeus-restore] raised {exc!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+            from ..snapshots import RestoreSnapshotResult
+
+            result = RestoreSnapshotResult(
+                ok=False,
+                path=snapshot_path,
+                errors=[f"Unhandled error: {exc}"],
+            )
+
+        if callable(dismiss_callback):
+            dismiss_callback()
+        self._handle_restore_result(result)
 
     # ── Log panel ─────────────────────────────────────────────────────
 
