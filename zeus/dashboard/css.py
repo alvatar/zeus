@@ -444,19 +444,28 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
     padding: 0;
     background: #0a3a3a;
     color: #00d7d7;
-    border: none;
+    border-top: tall #1a5050;
+    border-bottom: tall #041418;
     margin: 0 0 0 1;
     content-align: center middle;
+    text-style: bold;
 }}
 
 .preset-btn:hover {{
-    background: #1a5050;
+    background: #061a2a;
+    border-top: tall #0a3a3a;
     color: #8de8e8;
 }}
 
 .preset-btn:focus {{
     background: #1a5050;
     color: #8de8e8;
+}}
+
+.preset-btn.-active {{
+    background: #0a3a3a;
+    border-bottom: tall #1a5050;
+    border-top: tall #041418;
 }}
 """
 
