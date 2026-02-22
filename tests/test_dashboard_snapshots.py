@@ -277,3 +277,42 @@ def test_do_restore_snapshot_reports_working_state_recovery(monkeypatch) -> None
         notices[-1]
         == "Restored snapshot: snap.json (2 restored); previously WORKING: 2/3 restored, 1 skipped"
     )
+
+
+# ── RestoreSnapshotScreen dismiss race ──────────────────────────────
+
+def test_restore_snapshot_screen_dismiss_safe_tolerates_invalid_state(
+    tmp_path: Path,
+) -> None:
+    from asyncio import InvalidStateError
+
+    snap = tmp_path / "snap.json"
+    snap.write_text("{}", encoding="utf-8")
+    screen = RestoreSnapshotScreen(snapshot_files=[snap])
+
+    calls: list[bool] = []
+
+    def _bad_dismiss(*_a: object, **_k: object) -> None:
+        calls.append(True)
+        raise InvalidStateError("already set")
+
+    # Bypass the override so _dismiss_safe calls the broken base dismiss
+    object.__setattr__(screen, "dismiss", _bad_dismiss)
+
+    # Should not raise
+    screen._dismiss_safe()
+    assert calls == [True]
+
+
+def test_restore_snapshot_screen_action_dismiss_uses_safe_dismiss(
+    tmp_path: Path,
+) -> None:
+    snap = tmp_path / "snap.json"
+    snap.write_text("{}", encoding="utf-8")
+    screen = RestoreSnapshotScreen(snapshot_files=[snap])
+
+    safe_calls: list[bool] = []
+    screen._dismiss_safe = lambda: safe_calls.append(True)
+
+    screen.action_dismiss()
+    assert safe_calls == [True]

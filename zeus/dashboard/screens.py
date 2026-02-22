@@ -1990,6 +1990,15 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             return None
         return str(value)
 
+    def _dismiss_safe(self) -> None:
+        try:
+            self.dismiss()
+        except InvalidStateError:
+            return
+
+    def action_dismiss(self) -> None:
+        self._dismiss_safe()
+
     def action_confirm(self) -> None:
         snapshot_path = self._selected_value("#snapshot-restore-file")
         workspace_mode = self._selected_value("#snapshot-restore-workspace")
@@ -2005,7 +2014,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             if_running=if_running,
         )
         if ok:
-            self.dismiss()
+            self._dismiss_safe()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "snapshot-restore-confirm":
@@ -2013,7 +2022,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             event.stop()
             return
 
-        self.dismiss()
+        self._dismiss_safe()
         event.stop()
 
 
