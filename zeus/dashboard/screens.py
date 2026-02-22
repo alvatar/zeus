@@ -759,23 +759,13 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                     id="agent-message-add-task-first-btn",
                 )
                 yield Label("", id="agent-message-btn-spacer")
-                with Vertical(id="agent-message-preset-grid"):
-                    with Horizontal(classes="preset-row"):
-                        for idx in (0, 1):
-                            title = self.MESSAGE_PRESETS[idx][0]
-                            yield Button(
-                                f"{title} _{idx + 1}",
-                                classes="preset-btn",
-                                id=f"agent-message-preset-{idx}",
-                            )
-                    with Horizontal(classes="preset-row"):
-                        for idx in (2, 3):
-                            title = self.MESSAGE_PRESETS[idx][0]
-                            yield Button(
-                                f"{title} _{idx + 1}",
-                                classes="preset-btn",
-                                id=f"agent-message-preset-{idx}",
-                            )
+                with Horizontal(id="agent-message-preset-grid"):
+                    for idx, (title, _text) in enumerate(self.MESSAGE_PRESETS):
+                        yield Button(
+                            f"{title} _{idx + 1}",
+                            classes="preset-btn",
+                            id=f"agent-message-preset-{idx}",
+                        )
 
     def on_mount(self) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)

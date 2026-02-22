@@ -357,7 +357,7 @@ AgentMessageScreen {{
 }}
 
 #agent-message-dialog {{
-    width: 110;
+    width: 140;
     height: auto;
     max-height: 40;
     border: thick #ffaf00;
@@ -433,22 +433,12 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
 #agent-message-preset-grid {{
     width: auto;
     height: auto;
-    align: right top;
-}}
-
-.preset-row {{
-    width: auto;
-    height: auto;
+    layout: horizontal;
     align: right middle;
-    margin: 0 0 1 0;
-}}
-
-.preset-row:last-child {{
-    margin: 0;
 }}
 
 .preset-btn {{
-    width: 18;
+    width: 16;
     height: 3;
     min-height: 3;
     padding: 0;
