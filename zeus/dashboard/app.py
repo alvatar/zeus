@@ -108,6 +108,7 @@ from ..agent_bus import (
     has_agent_bus_receipt,
 )
 from ..snapshots import (
+    SaveSnapshotResult,
     default_snapshot_name,
     list_snapshot_files,
     restore_snapshot,
@@ -5242,7 +5243,7 @@ class ZeusApp(App):
         )
         return job_id
 
-    @work(thread=True, exclusive=True, group="snapshot_save")
+    @work(thread=True, exclusive=True, group="snapshot_save", exit_on_error=False)
     def _run_snapshot_save_job(
         self,
         job_id: int,
@@ -5250,11 +5251,17 @@ class ZeusApp(App):
         close_all: bool,
         agents_snapshot: list[AgentWindow],
     ) -> None:
-        result = save_snapshot_from_dashboard(
-            name=name,
-            agents=agents_snapshot,
-            close_all=close_all,
-        )
+        try:
+            result = save_snapshot_from_dashboard(
+                name=name,
+                agents=agents_snapshot,
+                close_all=close_all,
+            )
+        except Exception as exc:
+            result = SaveSnapshotResult(
+                ok=False,
+                errors=[f"Unhandled error: {exc}"],
+            )
         self.call_from_thread(self._finish_snapshot_save_job, job_id, close_all, result)
 
     def _dismiss_snapshot_save_screen(self, job_id: int) -> None:

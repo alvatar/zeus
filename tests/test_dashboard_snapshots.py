@@ -316,3 +316,34 @@ def test_restore_snapshot_screen_action_dismiss_uses_safe_dismiss(
 
     screen.action_dismiss()
     assert safe_calls == [True]
+
+
+# ── Worker crash recovery ───────────────────────────────────────────
+
+def test_run_snapshot_save_job_catches_exception_and_finishes(monkeypatch) -> None:
+    """If save_snapshot_from_dashboard raises, the worker must still call
+    _finish_snapshot_save_job so the dialog isn't stuck forever."""
+    app = ZeusApp()
+    app._snapshot_save_active_job = 7
+
+    finish_calls: list[tuple[int, bool, SaveSnapshotResult]] = []
+
+    monkeypatch.setattr(
+        "zeus.dashboard.app.save_snapshot_from_dashboard",
+        lambda **_kw: (_ for _ in ()).throw(RuntimeError("disk exploded")),
+    )
+    monkeypatch.setattr(
+        app,
+        "call_from_thread",
+        lambda fn, *args: finish_calls.append(args),
+    )
+
+    # Call the underlying function directly (not through the decorator)
+    app._run_snapshot_save_job.__wrapped__(app, 7, "boom", False, [_agent()])
+
+    assert len(finish_calls) == 1
+    job_id, close_all, result = finish_calls[0]
+    assert job_id == 7
+    assert close_all is False
+    assert result.ok is False
+    assert "disk exploded" in result.errors[0]
