@@ -1357,7 +1357,7 @@ def test_message_screen_has_four_preset_class_entries() -> None:
 def test_message_screen_compose_includes_preset_buttons() -> None:
     source = inspect.getsource(AgentMessageScreen.compose)
     assert "agent-message-preset-" in source
-    assert 'variant="primary"' in source
+    assert "preset-btn" in source
 
 
 def test_message_screen_preset_bindings() -> None:
