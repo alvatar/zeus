@@ -609,6 +609,8 @@ class ZeusApp(App):
     _history_nav_draft: str | None = None
     _broadcast_job_seq: int = 0
     _broadcast_active_job: int | None = None
+    _snapshot_save_job_seq: int = 0
+    _snapshot_save_active_job: int | None = None
     _prepare_target_selection: dict[int, str] = {}
     _agent_tasks: dict[str, str] = {}
     _agent_message_drafts: dict[str, str] = {}
@@ -5204,13 +5206,58 @@ class ZeusApp(App):
             return
         self.push_screen(RestoreSnapshotScreen(snapshot_files=snapshot_files))
 
-    def do_save_snapshot(self, name: str, *, close_all: bool) -> bool:
+    def do_start_snapshot_save(self, name: str, *, close_all: bool) -> int | None:
+        clean_name = name.strip()
+        if not clean_name:
+            self.notify_force("Snapshot name cannot be empty", timeout=3)
+            return None
+
+        if self._snapshot_save_active_job is not None:
+            self.notify("Snapshot save already in progress", timeout=2)
+            return None
+
+        self._snapshot_save_job_seq += 1
+        job_id = self._snapshot_save_job_seq
+        self._snapshot_save_active_job = job_id
+
+        agents_snapshot = list(self.agents)
+        self.set_timer(
+            0,
+            lambda: self._run_snapshot_save_job(
+                job_id,
+                clean_name,
+                close_all,
+                agents_snapshot,
+            ),
+        )
+        return job_id
+
+    @work(thread=True, exclusive=True, group="snapshot_save")
+    def _run_snapshot_save_job(
+        self,
+        job_id: int,
+        name: str,
+        close_all: bool,
+        agents_snapshot: list[AgentWindow],
+    ) -> None:
         result = save_snapshot_from_dashboard(
             name=name,
-            agents=list(self.agents),
+            agents=agents_snapshot,
             close_all=close_all,
         )
+        self.call_from_thread(self._finish_snapshot_save_job, job_id, close_all, result)
 
+    def _dismiss_snapshot_save_screen(self, job_id: int) -> None:
+        if len(self.screen_stack) <= 1:
+            return
+        top = self.screen_stack[-1]
+        if not isinstance(top, SaveSnapshotScreen):
+            return
+        if top.save_job_id != job_id:
+            return
+        top._dismiss_safe()
+
+    def _handle_snapshot_save_result(self, result, *, close_all: bool) -> bool:
         if not result.ok:
             detail = result.errors[0] if result.errors else "unknown error"
             self.notify_force(f"Snapshot save failed: {detail}", timeout=5)
@@ -5229,6 +5276,22 @@ class ZeusApp(App):
 
         self.set_timer(0.7, self.poll_and_update)
         return True
+
+    def _finish_snapshot_save_job(self, job_id: int, close_all: bool, result) -> None:
+        if self._snapshot_save_active_job != job_id:
+            return
+
+        self._snapshot_save_active_job = None
+        self._dismiss_snapshot_save_screen(job_id)
+        self._handle_snapshot_save_result(result, close_all=close_all)
+
+    def do_save_snapshot(self, name: str, *, close_all: bool) -> bool:
+        result = save_snapshot_from_dashboard(
+            name=name,
+            agents=list(self.agents),
+            close_all=close_all,
+        )
+        return self._handle_snapshot_save_result(result, close_all=close_all)
 
     def do_restore_snapshot(
         self,

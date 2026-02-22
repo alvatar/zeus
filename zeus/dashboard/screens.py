@@ -1849,10 +1849,16 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
     def __init__(self, *, default_name: str) -> None:
         super().__init__()
         self.default_name = default_name
+        self._saving: bool = False
+        self._save_job_id: int | None = None
+
+    @property
+    def save_job_id(self) -> int | None:
+        return self._save_job_id
 
     def compose(self) -> ComposeResult:
         with Vertical(id="snapshot-save-dialog"):
-            yield Label("Save snapshot")
+            yield Label("Save snapshot", id="snapshot-save-title")
             yield Label("Snapshot name:")
             yield Input(value=self.default_name, id="snapshot-save-name")
             yield Checkbox(
@@ -1876,6 +1882,15 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
     def _name_value(self) -> str:
         return self.query_one("#snapshot-save-name", Input).value.strip()
 
+    def _enter_saving_state(self, name: str) -> None:
+        self._saving = True
+        self.query_one("#snapshot-save-title", Label).update(f"Saving snapshot: {name}")
+        self.query_one("#snapshot-save-name", Input).disabled = True
+        self.query_one("#snapshot-save-close-all", Checkbox).disabled = True
+        self.query_one("#snapshot-save-confirm", Button).disabled = True
+        self.query_one("#snapshot-save-cancel", Button).label = "Saving…"
+        self.query_one("#snapshot-save-cancel", Button).disabled = True
+
     def _dismiss_safe(self) -> None:
         try:
             self.dismiss()
@@ -1885,18 +1900,27 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             return
 
     def action_dismiss(self) -> None:
+        if self._saving:
+            self.zeus.notify("Snapshot save in progress…", timeout=2)
+            return
         self._dismiss_safe()
 
     def action_confirm(self) -> None:
+        if self._saving:
+            return
+
         name = self._name_value()
         if not name:
             self.zeus.notify_force("Snapshot name cannot be empty", timeout=3)
             self.query_one("#snapshot-save-name", Input).focus()
             return
 
-        ok = self.zeus.do_save_snapshot(name, close_all=self._close_all_value())
-        if ok:
-            self._dismiss_safe()
+        job_id = self.zeus.do_start_snapshot_save(name, close_all=self._close_all_value())
+        if job_id is None:
+            return
+
+        self._save_job_id = job_id
+        self._enter_saving_state(name)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "snapshot-save-confirm":
@@ -1904,7 +1928,7 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             event.stop()
             return
 
-        self._dismiss_safe()
+        self.action_dismiss()
         event.stop()
 
 

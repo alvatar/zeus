@@ -50,38 +50,55 @@ def test_save_snapshot_screen_action_dismiss_ignores_invalid_state(monkeypatch) 
     screen.action_dismiss()
 
 
-def test_save_snapshot_screen_confirm_tolerates_followup_dismiss_race(monkeypatch) -> None:
+def test_save_snapshot_screen_confirm_starts_async_save_and_enters_saving_state(monkeypatch) -> None:
     screen = SaveSnapshotScreen(default_name="snap-a")
 
-    save_calls: list[tuple[str, bool]] = []
+    start_calls: list[tuple[str, bool]] = []
 
     class _ZeusStub:
         def notify_force(self, _message: str, timeout: int = 3) -> None:  # noqa: ARG002
             return
 
-        def do_save_snapshot(self, name: str, *, close_all: bool) -> bool:
-            save_calls.append((name, close_all))
-            return True
+        def do_start_snapshot_save(self, name: str, *, close_all: bool) -> int | None:
+            start_calls.append((name, close_all))
+            return 7
 
     monkeypatch.setattr(SaveSnapshotScreen, "zeus", property(lambda self: _ZeusStub()))
     monkeypatch.setattr(screen, "_name_value", lambda: "snap-a")
     monkeypatch.setattr(screen, "_close_all_value", lambda: False)
 
-    dismiss_calls: list[int] = []
-
-    def _dismiss() -> None:
-        dismiss_calls.append(1)
-        if len(dismiss_calls) > 1:
-            raise InvalidStateError("invalid state")
-
-    monkeypatch.setattr(screen, "dismiss", _dismiss)
+    entered: list[str] = []
+    monkeypatch.setattr(screen, "_enter_saving_state", lambda name: entered.append(name))
 
     screen.action_confirm()
-    # Simulate queued follow-up dismiss (e.g., key repeat / late event).
+
+    assert start_calls == [("snap-a", False)]
+    assert entered == ["snap-a"]
+    assert screen.save_job_id == 7
+
+
+def test_save_snapshot_screen_dismiss_while_saving_notifies_and_does_not_dismiss(
+    monkeypatch,
+) -> None:
+    screen = SaveSnapshotScreen(default_name="snap-a")
+    screen._saving = True
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+    monkeypatch.setattr(SaveSnapshotScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(
+        screen,
+        "dismiss",
+        lambda: (_ for _ in ()).throw(AssertionError("must not dismiss while saving")),
+    )
+
     screen.action_dismiss()
 
-    assert save_calls == [("snap-a", False)]
-    assert len(dismiss_calls) == 2
+    assert notices == ["Snapshot save in progress…"]
 
 
 def test_action_restore_snapshot_notifies_when_none_available(monkeypatch) -> None:
@@ -112,6 +129,73 @@ def test_action_restore_snapshot_pushes_restore_dialog(monkeypatch, tmp_path: Pa
 
     assert pushed
     assert isinstance(pushed[0], RestoreSnapshotScreen)
+
+
+def test_do_start_snapshot_save_schedules_background_worker(monkeypatch) -> None:
+    app = ZeusApp()
+    app.agents = [_agent()]
+
+    timer_calls: list[float] = []
+    run_calls: list[tuple[int, str, bool, int]] = []
+
+    def _set_timer(delay: float, callback) -> None:  # noqa: ANN001
+        timer_calls.append(delay)
+        callback()
+
+    monkeypatch.setattr(app, "set_timer", _set_timer)
+    monkeypatch.setattr(
+        app,
+        "_run_snapshot_save_job",
+        lambda job_id, name, close_all, agents: run_calls.append(
+            (job_id, name, close_all, len(agents))
+        ),
+    )
+
+    job_id = app.do_start_snapshot_save("daily", close_all=True)
+
+    assert job_id == 1
+    assert app._snapshot_save_active_job == 1
+    assert timer_calls == [0]
+    assert run_calls == [(1, "daily", True, 1)]
+
+
+def test_do_start_snapshot_save_rejects_when_active(monkeypatch) -> None:
+    app = ZeusApp()
+    app._snapshot_save_active_job = 3
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+
+    job_id = app.do_start_snapshot_save("daily", close_all=False)
+
+    assert job_id is None
+    assert notices == ["Snapshot save already in progress"]
+
+
+def test_finish_snapshot_save_job_clears_active_and_reports(monkeypatch) -> None:
+    app = ZeusApp()
+    app._snapshot_save_active_job = 9
+
+    dismiss_calls: list[int] = []
+    handle_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        app,
+        "_dismiss_snapshot_save_screen",
+        lambda job_id: dismiss_calls.append(job_id),
+    )
+    monkeypatch.setattr(
+        app,
+        "_handle_snapshot_save_result",
+        lambda result, *, close_all: handle_calls.append(close_all) or True,
+    )
+
+    result = SaveSnapshotResult(ok=True, path="/tmp/daily.json", entry_count=1)
+    app._finish_snapshot_save_job(9, True, result)
+
+    assert app._snapshot_save_active_job is None
+    assert dismiss_calls == [9]
+    assert handle_calls == [True]
 
 
 def test_do_save_snapshot_reports_failure(monkeypatch) -> None:
