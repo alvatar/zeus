@@ -578,7 +578,7 @@ ExpandedOutputScreen {
 #expanded-output-stream {
     height: 1fr;
     border-top: solid #1a3030;
-    background: #161616;
+    background: #101010;
     padding: 0 0;
     overflow-y: auto;
     scrollbar-size: 0 0;
