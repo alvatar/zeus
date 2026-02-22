@@ -155,14 +155,17 @@ def _read_proc_cpu(pids: list[int]) -> float:
 
 
 def _read_proc_ram(pids: list[int]) -> float:
-    """Read total RSS in MB for a set of PIDs."""
+    """Read total RSS in MB for a set of PIDs.
+
+    Processes can disappear mid-read; treat those races as zero contribution.
+    """
     total: int = 0
     for pid in pids:
         try:
             with open(f"/proc/{pid}/statm") as f:
                 pages = int(f.read().split()[1])
             total += pages
-        except (FileNotFoundError, IndexError, ValueError):
+        except (OSError, ProcessLookupError, IndexError, ValueError):
             pass
     page_size: int = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
     return total * page_size / 1048576

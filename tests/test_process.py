@@ -1,5 +1,8 @@
 """Tests for process metrics helpers."""
 
+import builtins
+import io
+
 import zeus.process as process
 from zeus.models import ProcessMetrics
 from zeus.process import fmt_bytes
@@ -38,6 +41,22 @@ def test_get_process_tree_reads_proc_children_iteratively(monkeypatch) -> None:
 
     assert tree[0] == 10
     assert set(tree) == {10, 11, 12, 13}
+
+
+def test_read_proc_ram_ignores_processlookup_race(monkeypatch) -> None:
+    def _open(path: str, *args, **kwargs):  # noqa: ANN002, ANN003
+        if path == "/proc/101/statm":
+            return io.StringIO("0 100 0\n")
+        if path == "/proc/102/statm":
+            raise ProcessLookupError(3, "No such process")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", _open)
+    monkeypatch.setattr(process.os, "sysconf", lambda _name: 4096)
+
+    ram_mb = process._read_proc_ram([101, 102])
+
+    assert ram_mb == (100 * 4096) / 1048576
 
 
 def test_read_process_metrics_resets_cpu_delta_on_root_identity_change(
