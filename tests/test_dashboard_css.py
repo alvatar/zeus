@@ -109,7 +109,7 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "AgentMessageScreen {" in css.AGENT_MESSAGE_CSS
     assert "background: transparent;" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-dialog {" in css.AGENT_MESSAGE_CSS
-    assert "width: 140;" in css.AGENT_MESSAGE_CSS
+    assert "width: 130;" in css.AGENT_MESSAGE_CSS
     assert "max-height: 40;" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-title-row {" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-shortcuts-hint {" in css.AGENT_MESSAGE_CSS

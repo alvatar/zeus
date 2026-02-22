@@ -357,7 +357,7 @@ AgentMessageScreen {{
 }}
 
 #agent-message-dialog {{
-    width: 140;
+    width: 130;
     height: auto;
     max-height: 40;
     border: thick #ffaf00;
