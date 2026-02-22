@@ -124,7 +124,6 @@ def test_message_dialog_css_matches_notes_shell() -> None:
     assert "max-height: 30;" in css.AGENT_MESSAGE_CSS
     assert "AgentMessageScreen.from-expanded-output #agent-message-input {" in css.AGENT_MESSAGE_CSS
     assert "height: 12;" in css.AGENT_MESSAGE_CSS
-    assert ".preset-btn {" in css.AGENT_MESSAGE_CSS
     assert "#agent-message-btn-spacer {" in css.AGENT_MESSAGE_CSS
 
 

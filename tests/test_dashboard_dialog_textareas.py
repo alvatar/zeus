@@ -71,8 +71,8 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
     assert "agent-message-add-task-btn" in source
     assert "agent-message-add-task-first-btn" in source
-    assert "append as task" in source
-    assert "prepend as task" in source
+    assert "Append as Task" in source
+    assert "Prepend as Task" in source
     assert source.index("agent-message-add-task-btn") < source.index(
         "agent-message-add-task-first-btn"
     )

@@ -429,27 +429,6 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
     width: 1fr;
     height: 1;
 }}
-
-.preset-btn {{
-    min-width: 12;
-    height: 1;
-    min-height: 1;
-    background: #0a3a3a;
-    color: #00d7d7;
-    border: none;
-    margin: 0 0 0 1;
-    padding: 0 1;
-}}
-
-.preset-btn:hover {{
-    background: #1a5050;
-    color: #8de8e8;
-}}
-
-.preset-btn:focus {{
-    background: #1a5050;
-    color: #8de8e8;
-}}
 """
 
 PREMADE_MESSAGE_CSS = """

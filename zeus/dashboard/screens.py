@@ -747,12 +747,12 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
             yield ZeusTextArea(self.draft, id="agent-message-input")
             with Horizontal(id="agent-message-buttons"):
                 yield Button(
-                    "append as task",
+                    "Append as Task",
                     variant="warning",
                     id="agent-message-add-task-btn",
                 )
                 yield Button(
-                    "prepend as task",
+                    "Prepend as Task",
                     variant="warning",
                     id="agent-message-add-task-first-btn",
                 )
@@ -760,7 +760,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                 for idx, (title, _text) in enumerate(self.MESSAGE_PRESETS):
                     yield Button(
                         title,
-                        classes="preset-btn",
+                        variant="primary",
                         id=f"agent-message-preset-{idx}",
                     )
 
