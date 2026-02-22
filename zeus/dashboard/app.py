@@ -33,7 +33,13 @@ class SortMode(Enum):
     PRIORITY = "priority"
     ALPHA = "alpha"
 
-from ..config import MESSAGE_TMP_DIR, PRIORITIES_FILE, PANEL_VISIBILITY_FILE, STATE_DIR
+from ..config import (
+    INVOKE_PREFERENCES_FILE,
+    MESSAGE_TMP_DIR,
+    PRIORITIES_FILE,
+    PANEL_VISIBILITY_FILE,
+    STATE_DIR,
+)
 from ..notes import clear_done_tasks, load_agent_tasks, save_agent_tasks
 from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
@@ -705,6 +711,7 @@ class ZeusApp(App):
         self._load_agent_tasks()
         self._load_agent_dependencies()
         self._load_panel_visibility()
+        self._load_invoke_preferences()
         self._warm_invoke_model_specs()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -3900,6 +3907,27 @@ class ZeusApp(App):
             },
         )
 
+    # ── Invoke preferences ──────────────────────────────────────────
+
+    def _load_invoke_preferences(self) -> None:
+        """Load invoke dialog preferences from disk."""
+        data = self._read_json_dict(INVOKE_PREFERENCES_FILE)
+        if data is None:
+            return
+
+        raw_last = data.get("last_model_spec")
+        if isinstance(raw_last, str):
+            self._last_invoke_model_spec = raw_last.strip()
+
+    def _save_invoke_preferences(self) -> None:
+        """Persist invoke dialog preferences to disk."""
+        self._write_json_dict(
+            INVOKE_PREFERENCES_FILE,
+            {
+                "last_model_spec": (self._last_invoke_model_spec or "").strip(),
+            },
+        )
+
     def _apply_panel_visibility(self) -> None:
         """Apply current panel visibility flags to widgets."""
         mini = self.query_one("#mini-map", Static)
@@ -4333,6 +4361,12 @@ class ZeusApp(App):
 
     def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
         self._last_invoke_model_spec = (model_spec or "").strip()
+        if not self.is_running:
+            return
+        try:
+            self._save_invoke_preferences()
+        except OSError:
+            return
 
     def do_get_invoke_model_specs(self) -> list[str]:
         return list(self._invoke_model_specs)
