@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from zeus.dashboard.app import SortMode, ZeusApp
-from zeus.models import AgentWindow, State
+from zeus.models import AgentWindow, State, TmuxSession
 
 
 class _RowKey:
@@ -181,10 +181,18 @@ def test_alpha_sort_pins_god_to_top(monkeypatch) -> None:
     assert row_keys[1] == app._agent_key(alpha)
 
 
-def test_blocked_children_render_after_regular_children(monkeypatch) -> None:
+def test_branch_order_is_tmux_then_children_then_blocked(monkeypatch) -> None:
     app = ZeusApp()
 
     blocker = _agent("blocker", 40, State.WORKING, agent_id="blocker-id")
+    blocker.tmux_sessions = [
+        TmuxSession(
+            name="viewer-a",
+            command="pi",
+            cwd="/tmp/project",
+            attached=True,
+        )
+    ]
     child = _agent(
         "zzz-child",
         41,
@@ -209,6 +217,7 @@ def test_blocked_children_render_after_regular_children(monkeypatch) -> None:
 
     assert row_keys == [
         app._agent_key(blocker),
+        "tmux:viewer-a",
         app._agent_key(child),
         app._agent_key(blocked),
     ]
