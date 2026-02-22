@@ -762,7 +762,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                 with Horizontal(id="agent-message-preset-grid"):
                     for idx, (title, _text) in enumerate(self.MESSAGE_PRESETS):
                         yield Button(
-                            f"{title} _{idx + 1}",
+                            f"{title} ({idx + 1})",
                             classes="preset-btn",
                             id=f"agent-message-preset-{idx}",
                         )
