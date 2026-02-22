@@ -32,7 +32,15 @@ class _FakeStatus:
         self.text = text
 
 
-def _agent(name: str, kitty_id: int, state: State, *, role: str = "") -> AgentWindow:
+def _agent(
+    name: str,
+    kitty_id: int,
+    state: State,
+    *,
+    role: str = "",
+    agent_id: str = "",
+    parent_id: str = "",
+) -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
         socket="/tmp/kitty-1",
@@ -42,6 +50,8 @@ def _agent(name: str, kitty_id: int, state: State, *, role: str = "") -> AgentWi
         cwd="/tmp/project",
         state=state,
         role=role,
+        agent_id=agent_id,
+        parent_id=parent_id,
     )
 
 
@@ -169,3 +179,36 @@ def test_alpha_sort_pins_god_to_top(monkeypatch) -> None:
 
     assert row_keys[0] == app._agent_key(god)
     assert row_keys[1] == app._agent_key(alpha)
+
+
+def test_blocked_children_render_after_regular_children(monkeypatch) -> None:
+    app = ZeusApp()
+
+    blocker = _agent("blocker", 40, State.WORKING, agent_id="blocker-id")
+    child = _agent(
+        "zzz-child",
+        41,
+        State.IDLE,
+        agent_id="child-id",
+        parent_id="blocker-id",
+    )
+    blocked = _agent(
+        "aaa-blocked",
+        42,
+        State.IDLE,
+        agent_id="blocked-id",
+        parent_id="blocker-id",
+    )
+
+    app.agents = [blocker, blocked, child]
+    app._agent_dependencies = {
+        app._agent_dependency_key(blocked): app._agent_dependency_key(blocker),
+    }
+
+    row_keys = _render_row_keys(app, monkeypatch)
+
+    assert row_keys == [
+        app._agent_key(blocker),
+        app._agent_key(child),
+        app._agent_key(blocked),
+    ]

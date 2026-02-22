@@ -1753,11 +1753,11 @@ class ZeusApp(App):
             _add_agent_row(a, indent_level=indent_level, relation_icon=relation_icon)
 
             next_level = indent_level + 1
-            for blocked in blocked_of.get(akey, []):
-                _render_agent_branch(blocked, next_level, relation_icon="🔺")
-
             for child in children_of.get(a.agent_id, []):
                 _render_agent_branch(child, next_level, relation_icon="🧬")
+
+            for blocked in blocked_of.get(akey, []):
+                _render_agent_branch(blocked, next_level, relation_icon="🔺")
 
             _add_tmux_rows(a, indent_level=next_level)
 
