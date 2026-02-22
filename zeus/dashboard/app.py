@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -5218,6 +5219,8 @@ class ZeusApp(App):
         self.push_screen(RestoreSnapshotScreen(snapshot_files=snapshot_files))
 
     def do_start_snapshot_save(self, name: str, *, close_all: bool) -> int | None:
+        import sys
+
         clean_name = name.strip()
         if not clean_name:
             self.notify_force("Snapshot name cannot be empty", timeout=3)
@@ -5232,37 +5235,51 @@ class ZeusApp(App):
         self._snapshot_save_active_job = job_id
 
         agents_snapshot = list(self.agents)
-        self.set_timer(
-            0,
-            lambda: self._run_snapshot_save_job(
-                job_id,
-                clean_name,
-                close_all,
-                agents_snapshot,
-            ),
+        print(
+            f"[zeus-snapshot] job {job_id}: starting async save "
+            f"name={clean_name!r} close_all={close_all} agents={len(agents_snapshot)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        asyncio.ensure_future(
+            self._run_snapshot_save(job_id, clean_name, close_all, agents_snapshot)
         )
         return job_id
 
-    @work(thread=True, exclusive=True, group="snapshot_save", exit_on_error=False)
-    def _run_snapshot_save_job(
+    async def _run_snapshot_save(
         self,
         job_id: int,
         name: str,
         close_all: bool,
         agents_snapshot: list[AgentWindow],
     ) -> None:
+        import sys
+
         try:
-            result = save_snapshot_from_dashboard(
+            result = await asyncio.to_thread(
+                save_snapshot_from_dashboard,
                 name=name,
                 agents=agents_snapshot,
                 close_all=close_all,
             )
+            print(
+                f"[zeus-snapshot] job {job_id}: save returned ok={result.ok} "
+                f"path={result.path!r} errors={result.errors}",
+                file=sys.stderr,
+                flush=True,
+            )
         except Exception as exc:
+            print(
+                f"[zeus-snapshot] job {job_id}: save raised {exc!r}",
+                file=sys.stderr,
+                flush=True,
+            )
             result = SaveSnapshotResult(
                 ok=False,
                 errors=[f"Unhandled error: {exc}"],
             )
-        self.call_from_thread(self._finish_snapshot_save_job, job_id, close_all, result)
+
+        self._finish_snapshot_save_job(job_id, close_all, result)
 
     def _dismiss_snapshot_save_screen(self, job_id: int) -> None:
         if len(self.screen_stack) <= 1:

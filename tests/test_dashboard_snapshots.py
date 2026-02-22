@@ -131,32 +131,24 @@ def test_action_restore_snapshot_pushes_restore_dialog(monkeypatch, tmp_path: Pa
     assert isinstance(pushed[0], RestoreSnapshotScreen)
 
 
-def test_do_start_snapshot_save_schedules_background_worker(monkeypatch) -> None:
+def test_do_start_snapshot_save_schedules_async_task(monkeypatch) -> None:
+    import asyncio
+
     app = ZeusApp()
     app.agents = [_agent()]
 
-    timer_calls: list[float] = []
-    run_calls: list[tuple[int, str, bool, int]] = []
-
-    def _set_timer(delay: float, callback) -> None:  # noqa: ANN001
-        timer_calls.append(delay)
-        callback()
-
-    monkeypatch.setattr(app, "set_timer", _set_timer)
+    futures: list[object] = []
     monkeypatch.setattr(
-        app,
-        "_run_snapshot_save_job",
-        lambda job_id, name, close_all, agents: run_calls.append(
-            (job_id, name, close_all, len(agents))
-        ),
+        asyncio,
+        "ensure_future",
+        lambda coro: (futures.append(coro), coro.close()),  # capture without running
     )
 
     job_id = app.do_start_snapshot_save("daily", close_all=True)
 
     assert job_id == 1
     assert app._snapshot_save_active_job == 1
-    assert timer_calls == [0]
-    assert run_calls == [(1, "daily", True, 1)]
+    assert len(futures) == 1
 
 
 def test_do_start_snapshot_save_rejects_when_active(monkeypatch) -> None:
@@ -320,26 +312,28 @@ def test_restore_snapshot_screen_action_dismiss_uses_safe_dismiss(
 
 # ── Worker crash recovery ───────────────────────────────────────────
 
-def test_run_snapshot_save_job_catches_exception_and_finishes(monkeypatch) -> None:
-    """If save_snapshot_from_dashboard raises, the worker must still call
+def test_run_snapshot_save_catches_exception_and_finishes(monkeypatch) -> None:
+    """If save_snapshot_from_dashboard raises, the async task must still call
     _finish_snapshot_save_job so the dialog isn't stuck forever."""
+    import asyncio
+
     app = ZeusApp()
     app._snapshot_save_active_job = 7
 
     finish_calls: list[tuple[int, bool, SaveSnapshotResult]] = []
-
+    monkeypatch.setattr(
+        app,
+        "_finish_snapshot_save_job",
+        lambda job_id, close_all, result: finish_calls.append(
+            (job_id, close_all, result)
+        ),
+    )
     monkeypatch.setattr(
         "zeus.dashboard.app.save_snapshot_from_dashboard",
         lambda **_kw: (_ for _ in ()).throw(RuntimeError("disk exploded")),
     )
-    monkeypatch.setattr(
-        app,
-        "call_from_thread",
-        lambda fn, *args: finish_calls.append(args),
-    )
 
-    # Call the underlying function directly (not through the decorator)
-    app._run_snapshot_save_job.__wrapped__(app, 7, "boom", False, [_agent()])
+    asyncio.run(app._run_snapshot_save(7, "boom", False, [_agent()]))
 
     assert len(finish_calls) == 1
     job_id, close_all, result = finish_calls[0]
