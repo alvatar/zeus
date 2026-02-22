@@ -437,36 +437,9 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
     align: right middle;
 }}
 
-.preset-btn {{
+#agent-message-preset-grid Button {{
     width: 14;
     min-width: 14;
-    height: 3;
-    min-height: 3;
-    padding: 0;
-    background: #00d7d7;
-    color: #000000;
-    border-top: tall #8de8e8;
-    border-bottom: tall #00aabb;
-    margin: 0 0 0 1;
-    content-align: center middle;
-    text-style: bold;
-}}
-
-.preset-btn:hover {{
-    background: #00aabb;
-    border-top: tall #00d7d7;
-    color: #000000;
-}}
-
-.preset-btn:focus {{
-    background: #00d7d7;
-    color: #000000;
-}}
-
-.preset-btn.-active {{
-    background: #00d7d7;
-    border-bottom: tall #8de8e8;
-    border-top: tall #00aabb;
 }}
 """
 
