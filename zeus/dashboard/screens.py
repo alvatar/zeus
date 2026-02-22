@@ -2039,7 +2039,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+k (tmux row)", "Kill tmux session process"),
     ("z", "Invoke Hippeus / Stygian Hippeus / Polemarch"),
     ("Ctrl+r", "Save snapshot of all restorable agents"),
-    ("Ctrl+Shift+r", "Restore snapshot"),
+    ("Ctrl+Alt+r", "Restore snapshot"),
     ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
     ("n", "Queue next task for selected Hippeus"),
     (

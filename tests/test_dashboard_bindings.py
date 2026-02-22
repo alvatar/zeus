@@ -51,8 +51,9 @@ def test_snapshot_and_interact_send_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert bindings["ctrl+r"].action == "save_snapshot"
     assert bindings["ctrl+r"].priority is True
-    assert bindings["ctrl+shift+r"].action == "restore_snapshot"
-    assert bindings["ctrl+shift+r"].priority is True
+    assert bindings["ctrl+alt+r"].action == "restore_snapshot"
+    assert bindings["ctrl+alt+r"].priority is True
+    assert "ctrl+shift+r" not in bindings
     assert bindings["ctrl+s"].action == "send_interact"
     assert bindings["ctrl+s"].priority is True
     assert bindings["ctrl+g"].action == "premade_message"

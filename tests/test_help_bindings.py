@@ -50,7 +50,7 @@ def test_help_lists_text_area_navigation_commands() -> None:
     assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
     assert entries["h"] == "History for selected Hippeus"
     assert entries["Ctrl+r"] == "Save snapshot of all restorable agents"
-    assert entries["Ctrl+Shift+r"] == "Restore snapshot"
+    assert entries["Ctrl+Alt+r"] == "Restore snapshot"
     assert entries["Ctrl+s"] == "Send message to Hippeus / tmux"
     assert "i" not in entries
     assert "Ctrl+b" not in entries
@@ -87,7 +87,7 @@ def test_help_groups_summary_shortcuts_under_agent_management() -> None:
     mgmt_entries = [
         ("z", "Invoke Hippeus / Stygian Hippeus / Polemarch"),
         ("Ctrl+r", "Save snapshot of all restorable agents"),
-        ("Ctrl+Shift+r", "Restore snapshot"),
+        ("Ctrl+Alt+r", "Restore snapshot"),
         ("a", "Bring Hippeus under the Aegis"),
         ("n", "Queue next task for selected Hippeus"),
         ("g", "Queue 'go ahead' for selected Hippeus"),
@@ -136,7 +136,7 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "Ctrl+k (tmux row)",
         "z",
         "Ctrl+r",
-        "Ctrl+Shift+r",
+        "Ctrl+Alt+r",
         "b",
         "n",
         "m",
@@ -171,7 +171,7 @@ def test_help_lists_all_top_level_app_bindings() -> None:
         "F5",
         "Ctrl+s",
         "Ctrl+r",
-        "Ctrl+Shift+r",
+        "Ctrl+Alt+r",
         "Ctrl+w",
         "b",
         "m",
