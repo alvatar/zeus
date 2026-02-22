@@ -156,7 +156,7 @@ def test_expanded_output_stream_uses_zero_side_padding_only_for_output_content()
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
     assert "position: relative;" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
-    assert "background: #101010;" in css.EXPANDED_OUTPUT_CSS
+    assert "background: #000000;" in css.EXPANDED_OUTPUT_CSS
     assert "padding: 0 0;" in css.EXPANDED_OUTPUT_CSS
     assert "#expanded-output-scroll-flash {" in css.EXPANDED_OUTPUT_CSS
     assert "width: 2;" in css.EXPANDED_OUTPUT_CSS
