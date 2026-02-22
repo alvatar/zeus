@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from asyncio import InvalidStateError
 import os
 from pathlib import Path
 import shlex
@@ -1875,6 +1876,17 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
     def _name_value(self) -> str:
         return self.query_one("#snapshot-save-name", Input).value.strip()
 
+    def _dismiss_safe(self) -> None:
+        try:
+            self.dismiss()
+        except InvalidStateError:
+            # Textual can deliver a queued dismiss action after the screen was
+            # already dismissed; ignore duplicate completion races.
+            return
+
+    def action_dismiss(self) -> None:
+        self._dismiss_safe()
+
     def action_confirm(self) -> None:
         name = self._name_value()
         if not name:
@@ -1884,7 +1896,7 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
 
         ok = self.zeus.do_save_snapshot(name, close_all=self._close_all_value())
         if ok:
-            self.dismiss()
+            self._dismiss_safe()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "snapshot-save-confirm":
@@ -1892,7 +1904,7 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
             event.stop()
             return
 
-        self.dismiss()
+        self._dismiss_safe()
         event.stop()
 
 

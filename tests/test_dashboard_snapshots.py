@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from asyncio import InvalidStateError
 from pathlib import Path
 
 from zeus.dashboard.app import ZeusApp
@@ -34,6 +35,53 @@ def test_action_save_snapshot_pushes_save_dialog(monkeypatch) -> None:
 
     assert pushed
     assert isinstance(pushed[0], SaveSnapshotScreen)
+
+
+def test_save_snapshot_screen_action_dismiss_ignores_invalid_state(monkeypatch) -> None:
+    screen = SaveSnapshotScreen(default_name="snap-a")
+
+    monkeypatch.setattr(
+        screen,
+        "dismiss",
+        lambda: (_ for _ in ()).throw(InvalidStateError("invalid state")),
+    )
+
+    # Should not raise.
+    screen.action_dismiss()
+
+
+def test_save_snapshot_screen_confirm_tolerates_followup_dismiss_race(monkeypatch) -> None:
+    screen = SaveSnapshotScreen(default_name="snap-a")
+
+    save_calls: list[tuple[str, bool]] = []
+
+    class _ZeusStub:
+        def notify_force(self, _message: str, timeout: int = 3) -> None:  # noqa: ARG002
+            return
+
+        def do_save_snapshot(self, name: str, *, close_all: bool) -> bool:
+            save_calls.append((name, close_all))
+            return True
+
+    monkeypatch.setattr(SaveSnapshotScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "_name_value", lambda: "snap-a")
+    monkeypatch.setattr(screen, "_close_all_value", lambda: False)
+
+    dismiss_calls: list[int] = []
+
+    def _dismiss() -> None:
+        dismiss_calls.append(1)
+        if len(dismiss_calls) > 1:
+            raise InvalidStateError("invalid state")
+
+    monkeypatch.setattr(screen, "dismiss", _dismiss)
+
+    screen.action_confirm()
+    # Simulate queued follow-up dismiss (e.g., key repeat / late event).
+    screen.action_dismiss()
+
+    assert save_calls == [("snap-a", False)]
+    assert len(dismiss_calls) == 2
 
 
 def test_action_restore_snapshot_notifies_when_none_available(monkeypatch) -> None:
