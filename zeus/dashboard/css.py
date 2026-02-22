@@ -440,17 +440,22 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
     width: auto;
     height: auto;
     align: right middle;
+    margin: 0 0 1 0;
+}}
+
+.preset-row:last-child {{
+    margin: 0;
 }}
 
 .preset-btn {{
-    min-width: 16;
-    height: 1;
-    min-height: 1;
+    width: 18;
+    height: 3;
+    min-height: 3;
     background: #0a3a3a;
     color: #00d7d7;
     border: none;
     margin: 0 0 0 1;
-    padding: 0 2;
+    content-align: center middle;
 }}
 
 .preset-btn:hover {{
