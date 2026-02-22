@@ -51,13 +51,26 @@ def test_snapshot_and_interact_send_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert bindings["ctrl+r"].action == "save_snapshot"
     assert bindings["ctrl+r"].priority is True
-    assert bindings["ctrl+alt+r"].action == "restore_snapshot"
-    assert bindings["ctrl+alt+r"].priority is True
-    assert "ctrl+shift+r" not in bindings
+    assert bindings["alt+ctrl+r,ctrl+alt+r"].action == "restore_snapshot"
+    assert bindings["alt+ctrl+r,ctrl+alt+r"].priority is True
     assert bindings["ctrl+s"].action == "send_interact"
     assert bindings["ctrl+s"].priority is True
     assert bindings["ctrl+g"].action == "premade_message"
     assert bindings["ctrl+g"].priority is True
+
+
+
+def test_snapshot_restore_binding_map_accepts_alt_ctrl_and_ctrl_alt() -> None:
+    from textual.binding import Binding
+
+    keys = {
+        binding.key: binding
+        for binding in Binding.make_bindings(ZeusApp.BINDINGS)
+    }
+
+    assert keys["alt+ctrl+r"].action == "restore_snapshot"
+    assert keys["ctrl+alt+r"].action == "restore_snapshot"
+    assert "ctrl+shift+r" not in keys
 
 
 def test_kill_tmux_session_binding_action() -> None:

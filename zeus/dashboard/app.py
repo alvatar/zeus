@@ -525,7 +525,13 @@ class ZeusApp(App):
         Binding("r", "rename", "Rename"),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("ctrl+r", "save_snapshot", "Save snapshot", show=False, priority=True),
-        Binding("ctrl+alt+r", "restore_snapshot", "Restore snapshot", show=False, priority=True),
+        Binding(
+            "alt+ctrl+r,ctrl+alt+r",
+            "restore_snapshot",
+            "Restore snapshot",
+            show=False,
+            priority=True,
+        ),
 
         Binding("ctrl+s", "send_interact", "Send", show=False, priority=True),
         Binding("ctrl+w", "queue_interact", "Queue", show=False, priority=True),
