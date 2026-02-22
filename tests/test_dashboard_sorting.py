@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.app import SortMode, ZeusApp
 from zeus.models import AgentWindow, State
 
 
@@ -32,7 +32,7 @@ class _FakeStatus:
         self.text = text
 
 
-def _agent(name: str, kitty_id: int, state: State) -> AgentWindow:
+def _agent(name: str, kitty_id: int, state: State, *, role: str = "") -> AgentWindow:
     return AgentWindow(
         kitty_id=kitty_id,
         socket="/tmp/kitty-1",
@@ -41,6 +41,7 @@ def _agent(name: str, kitty_id: int, state: State) -> AgentWindow:
         kitty_pid=200 + kitty_id,
         cwd="/tmp/project",
         state=state,
+        role=role,
     )
 
 
@@ -135,3 +136,36 @@ def test_priority_sort_ignores_idle_recency_within_same_priority(monkeypatch) ->
         app._agent_key(idle_m),
         app._agent_key(idle_z),
     ]
+
+
+def test_priority_sort_pins_god_to_top(monkeypatch) -> None:
+    app = ZeusApp()
+
+    god = _agent("omega", 20, State.IDLE, role="god")
+    high = _agent("alpha", 21, State.WORKING)
+
+    app.agents = [high, god]
+    app._agent_priorities = {
+        "omega": 4,
+        "alpha": 1,
+    }
+
+    row_keys = _render_row_keys(app, monkeypatch)
+
+    assert row_keys[0] == app._agent_key(god)
+    assert row_keys[1] == app._agent_key(high)
+
+
+def test_alpha_sort_pins_god_to_top(monkeypatch) -> None:
+    app = ZeusApp()
+    app.sort_mode = SortMode.ALPHA
+
+    god = _agent("zzz-god", 30, State.IDLE, role="god")
+    alpha = _agent("aaa-worker", 31, State.WORKING)
+
+    app.agents = [alpha, god]
+
+    row_keys = _render_row_keys(app, monkeypatch)
+
+    assert row_keys[0] == app._agent_key(god)
+    assert row_keys[1] == app._agent_key(alpha)

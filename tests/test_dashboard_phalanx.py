@@ -140,6 +140,21 @@ def test_render_agent_table_shows_literal_phalanx_label_for_polemarch(monkeypatc
     assert name_cell.plain == "⌁ polemarch [phalanx: 3]"
 
 
+def test_render_agent_table_shows_triple_marker_for_god(monkeypatch) -> None:
+    app = ZeusApp()
+    god = _agent(agent_id="god-1", role="god")
+    god.name = "oracle"
+    app.agents = [god]
+
+    table, _ = _render(app, monkeypatch)
+
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    name_idx = cols.index("Name")
+    name_cell = table.added_rows[0][name_idx]
+    assert isinstance(name_cell, Text)
+    assert name_cell.plain == "⌁⌁⌁ oracle"
+
+
 def test_render_agent_table_requires_explicit_polemarch_role_for_label(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent(agent_id="polemarch-1", role="")

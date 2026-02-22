@@ -1428,17 +1428,10 @@ class ZeusApp(App):
             if parent_id and parent_id in parent_ids:
                 children_of.setdefault(parent_id, []).append(agent)
 
-        def _priority_sort_key(a: AgentWindow) -> tuple[int, str]:
-            # Priority first (1=high … 4=paused), then lexicographic.
-            return (self._get_priority(a), a.name.lower())
-
-        def _alpha_sort_key(a: AgentWindow) -> str:
-            return a.name.lower()
-
         sort_key = (
-            _alpha_sort_key
+            self._alpha_sort_key
             if self.sort_mode == SortMode.ALPHA
-            else _priority_sort_key
+            else self._priority_sort_key
         )
         top_level.sort(key=sort_key)
         for kids in children_of.values():
@@ -1525,9 +1518,9 @@ class ZeusApp(App):
                 for sess in a.tmux_sessions
                 if self._is_hoplite_session_for(a, sess)
             )
-            agent_role = (a.role or "").strip().lower()
+            agent_role = self._agent_role(a)
             is_polemarch_display = agent_role == "polemarch"
-            role_marker = "⌁ " if is_polemarch_display else ""
+            role_marker = self._name_role_marker(a)
             stygian_marker = "◆ " if stygian else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
@@ -3936,6 +3929,32 @@ class ZeusApp(App):
             target.remove_class("hidden")
         else:
             target.add_class("hidden")
+
+    @staticmethod
+    def _agent_role(agent: AgentWindow) -> str:
+        return (agent.role or "").strip().lower()
+
+    def _agent_list_role_rank(self, agent: AgentWindow) -> int:
+        """Role pinning for running-list ordering (lower rank appears first)."""
+        return 0 if self._agent_role(agent) == "god" else 1
+
+    def _priority_sort_key(self, agent: AgentWindow) -> tuple[int, int, str]:
+        return (
+            self._agent_list_role_rank(agent),
+            self._get_priority(agent),
+            agent.name.lower(),
+        )
+
+    def _alpha_sort_key(self, agent: AgentWindow) -> tuple[int, str]:
+        return (self._agent_list_role_rank(agent), agent.name.lower())
+
+    def _name_role_marker(self, agent: AgentWindow) -> str:
+        role = self._agent_role(agent)
+        if role == "god":
+            return "⌁⌁⌁ "
+        if role == "polemarch":
+            return "⌁ "
+        return ""
 
     def _get_priority(self, agent: AgentWindow) -> int:
         """Return priority for an agent (1=high … 4=paused, default=3)."""

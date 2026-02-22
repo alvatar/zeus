@@ -115,6 +115,8 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "invoke-role-hippeus" in source
     assert "invoke-role-stygian-hippeus" in source
     assert "invoke-role-polemarch" in source
+    assert "invoke-role-god" in source
+    assert source.index("invoke-role-god") > source.index("invoke-role-polemarch")
     assert "compact=False" in source
     assert "Select(" in source
     assert "invoke-model" in source
@@ -937,6 +939,143 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-2.jsonl --model anthropic/claude-sonnet-4-5"
     assert schedule_calls == [("agent-2", "planner")]
     assert notices[-1] == "Invoked Polemarch: planner"
+
+
+def test_invoke_launch_sets_god_role_env_and_uses_direct_pi(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("oracle")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-god"))
+        if selector == "#invoke-model":
+            return _SelectStub("openai/gpt-4o")
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-god")
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.make_new_session_path",
+        lambda _cwd: "/tmp/invoke-agent-god.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.screens._resolve_direct_pi_executable",
+        lambda: "/opt/pi-direct",
+    )
+
+    notices: list[str] = []
+    schedule_calls: list[tuple[str, str]] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, agent_id: str, name: str) -> None:
+            schedule_calls.append((agent_id, name))
+
+        def set_timer(self, _delay: float, _callback) -> None:  # noqa: ANN001
+            return
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_env: dict[str, str] = {}
+    popen_cmd: list[str] = []
+
+    class _DummyProc:
+        pid = 123
+
+    def _fake_popen(cmd, **kwargs):  # noqa: ANN001
+        popen_cmd[:] = list(cmd)
+        popen_env.update(kwargs.get("env", {}))
+        return _DummyProc()
+
+    monkeypatch.setattr("zeus.dashboard.screens.subprocess.Popen", _fake_popen)
+    monkeypatch.setattr(screen, "dismiss", lambda: None)
+
+    screen._launch()
+
+    assert popen_env["ZEUS_AGENT_NAME"] == "oracle"
+    assert popen_env["ZEUS_AGENT_ID"] == "agent-god"
+    assert popen_env["ZEUS_ROLE"] == "god"
+    assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-god.jsonl"
+    assert "ZEUS_PHALANX_ID" not in popen_env
+    assert popen_cmd[-1] == "/opt/pi-direct --session /tmp/invoke-agent-god.jsonl --model openai/gpt-4o"
+    assert schedule_calls == []
+    assert notices[-1] == "Invoked God: oracle"
+
+
+def test_invoke_launch_god_notifies_when_direct_pi_missing(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("oracle")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-god"))
+        if selector == "#invoke-model":
+            return _SelectStub("openai/gpt-4o")
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr("zeus.dashboard.screens.generate_agent_id", lambda: "agent-god")
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.make_new_session_path",
+        lambda _cwd: "/tmp/invoke-agent-god.jsonl",
+    )
+    monkeypatch.setattr(
+        "zeus.dashboard.screens._resolve_direct_pi_executable",
+        lambda: "",
+    )
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def schedule_polemarch_bootstrap(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not bootstrap god invoke")
+
+        def set_timer(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            raise AssertionError("must not schedule timer when invoke fails")
+
+        def poll_and_update(self) -> None:
+            return
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_called: list[bool] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.subprocess.Popen",
+        lambda *args, **kwargs: popen_called.append(True),  # noqa: ARG005
+    )
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen._launch()
+
+    assert notices[-1].startswith("Failed to invoke God: direct pi executable not found")
+    assert popen_called == []
+    assert dismissed == []
 
 
 def test_invoke_launch_stygian_hippeus_uses_tmux_backend(monkeypatch) -> None:

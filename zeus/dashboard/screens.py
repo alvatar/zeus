@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import threading
 from typing import TYPE_CHECKING, Literal, cast
@@ -73,6 +74,23 @@ if TYPE_CHECKING:
 _MODEL_LIST_TIMEOUT_S = 3.0
 _MODEL_LIST_CACHE: list[str] | None = None
 _MODEL_LIST_CACHE_LOCK = threading.Lock()
+_DIRECT_PI_ENV = "ZEUS_DIRECT_PI_BIN"
+_DEFAULT_DIRECT_PI_BIN = "~/.local/bin/pi.zeus-orig"
+
+
+def _resolve_direct_pi_executable() -> str:
+    configured = (os.environ.get(_DIRECT_PI_ENV) or "").strip()
+    raw = configured or _DEFAULT_DIRECT_PI_BIN
+    expanded = os.path.expanduser(raw)
+
+    if os.path.sep in raw or raw.startswith(("~", ".")):
+        path = Path(expanded)
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        return ""
+
+    resolved = shutil.which(raw)
+    return resolved or ""
 
 
 def _parse_available_models_table(raw: str) -> list[str]:
@@ -172,6 +190,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
                 RadioButton("Stygian Hippeus", id="invoke-role-stygian-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
+                RadioButton("God", id="invoke-role-god"),
                 id="invoke-role",
                 compact=False,
             )
@@ -503,6 +522,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     def _selected_role(self) -> str:
         role_set = self.query_one("#invoke-role", RadioSet)
         pressed = role_set.pressed_button
+        if pressed is not None and pressed.id == "invoke-role-god":
+            return "god"
         if pressed is not None and pressed.id == "invoke-role-polemarch":
             return "polemarch"
         if pressed is not None and pressed.id == "invoke-role-stygian-hippeus":
@@ -565,7 +586,23 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if role == "polemarch":
             env["ZEUS_PHALANX_ID"] = f"phalanx-{agent_id}"
 
-        pi_cmd = f"pi --session {shlex.quote(session_path)}"
+        if role == "god":
+            direct_pi = _resolve_direct_pi_executable()
+            if not direct_pi:
+                configured = (os.environ.get(_DIRECT_PI_ENV) or "").strip()
+                expected = configured or _DEFAULT_DIRECT_PI_BIN
+                self.zeus.notify(
+                    (
+                        "Failed to invoke God: direct pi executable not found or "
+                        f"not executable ({expected})"
+                    ),
+                    timeout=4,
+                )
+                return
+            pi_cmd = f"{shlex.quote(direct_pi)} --session {shlex.quote(session_path)}"
+        else:
+            pi_cmd = f"pi --session {shlex.quote(session_path)}"
+
         if model_spec:
             pi_cmd += f" --model {shlex.quote(model_spec)}"
 
@@ -587,6 +624,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         if role == "polemarch":
             self.zeus.schedule_polemarch_bootstrap(agent_id, name)
             self.zeus.notify(f"Invoked Polemarch: {name}", timeout=3)
+        elif role == "god":
+            self.zeus.notify(f"Invoked God: {name}", timeout=3)
         else:
             self.zeus.notify(f"Invoked Hippeus: {name}", timeout=3)
         self.dismiss()
