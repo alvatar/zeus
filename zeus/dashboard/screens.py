@@ -703,12 +703,14 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("alt+1", "preset_1", "Preset 1", show=False),
         Binding("alt+2", "preset_2", "Preset 2", show=False),
         Binding("alt+3", "preset_3", "Preset 3", show=False),
+        Binding("alt+4", "preset_4", "Preset 4", show=False),
     ]
 
     MESSAGE_PRESETS: list[tuple[str, str]] = [
-        ("Review", "Review the work done so far and report status."),
-        ("Continue", "Continue with the next step in the plan."),
-        ("Summarize", "Summarize your progress and list remaining tasks."),
+        ("Research", "Stub text for Research preset."),
+        ("Plan", "Stub text for Plan preset."),
+        ("Freeze", "Stub text for Freeze preset."),
+        ("Implement", "Stub text for Implement preset."),
     ]
 
     def __init__(
@@ -759,7 +761,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                 yield Label("", id="agent-message-btn-spacer")
                 for idx, (title, _text) in enumerate(self.MESSAGE_PRESETS):
                     yield Button(
-                        title,
+                        f"{title} _{idx + 1}",
                         variant="primary",
                         id=f"agent-message-preset-{idx}",
                     )
@@ -790,6 +792,9 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def action_preset_3(self) -> None:
         self._apply_preset(2)
+
+    def action_preset_4(self) -> None:
+        self._apply_preset(3)
 
     def action_send(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
