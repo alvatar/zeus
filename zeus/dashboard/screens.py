@@ -710,7 +710,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         ("Research", "Stub text for Research preset."),
         ("Plan", "Stub text for Plan preset."),
         ("Freeze", "Stub text for Freeze preset."),
-        ("Implement", "Stub text for Implement preset."),
+        ("Build", "Stub text for Build preset."),
     ]
 
     def __init__(
