@@ -1,10 +1,14 @@
-"""Tests for kitty window detection heuristics."""
+"""Tests for kitty window detection heuristics and name uniqueness."""
 
 import json
 import subprocess
 
 import zeus.kitty as kitty
-from zeus.kitty import _iter_cmdline_tokens, _looks_like_pi_window
+from zeus.kitty import (
+    _iter_cmdline_tokens,
+    _looks_like_pi_window,
+    ensure_unique_agent_names,
+)
 from zeus.models import AgentWindow
 
 
@@ -205,3 +209,186 @@ def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:
     result = kitty.spawn_subagent(agent, "child", workspace="")
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# ensure_unique_agent_names
+# ---------------------------------------------------------------------------
+
+def _make_agent(name: str, agent_id: str = "") -> AgentWindow:
+    return AgentWindow(
+        kitty_id=0, socket="", name=name, pid=0, kitty_pid=0,
+        cwd="", agent_id=agent_id,
+    )
+
+
+def test_ensure_unique_names_no_duplicates():
+    agents = [_make_agent("a", "id-a"), _make_agent("b", "id-b")]
+    ensure_unique_agent_names(agents)
+    assert [a.name for a in agents] == ["a", "b"]
+
+
+def test_ensure_unique_names_two_duplicates():
+    agents = [_make_agent("pi-1", "id-a"), _make_agent("pi-1", "id-b")]
+    ensure_unique_agent_names(agents)
+    names = sorted(a.name for a in agents)
+    assert len(set(names)) == 2
+    assert "pi-1" in names
+    assert "pi-1-2" in names
+
+
+def test_ensure_unique_names_three_duplicates():
+    agents = [
+        _make_agent("x", "id-1"),
+        _make_agent("x", "id-2"),
+        _make_agent("x", "id-3"),
+    ]
+    ensure_unique_agent_names(agents)
+    names = [a.name for a in agents]
+    assert len(set(names)) == 3, f"expected 3 unique names, got {names}"
+
+
+def test_ensure_unique_names_stable_across_calls():
+    """Same input produces same disambiguation every time."""
+    agents_a = [_make_agent("pi-1", "id-b"), _make_agent("pi-1", "id-a")]
+    agents_b = [_make_agent("pi-1", "id-a"), _make_agent("pi-1", "id-b")]
+    ensure_unique_agent_names(agents_a)
+    ensure_unique_agent_names(agents_b)
+    # Both should assign the same agent_id the same final name
+    mapping_a = {a.agent_id: a.name for a in agents_a}
+    mapping_b = {a.agent_id: a.name for a in agents_b}
+    assert mapping_a == mapping_b
+
+
+def test_ensure_unique_names_suffix_avoids_existing():
+    """If pi-1-2 already exists, skip to pi-1-3."""
+    agents = [
+        _make_agent("pi-1", "id-a"),
+        _make_agent("pi-1-2", "id-b"),
+        _make_agent("pi-1", "id-c"),
+    ]
+    ensure_unique_agent_names(agents)
+    names = sorted(a.name for a in agents)
+    assert len(set(names)) == 3, f"expected 3 unique names, got {names}"
+    assert "pi-1" in names
+    assert "pi-1-2" in names
+    assert "pi-1-3" in names
+
+
+def test_ensure_unique_names_case_insensitive():
+    agents = [_make_agent("Worker", "id-a"), _make_agent("worker", "id-b")]
+    ensure_unique_agent_names(agents)
+    names_lower = [a.name.casefold() for a in agents]
+    assert len(set(names_lower)) == 2
+
+
+# ---------------------------------------------------------------------------
+# discover_agents auto-naming uniqueness
+# ---------------------------------------------------------------------------
+
+def _make_kitty_windows(
+    win_id: int,
+    *,
+    agent_name: str = "",
+    agent_id: str = "",
+) -> list[dict]:
+    """Build minimal kitty `ls` output for one pi window."""
+    env: dict[str, str] = {}
+    if agent_name:
+        env["ZEUS_AGENT_NAME"] = agent_name
+    if agent_id:
+        env["ZEUS_AGENT_ID"] = agent_id
+    return [
+        {
+            "tabs": [
+                {
+                    "windows": [
+                        {
+                            "id": win_id,
+                            "pid": 100 + win_id,
+                            "cwd": "/tmp/project",
+                            "env": env,
+                            "cmdline": ["bash", "-lc", "pi"],
+                            "title": "π test",
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+
+def test_discover_agents_unique_auto_names_across_sockets(monkeypatch) -> None:
+    """Two kitty instances each with win_id=1 must NOT both get pi-1."""
+    socket_a = "/tmp/kitty-1000"
+    socket_b = "/tmp/kitty-2000"
+
+    def fake_kitty_cmd(socket, *args, **kwargs):
+        return json.dumps(_make_kitty_windows(1))
+
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket_a, socket_b])
+    monkeypatch.setattr(kitty, "kitty_cmd", fake_kitty_cmd)
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 2
+    names = [a.name for a in agents]
+    assert len(set(names)) == 2, f"expected unique names, got {names}"
+    assert "pi-1" in names
+    # The second one must NOT be pi-1
+    other = [n for n in names if n != "pi-1"]
+    assert len(other) == 1
+    assert other[0].startswith("pi-")
+
+
+def test_discover_agents_override_frees_auto_name(monkeypatch) -> None:
+    """If socket_a:1 is overridden to 'worker', socket_b:1 can use pi-1."""
+    socket_a = "/tmp/kitty-1000"
+    socket_b = "/tmp/kitty-2000"
+
+    def fake_kitty_cmd(socket, *args, **kwargs):
+        return json.dumps(_make_kitty_windows(1))
+
+    overrides = {f"{socket_a}:1": "worker"}
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket_a, socket_b])
+    monkeypatch.setattr(kitty, "kitty_cmd", fake_kitty_cmd)
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: overrides)
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 2
+    names = sorted(a.name for a in agents)
+    assert "worker" in names
+    assert "pi-1" in names
+
+
+def test_discover_agents_auto_name_skips_override_value(monkeypatch) -> None:
+    """Auto-naming must not collide with an override destination name."""
+    socket_a = "/tmp/kitty-1000"
+    socket_b = "/tmp/kitty-2000"
+
+    def fake_kitty_cmd(socket, *args, **kwargs):
+        # Both have win_id=2 to force collision scenario
+        return json.dumps(_make_kitty_windows(2))
+
+    # Some other agent is overridden to "pi-2"
+    overrides = {f"{socket_a}:2": "pi-2"}
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket_a, socket_b])
+    monkeypatch.setattr(kitty, "kitty_cmd", fake_kitty_cmd)
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: overrides)
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 2
+    names = sorted(a.name for a in agents)
+    assert len(set(names)) == 2, f"expected unique names, got {names}"

@@ -49,7 +49,8 @@ from ..models import (
 from ..input_history import append_history, load_history, prune_histories
 from ..process import fmt_bytes, read_process_metrics
 from ..kitty import (
-    discover_agents, get_screen_text, focus_window, close_window,
+    discover_agents, ensure_unique_agent_names,
+    get_screen_text, focus_window, close_window,
     resolve_agent_session_path,
     resolve_agent_session_path_with_source,
     spawn_subagent, load_names, save_names, kitty_cmd,
@@ -997,6 +998,9 @@ class ZeusApp(App):
             name_overrides=load_names(),
         )
         agents.extend(stygian_agents)
+
+        # INVARIANT: display names must be unique — messaging depends on it.
+        ensure_unique_agent_names(agents)
 
         usage = read_usage()
         openai = read_openai_usage()

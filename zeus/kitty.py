@@ -121,6 +121,13 @@ def discover_agents() -> list[AgentWindow]:
     ids: dict[str, str] = load_agent_ids()
     ids_changed: bool = False
     live_keys: set[str] = set()
+    overrides: dict[str, str] = load_names()
+
+    # Track committed final names to prevent duplicates across kitty instances.
+    # Pre-seed with override destination names so auto-naming avoids them.
+    _committed_names: set[str] = set()
+    for _ov_name in overrides.values():
+        _committed_names.add(_ov_name.strip().casefold())
 
     for socket in discover_sockets():
         try:
@@ -138,15 +145,28 @@ def discover_agents() -> list[AgentWindow]:
             for tab in os_win.get("tabs", []):
                 for win in tab.get("windows", []):
                     env: dict[str, str] = win.get("env", {})
+                    win_id = int(win["id"])
+                    key = f"{socket}:{win_id}"
                     name: str | None = env.get("ZEUS_AGENT_NAME")
 
                     if not name:
                         if not _looks_like_pi_window(win):
                             continue
-                        name = f"pi-{win['id']}"
+                        # Auto-name: try pi-{win_id} first for backward
+                        # compat, fall back to next available pi-N on
+                        # collision (different kitty instances reuse win ids).
+                        candidate = f"pi-{win_id}"
+                        if key not in overrides and candidate.casefold() in _committed_names:
+                            n = 1
+                            while f"pi-{n}".casefold() in _committed_names:
+                                n += 1
+                            candidate = f"pi-{n}"
+                        name = candidate
 
-                    win_id = int(win["id"])
-                    key = f"{socket}:{win_id}"
+                    # Track this name if no override will replace it.
+                    if key not in overrides:
+                        _committed_names.add(name.strip().casefold())
+
                     live_keys.add(key)
                     env_agent_id = (env.get("ZEUS_AGENT_ID") or "").strip()
                     persisted_id = (ids.get(key) or "").strip()
@@ -187,12 +207,41 @@ def discover_agents() -> list[AgentWindow]:
         save_agent_ids(ids)
 
     # Apply name overrides (lineage uses parent_id, so no parent-name rewrites).
-    overrides: dict[str, str] = load_names()
     for a in agents:
         agent_key: str = f"{a.socket}:{a.kitty_id}"
         if agent_key in overrides:
             a.name = overrides[agent_key]
     return agents
+
+
+def ensure_unique_agent_names(agents: list[AgentWindow]) -> None:
+    """Enforce unique display names across all agents.
+
+    CRITICAL INVARIANT: messaging uses display names for routing, so
+    duplicates cause mis-delivery.  Colliding names get a numeric suffix.
+    Sort by agent_id for deterministic, stable disambiguation across polls.
+    """
+    from collections import defaultdict
+
+    groups: dict[str, list[AgentWindow]] = defaultdict(list)
+    for agent in agents:
+        groups[agent.name.strip().casefold()].append(agent)
+
+    all_used: set[str] = {a.name.strip().casefold() for a in agents}
+
+    for _norm, group in groups.items():
+        if len(group) <= 1:
+            continue
+        # Deterministic order so the same agent always keeps its name
+        group.sort(key=lambda a: a.agent_id or "")
+        # First agent keeps its name; rest get suffixed
+        for agent in group[1:]:
+            base = agent.name
+            suffix = 2
+            while f"{base}-{suffix}".strip().casefold() in all_used:
+                suffix += 1
+            agent.name = f"{base}-{suffix}"
+            all_used.add(agent.name.strip().casefold())
 
 
 def get_screen_text(
