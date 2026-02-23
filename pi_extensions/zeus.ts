@@ -482,6 +482,131 @@ export default function (pi: ExtensionAPI) {
   subscribe("session_tree");
   subscribe("turn_end");
 
+  // ── Memory injection (before_agent_start) ─────────────────────────────
+  // Appends relevant memories to the system prompt each turn.
+  // Budget: 10K tokens (~40K chars) total.
+  const MEMORY_BUDGET_CHARS = 40000;
+  const GLOBAL_BUDGET = 8000;    // ~2K tokens
+  const PROJECT_BUDGET = 12000;  // ~3K tokens
+  const TOPIC_BUDGET = 16000;    // ~4K tokens
+  // Remainder for FTS if needed (not used in auto-injection yet).
+
+  pi.on("before_agent_start", async (event, _ctx) => {
+    try {
+      const dbPath = path.join(getStateDir(), "memory.db");
+      if (!fs.existsSync(dbPath)) return;
+
+      const project = await resolveProjectName();
+      if (!project) return;
+
+      // Load linked topics
+      let linkedTopics: string[] = [];
+      try {
+        const linkResult = await pi.exec("sqlite3", [
+          dbPath, ".mode json",
+          `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
+        ], { timeout: 5000 });
+        if (linkResult.code === 0 && linkResult.stdout) {
+          const parsed = JSON.parse(linkResult.stdout.trim() || "[]");
+          linkedTopics = parsed.map((r: any) => r.topic).filter(Boolean);
+        }
+      } catch {}
+
+      // Build namespace list
+      const namespaces = ["global", `project:${project}`];
+      for (const t of linkedTopics) namespaces.push(`topic:${t}`);
+
+      // Load all memories in relevant namespaces
+      const inClause = namespaces.map((n) => `'${sqlEscape(n)}'`).join(",");
+      const memResult = await pi.exec("sqlite3", [
+        dbPath, ".mode json",
+        `SELECT namespace, key, content FROM memories WHERE namespace IN (${inClause}) AND archived = 0 ORDER BY access_count DESC, updated_at DESC;`,
+      ], { timeout: 5000 });
+
+      if (memResult.code !== 0 || !memResult.stdout?.trim()) return;
+
+      let rows: Array<{ namespace: string; key: string; content: string }>;
+      try {
+        rows = JSON.parse(memResult.stdout.trim());
+      } catch {
+        return;
+      }
+      if (!rows.length) return;
+
+      // Partition by type
+      const globalMems: typeof rows = [];
+      const projectMems: typeof rows = [];
+      const topicMems: Record<string, typeof rows> = {};
+
+      for (const r of rows) {
+        if (r.namespace === "global") {
+          globalMems.push(r);
+        } else if (r.namespace === `project:${project}`) {
+          projectMems.push(r);
+        } else if (r.namespace.startsWith("topic:")) {
+          const tName = r.namespace.slice(6);
+          if (!topicMems[tName]) topicMems[tName] = [];
+          topicMems[tName].push(r);
+        }
+      }
+
+      // Format sections with budget enforcement
+      const sections: string[] = [];
+      let totalChars = 0;
+
+      const addSection = (title: string, mems: typeof rows, budget: number) => {
+        if (!mems.length) return;
+        let used = 0;
+        const lines: string[] = [`## ${title}`];
+        for (const m of mems) {
+          const line = `- **${m.key}**: ${m.content}`;
+          if (used + line.length > budget) break;
+          lines.push(line);
+          used += line.length;
+        }
+        if (lines.length > 1) {
+          const block = lines.join("\n");
+          totalChars += block.length;
+          sections.push(block);
+        }
+      };
+
+      addSection("Global Memories", globalMems, GLOBAL_BUDGET);
+      addSection(`Project: ${project}`, projectMems, PROJECT_BUDGET);
+
+      // Distribute topic budget across linked topics
+      const topicNames = Object.keys(topicMems);
+      if (topicNames.length > 0) {
+        const perTopic = Math.floor(TOPIC_BUDGET / topicNames.length);
+        for (const tName of topicNames) {
+          addSection(`Topic: ${tName}`, topicMems[tName], perTopic);
+        }
+      }
+
+      if (!sections.length) return;
+      if (totalChars > MEMORY_BUDGET_CHARS) {
+        // Truncate: drop last sections if over budget
+        while (sections.length > 1 && totalChars > MEMORY_BUDGET_CHARS) {
+          const removed = sections.pop()!;
+          totalChars -= removed.length;
+        }
+      }
+
+      const memoryBlock = [
+        "",
+        "# Agent Memory",
+        "The following are your persistent memories across sessions. Use them as context.",
+        "",
+        ...sections,
+      ].join("\n");
+
+      return { systemPrompt: event.systemPrompt + memoryBlock };
+    } catch {
+      // Memory injection is best-effort; never break the agent loop.
+      return;
+    }
+  });
+
   // ── Memory helpers ────────────────────────────────────────────────────
   const MEMORY_DB = path.join(getStateDir(), "memory.db");
 
