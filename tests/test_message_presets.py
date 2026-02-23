@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from zeus.message_presets import (
-    _DEFAULT_PREMADE,
+    _DEFAULT_PRESET,
     _DEFAULT_QUICK,
-    load_premade_templates,
+    load_preset_templates,
     load_quick_presets,
 )
 
@@ -81,44 +81,44 @@ def test_load_quick_presets_skips_entry_with_empty_name(
     assert result[1] == ("B", "beta")
 
 
-def test_load_premade_returns_defaults_when_no_file(monkeypatch, tmp_path: Path) -> None:
+def test_load_preset_returns_defaults_when_no_file(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", tmp_path / "missing.toml")
-    result = load_premade_templates()
-    assert result == _DEFAULT_PREMADE
+    result = load_preset_templates()
+    assert result == _DEFAULT_PRESET
 
 
-def test_load_premade_parses_entries(monkeypatch, tmp_path: Path) -> None:
+def test_load_preset_parses_entries(monkeypatch, tmp_path: Path) -> None:
     toml_file = tmp_path / "presets.toml"
     toml_file.write_text(
-        '[[premade]]\nname = "Go"\ntext = "go now"\n'
-        '[[premade]]\nname = "Stop"\ntext = "halt"\n',
+        '[[preset]]\nname = "Go"\ntext = "go now"\n'
+        '[[preset]]\nname = "Stop"\ntext = "halt"\n',
         encoding="utf-8",
     )
     monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
 
-    result = load_premade_templates()
+    result = load_preset_templates()
     assert result == [("Go", "go now"), ("Stop", "halt")]
 
 
-def test_load_premade_returns_defaults_when_empty_list(monkeypatch, tmp_path: Path) -> None:
+def test_load_preset_returns_defaults_when_empty_list(monkeypatch, tmp_path: Path) -> None:
     toml_file = tmp_path / "presets.toml"
-    toml_file.write_text("premade = []\n", encoding="utf-8")
+    toml_file.write_text("preset = []\n", encoding="utf-8")
     monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
 
-    result = load_premade_templates()
-    assert result == _DEFAULT_PREMADE
+    result = load_preset_templates()
+    assert result == _DEFAULT_PRESET
 
 
-def test_load_premade_skips_entries_without_name(monkeypatch, tmp_path: Path) -> None:
+def test_load_preset_skips_entries_without_name(monkeypatch, tmp_path: Path) -> None:
     toml_file = tmp_path / "presets.toml"
     toml_file.write_text(
-        '[[premade]]\nname = ""\ntext = "nope"\n'
-        '[[premade]]\nname = "Valid"\ntext = "yes"\n',
+        '[[preset]]\nname = ""\ntext = "nope"\n'
+        '[[preset]]\nname = "Valid"\ntext = "yes"\n',
         encoding="utf-8",
     )
     monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
 
-    result = load_premade_templates()
+    result = load_preset_templates()
     assert result == [("Valid", "yes")]
 
 
@@ -138,15 +138,15 @@ def test_quick_preset_text_preserves_whitespace(monkeypatch, tmp_path: Path) -> 
     assert result[3][1] == "\ntrailing newline\n"
 
 
-def test_premade_text_preserves_whitespace(monkeypatch, tmp_path: Path) -> None:
+def test_preset_text_preserves_whitespace(monkeypatch, tmp_path: Path) -> None:
     toml_file = tmp_path / "presets.toml"
     toml_file.write_text(
-        '[[premade]]\nname = "Go"\ntext = "  spaced  "\n',
+        '[[preset]]\nname = "Go"\ntext = "  spaced  "\n',
         encoding="utf-8",
     )
     monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
 
-    result = load_premade_templates()
+    result = load_preset_templates()
     assert result[0][1] == "  spaced  "
 
 

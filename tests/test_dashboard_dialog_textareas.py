@@ -8,7 +8,7 @@ from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import (
     AegisConfigureScreen,
     AgentMessageScreen,
-    PremadeMessageScreen,
+    PresetMessageScreen,
     AgentTasksScreen,
     ConfirmBroadcastScreen,
     ConfirmDirectMessageScreen,
@@ -81,13 +81,13 @@ def test_agent_message_dialog_uses_zeus_textarea_with_task_buttons() -> None:
     assert "agent-message-title-row" in source
 
 
-def test_premade_message_dialog_uses_select_and_editable_textarea() -> None:
-    source = _compose_source(PremadeMessageScreen)
+def test_preset_message_dialog_uses_select_and_editable_textarea() -> None:
+    source = _compose_source(PresetMessageScreen)
     assert "Select(" in source
-    assert "premade-message-template-select" in source
+    assert "preset-message-template-select" in source
     assert "ZeusTextArea(" in source
     assert _PLAIN_TEXTAREA_CALL_RE.search(source) is None
-    assert "premade-message-input" in source
+    assert "preset-message-input" in source
     assert "(Control-S send | Control-W queue)" in source
 
 
@@ -400,7 +400,7 @@ def test_aegis_config_mount_focuses_mode_selection(monkeypatch) -> None:
     assert mode_set.focused is True
 
 
-def test_premade_message_switching_template_loads_selected_text(monkeypatch) -> None:
+def test_preset_message_switching_template_loads_selected_text(monkeypatch) -> None:
     from zeus.models import AgentWindow
 
     agent = AgentWindow(
@@ -411,7 +411,7 @@ def test_premade_message_switching_template_loads_selected_text(monkeypatch) -> 
         kitty_pid=201,
         cwd="/tmp/project",
     )
-    screen = PremadeMessageScreen(
+    screen = PresetMessageScreen(
         agent,
         templates=[
             ("Self-review", "Review your output against your own claims again"),
@@ -423,16 +423,16 @@ def test_premade_message_switching_template_loads_selected_text(monkeypatch) -> 
     text_area = _TextAreaStub("custom self-review")
 
     def _query_one(selector: str, cls=None):  # noqa: ANN001
-        if selector == "#premade-message-template-select":
+        if selector == "#preset-message-template-select":
             return select
-        if selector == "#premade-message-input":
+        if selector == "#preset-message-input":
             return text_area
         raise LookupError(selector)
 
     monkeypatch.setattr(screen, "query_one", _query_one)
 
     event = SimpleNamespace(
-        select=SimpleNamespace(id="premade-message-template-select"),
+        select=SimpleNamespace(id="preset-message-template-select"),
         value="Escalate",
     )
     screen.on_select_changed(event)
@@ -441,7 +441,7 @@ def test_premade_message_switching_template_loads_selected_text(monkeypatch) -> 
     assert text_area.text == "Escalate blockers with concrete options"
 
 
-def test_premade_message_mount_focuses_template_select(monkeypatch) -> None:
+def test_preset_message_mount_focuses_template_select(monkeypatch) -> None:
     from zeus.models import AgentWindow
 
     agent = AgentWindow(
@@ -452,7 +452,7 @@ def test_premade_message_mount_focuses_template_select(monkeypatch) -> None:
         kitty_pid=201,
         cwd="/tmp/project",
     )
-    screen = PremadeMessageScreen(
+    screen = PresetMessageScreen(
         agent,
         templates=[("Self-review", "Review your output against your own claims again")],
     )
@@ -462,7 +462,7 @@ def test_premade_message_mount_focuses_template_select(monkeypatch) -> None:
     monkeypatch.setattr(
         screen,
         "query_one",
-        lambda selector, cls=None: select if selector == "#premade-message-template-select" else (_ for _ in ()).throw(LookupError(selector)),
+        lambda selector, cls=None: select if selector == "#preset-message-template-select" else (_ for _ in ()).throw(LookupError(selector)),
     )
 
     screen.on_mount()

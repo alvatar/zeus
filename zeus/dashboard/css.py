@@ -443,13 +443,13 @@ AgentMessageScreen.from-expanded-output #agent-message-input {{
 }}
 """
 
-PREMADE_MESSAGE_CSS = """
-PremadeMessageScreen {
+PRESET_MESSAGE_CSS = """
+PresetMessageScreen {
     align: center middle;
     background: transparent;
 }
 
-#premade-message-dialog {
+#preset-message-dialog {
     width: 110;
     height: auto;
     max-height: 40;
@@ -458,40 +458,40 @@ PremadeMessageScreen {
     padding: 1 2;
 }
 
-#premade-message-dialog Label {
+#preset-message-dialog Label {
     margin: 0 0 1 0;
     color: #dddddd;
 }
 
-#premade-message-title-row {
+#preset-message-title-row {
     width: 100%;
     height: 1;
     align: left middle;
     margin: 0 0 1 0;
 }
 
-#premade-message-title,
-#premade-message-title-spacer,
-#premade-message-shortcuts-hint {
+#preset-message-title,
+#preset-message-title-spacer,
+#preset-message-shortcuts-hint {
     margin: 0;
     height: 1;
 }
 
-#premade-message-title-spacer {
+#preset-message-title-spacer {
     width: 1fr;
 }
 
-#premade-message-shortcuts-hint {
+#preset-message-shortcuts-hint {
     color: #93ad83;
     content-align: right middle;
 }
 
-#premade-message-template-select {
+#preset-message-template-select {
     width: 100%;
     margin: 0 0 1 0;
 }
 
-#premade-message-input {
+#preset-message-input {
     height: 16;
     margin: 0;
     border: solid #444444;

@@ -19,7 +19,7 @@ _DEFAULT_QUICK: list[tuple[str, str]] = [
     ("Build", "Build preset not configured."),
 ]
 
-_DEFAULT_PREMADE: list[tuple[str, str]] = [
+_DEFAULT_PRESET: list[tuple[str, str]] = [
     ("Self-review", "Review your output against your own claims again"),
 ]
 
@@ -64,15 +64,15 @@ def load_quick_presets() -> list[tuple[str, str]]:
     return result
 
 
-def load_premade_templates() -> list[tuple[str, str]]:
-    """Load [[premade]] templates. Returns at least the default entry."""
+def load_preset_templates() -> list[tuple[str, str]]:
+    """Load [[preset]] templates. Returns at least the default entry."""
     data = _load_toml()
     if data is None:
-        return list(_DEFAULT_PREMADE)
+        return list(_DEFAULT_PRESET)
 
-    raw = data.get("premade")
+    raw = data.get("preset")
     if not isinstance(raw, list):
-        return list(_DEFAULT_PREMADE)
+        return list(_DEFAULT_PRESET)
 
     result: list[tuple[str, str]] = []
     for entry in raw:
@@ -84,4 +84,4 @@ def load_premade_templates() -> list[tuple[str, str]]:
             continue
         result.append((name, text))
 
-    return result if result else list(_DEFAULT_PREMADE)
+    return result if result else list(_DEFAULT_PRESET)

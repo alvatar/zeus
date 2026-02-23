@@ -41,7 +41,7 @@ from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
     AGENT_MESSAGE_CSS,
-    PREMADE_MESSAGE_CSS,
+    PRESET_MESSAGE_CSS,
     LAST_SENT_MESSAGE_CSS,
     EXPANDED_OUTPUT_CSS,
     DEPENDENCY_SELECT_CSS,
@@ -859,8 +859,8 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         self._forward_scroll_to_expanded_output("down", event)
 
 
-class PremadeMessageScreen(_ZeusScreenMixin, ModalScreen):
-    CSS = PREMADE_MESSAGE_CSS
+class PresetMessageScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = PRESET_MESSAGE_CSS
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("ctrl+s", "send", "Send", show=False),
@@ -892,45 +892,45 @@ class PremadeMessageScreen(_ZeusScreenMixin, ModalScreen):
         self._selected_title = self._template_options[0][0]
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="premade-message-dialog"):
-            with Horizontal(id="premade-message-title-row"):
+        with Vertical(id="preset-message-dialog"):
+            with Horizontal(id="preset-message-title-row"):
                 yield Label(
                     f"Message [bold]{self.agent.name}[/bold]",
-                    id="premade-message-title",
+                    id="preset-message-title",
                 )
-                yield Label("", id="premade-message-title-spacer")
+                yield Label("", id="preset-message-title-spacer")
                 yield Label(
                     "(Control-S send | Control-W queue)",
-                    id="premade-message-shortcuts-hint",
+                    id="preset-message-shortcuts-hint",
                 )
             yield Label("Preset:")
             yield Select(
                 [(title, title) for title, _body in self._template_options],
                 allow_blank=False,
                 value=self._selected_title,
-                id="premade-message-template-select",
+                id="preset-message-template-select",
             )
             yield ZeusTextArea(
                 self._message_by_title[self._selected_title],
-                id="premade-message-input",
+                id="preset-message-input",
             )
 
     def on_mount(self) -> None:
-        self.query_one("#premade-message-template-select", Select).focus()
+        self.query_one("#preset-message-template-select", Select).focus()
 
     def _selected_template_title(self) -> str:
-        value = self.query_one("#premade-message-template-select", Select).value
+        value = self.query_one("#preset-message-template-select", Select).value
         if value is Select.BLANK:
             return self._selected_title
         return str(value)
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id != "premade-message-template-select":
+        if event.select.id != "preset-message-template-select":
             return
         if event.value is Select.BLANK:
             return
 
-        text_area = self.query_one("#premade-message-input", ZeusTextArea)
+        text_area = self.query_one("#preset-message-input", ZeusTextArea)
         self._message_by_title[self._selected_title] = text_area.text
 
         self._selected_title = str(event.value)
@@ -939,14 +939,14 @@ class PremadeMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def action_send(self) -> None:
         title = self._selected_template_title()
-        text = self.query_one("#premade-message-input", ZeusTextArea).text
+        text = self.query_one("#preset-message-input", ZeusTextArea).text
         self._message_by_title[title] = text
         if self.zeus.do_send_agent_message(self.agent, text):
             self.dismiss()
 
     def action_queue(self) -> None:
         title = self._selected_template_title()
-        text = self.query_one("#premade-message-input", ZeusTextArea).text
+        text = self.query_one("#preset-message-input", ZeusTextArea).text
         self._message_by_title[title] = text
         if self.zeus.do_queue_agent_message(self.agent, text):
             self.dismiss()

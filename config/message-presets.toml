@@ -1,6 +1,6 @@
 # Zeus message presets
 # quick.1–quick.4: Alt+1–Alt+4 buttons in Message dialog (m key)
-# [[premade]]: Ctrl+G preset message templates
+# [[preset]]: Ctrl+G preset message templates
 
 [quick.1]
 name = "Research"
@@ -13,8 +13,7 @@ designs or assumptions. Understand it deeply and look for potential bugs.
 Then write a detailed and structured report of your learnings and findings \
 in work/RESEARCH-<timestamp>.md
 
-- Target: <FILL>
-- Research focus: <FILL>"""
+Target and research focus: """
 
 [quick.2]
 name = "Plan"
@@ -34,7 +33,7 @@ The document should be structured like this:
   - Invariants that will be maintained: what the change will make sure to not break
   - Traps: if there is something predictable that could stop your progress and should be addressed beforehand.
 
-Feature:"""
+Feature: """
 
 [quick.3]
 name = "Iterate"
@@ -62,6 +61,6 @@ Run linting and quality checks.
 Run the test suite."""
 
 
-[[premade]]
+[[preset]]
 name = "Self-review"
 text = "Review your output against your own claims again"
