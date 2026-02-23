@@ -24,6 +24,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.notifications import SeverityLevel
+from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import DataTable, Static, Label, Input, TextArea, RichLog
 from textual.widget import Widget
@@ -5193,14 +5194,27 @@ class ZeusApp(App):
                 f"Failed to fork session for {agent.name}", timeout=3
             )
 
-    def do_spawn_workdir_agent(self, agent: AgentWindow, name: str) -> None:
+    def do_spawn_workdir_agent(
+        self,
+        agent: AgentWindow,
+        name: str,
+        dismiss_screen: ModalScreen | None = None,
+    ) -> None:
         """Create a git worktree and launch a workdir agent in it."""
         clean_name = name.strip()
+        _wt_log(f"do_spawn_workdir_agent called: name={clean_name!r} agent={agent.name!r} cwd={agent.cwd!r} agent_id={agent.agent_id!r}")
+
         if self._is_agent_name_taken(clean_name):
+            _wt_log(f"name taken: {clean_name}")
+            if dismiss_screen:
+                dismiss_screen.dismiss()
             self.notify_force(f"Name already exists: {clean_name}", timeout=3)
             return
 
         if not (agent.agent_id or "").strip():
+            _wt_log("missing parent agent_id")
+            if dismiss_screen:
+                dismiss_screen.dismiss()
             self.notify_force(
                 f"Cannot spawn workdir agent from {agent.name}: missing parent agent id",
                 timeout=3,
@@ -5210,12 +5224,19 @@ class ZeusApp(App):
         from ..worktree import get_repo_root, worktree_path
         cwd = agent.cwd or ""
         repo_root = get_repo_root(cwd)
+        _wt_log(f"repo_root={repo_root!r}")
         if not repo_root:
+            if dismiss_screen:
+                dismiss_screen.dismiss()
             self.notify_force(f"Not a git repo: {cwd}", timeout=3)
             return
 
         wt_path = worktree_path(repo_root, clean_name)
+        _wt_log(f"wt_path={wt_path!r} exists={os.path.exists(wt_path)}")
         if os.path.exists(wt_path):
+            # Dismiss the SubAgent screen first, then show the confirm dialog
+            if dismiss_screen:
+                dismiss_screen.dismiss()
             from .screens import ConfirmWorktreeReplaceScreen
             self.push_screen(
                 ConfirmWorktreeReplaceScreen(clean_name, wt_path),
@@ -5226,6 +5247,8 @@ class ZeusApp(App):
             )
             return
 
+        if dismiss_screen:
+            dismiss_screen.dismiss()
         import asyncio
         asyncio.ensure_future(self._do_spawn_workdir(agent, clean_name))
 

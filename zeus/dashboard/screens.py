@@ -1315,10 +1315,11 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.query_one("#subagent-name", Input).focus()
             return
         mode = self._selected_mode()
-        self.dismiss()
         if mode == "workdir":
-            self.zeus.do_spawn_workdir_agent(self.agent, name)
+            # Dismiss handled inside do_spawn_workdir_agent after worktree check
+            self.zeus.do_spawn_workdir_agent(self.agent, name, dismiss_screen=self)
         else:
+            self.dismiss()
             self.zeus.do_spawn_subagent(self.agent, name)
 
 
