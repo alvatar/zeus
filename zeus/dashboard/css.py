@@ -796,7 +796,7 @@ HelpScreen {
 """
 
 CONFIRM_KILL_CSS = _confirm_dialog_css(
-    "ConfirmKillScreen, ConfirmKillTmuxScreen",
+    "ConfirmKillScreen, ConfirmKillTmuxScreen, ConfirmWorktreeReplaceScreen",
     dialog_id="confirm-kill-dialog",
     buttons_id="confirm-kill-buttons",
     border_color="#ff3366",

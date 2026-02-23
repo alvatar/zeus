@@ -1326,7 +1326,10 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
 
 
 class ConfirmWorktreeReplaceScreen(_ZeusScreenMixin, ModalScreen):
-    CSS = CONFIRM_KILL_CSS  # reuse kill confirm styling
+    CSS = CONFIRM_KILL_CSS + """
+    #confirm-kill-dialog { max-height: 16; }
+    #confirm-kill-dialog .dim-label { color: #447777; }
+    """
     BINDINGS = [
         Binding("escape", "dismiss", "Cancel", show=False),
         Binding("y", "confirm", "Yes", show=False),

@@ -5222,26 +5222,33 @@ class ZeusApp(App):
         self, agent: AgentWindow, name: str, repo_root: str,
     ) -> None:
         """Remove existing worktree then spawn fresh."""
+        import sys
         from ..worktree import remove_worktree
         ok, msg = remove_worktree(repo_root, name)
         if not ok:
+            print(f"[workdir-replace] remove failed: {msg}", file=sys.stderr)
             self.notify_force(f"Failed to remove old worktree: {msg}", timeout=4)
             return
         import asyncio
+        print(f"[workdir-replace] removed, spawning {name}", file=sys.stderr)
         asyncio.ensure_future(self._do_spawn_workdir(agent, name))
 
     async def _do_spawn_workdir(self, agent: AgentWindow, name: str) -> None:
-        import asyncio
+        import asyncio, sys
+        print(f"[workdir-spawn] starting for {name}, agent={agent.name}, cwd={agent.cwd}", file=sys.stderr)
         try:
             result = await asyncio.to_thread(self._spawn_workdir_blocking, agent, name)
             if result:
+                print(f"[workdir-spawn] success: {name}", file=sys.stderr)
                 self.notify(f"🌿 Workdir agent: {name}", timeout=3)
                 self.set_timer(1.5, self.poll_and_update)
             else:
+                print(f"[workdir-spawn] returned False for {name}", file=sys.stderr)
                 self.notify_force(f"Failed to create workdir agent for {name}", timeout=3)
         except Exception as exc:
-            import sys
+            import traceback
             print(f"[workdir-spawn] error: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
             self.notify_force(f"Workdir error: {exc}", timeout=4)
 
     def _spawn_workdir_blocking(self, agent: AgentWindow, name: str) -> bool:
