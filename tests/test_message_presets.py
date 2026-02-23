@@ -122,6 +122,34 @@ def test_load_premade_skips_entries_without_name(monkeypatch, tmp_path: Path) ->
     assert result == [("Valid", "yes")]
 
 
+def test_quick_preset_text_preserves_whitespace(monkeypatch, tmp_path: Path) -> None:
+    toml_file = tmp_path / "presets.toml"
+    toml_file.write_text(
+        '[quick.1]\nname = "A"\ntext = "  leading and trailing  "\n'
+        '[quick.2]\nname = "B"\ntext = "B"\n'
+        '[quick.3]\nname = "C"\ntext = "C"\n'
+        '[quick.4]\nname = "D"\ntext = "\\ntrailing newline\\n"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
+
+    result = load_quick_presets()
+    assert result[0][1] == "  leading and trailing  "
+    assert result[3][1] == "\ntrailing newline\n"
+
+
+def test_premade_text_preserves_whitespace(monkeypatch, tmp_path: Path) -> None:
+    toml_file = tmp_path / "presets.toml"
+    toml_file.write_text(
+        '[[premade]]\nname = "Go"\ntext = "  spaced  "\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("zeus.message_presets.PRESETS_FILE", toml_file)
+
+    result = load_premade_templates()
+    assert result[0][1] == "  spaced  "
+
+
 def test_quick_presets_always_returns_four_entries(monkeypatch, tmp_path: Path) -> None:
     toml_file = tmp_path / "presets.toml"
     toml_file.write_text("[quick]\n", encoding="utf-8")

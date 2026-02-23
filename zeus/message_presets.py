@@ -55,7 +55,7 @@ def load_quick_presets() -> list[tuple[str, str]]:
             result.append(_DEFAULT_QUICK[len(result)])
             continue
         name = str(entry.get("name", "")).strip()
-        text = str(entry.get("text", "")).strip()
+        text = str(entry.get("text", ""))
         if not name:
             result.append(_DEFAULT_QUICK[len(result)])
             continue
@@ -79,7 +79,7 @@ def load_premade_templates() -> list[tuple[str, str]]:
         if not isinstance(entry, dict):
             continue
         name = str(entry.get("name", "")).strip()
-        text = str(entry.get("text", "")).strip()
+        text = str(entry.get("text", ""))
         if not name:
             continue
         result.append((name, text))
