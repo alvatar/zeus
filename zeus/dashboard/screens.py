@@ -1275,7 +1275,7 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="subagent-dialog"):
             yield Label(
-                f"🧬 Sub-Hippeus from [bold]{self.agent.name}[/bold]"
+                f"Spawn from [bold]{self.agent.name}[/bold]"
             )
             yield Label(f"CWD: {self.agent.cwd}", classes="dim-label")
             yield Label("Mode:")
