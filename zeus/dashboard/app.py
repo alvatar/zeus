@@ -1131,6 +1131,7 @@ class ZeusApp(App):
         old_states = self.prev_states
         self._commit_poll_state(r)
         self._check_consolidation_done()
+        self._check_worktree_merge_done()
         self._deliver_pending_polemarch_bootstraps()
 
         state_changed_any = self._any_agent_state_changed(old_states)
@@ -5751,6 +5752,65 @@ class ZeusApp(App):
                 f"Consolidation complete: {agent_id[:8]}",
                 severity="information",
             )
+
+    def _check_worktree_merge_done(self) -> None:
+        """Scan Zeus bus inbox for worktree_merge_done signals; clean up worktree + kill agent."""
+        from ..config import AGENT_BUS_INBOX_DIR
+
+        zeus_inbox = AGENT_BUS_INBOX_DIR / "zeus" / "new"
+        if not zeus_inbox.is_dir():
+            return
+
+        for fname in os.listdir(zeus_inbox):
+            if not fname.endswith(".json"):
+                continue
+            fpath = zeus_inbox / fname
+            try:
+                data = json.loads(fpath.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            if data.get("type") != "worktree_merge_done":
+                continue
+
+            agent_id = data.get("agent_id", "")
+            agent_name = data.get("agent_name", "")
+            repo_root = data.get("repo_root", "")
+
+            # Remove bus message first
+            try:
+                fpath.unlink()
+            except OSError:
+                pass
+
+            if not agent_id:
+                continue
+
+            # Find and kill the agent
+            agent = self._find_agent_by_id(agent_id)
+            if agent:
+                close_window(agent)
+
+            # Clean up the worktree
+            if repo_root and agent_name:
+                try:
+                    from ..worktree import remove_worktree
+                    ok, msg = remove_worktree(repo_root, agent_name)
+                    _wt_log(f"merge-done cleanup: {agent_name} ok={ok} msg={msg}")
+                except Exception as exc:
+                    _wt_log(f"merge-done cleanup error: {exc}")
+
+            self.notify(
+                f"🌿 Merged & cleaned: {agent_name or agent_id[:8]}",
+                severity="information",
+            )
+
+    def _find_agent_by_id(self, agent_id: str) -> AgentWindow | None:
+        """Find an agent by its agent_id."""
+        for aw in self._agent_windows:
+            if (aw.agent_id or "").strip() == agent_id:
+                return aw
+        return None
 
     def action_consolidation(self) -> None:
         """Ctrl+Alt+M: open memory consolidation dialog."""

@@ -278,3 +278,48 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
 
     # Cleanup
     remove_worktree(git_repo, "test-agent")
+
+
+def test_check_worktree_merge_done_cleans_up(
+    git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_check_worktree_merge_done must remove worktree and kill agent on signal."""
+    import json
+    from zeus.dashboard.app import ZeusApp
+
+    # Create a worktree to clean up
+    create_worktree(git_repo, "done-agent", base_branch="main")
+    wt = worktree_path(git_repo, "done-agent")
+    assert os.path.isdir(wt)
+
+    # Set up bus inbox with a merge_done signal
+    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir.mkdir(parents=True)
+    signal_file = bus_dir / "worktree-done-test.json"
+    signal_file.write_text(json.dumps({
+        "type": "worktree_merge_done",
+        "agent_id": "abc123",
+        "agent_name": "done-agent",
+        "repo_root": git_repo,
+    }))
+
+    # Patch AGENT_BUS_INBOX_DIR in config module (imported inside the method)
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+
+    # Mock the app enough
+    app = ZeusApp.__new__(ZeusApp)
+    app._agent_windows = []  # no matching agent — just test worktree cleanup
+    app.notify = MagicMock()
+
+    app._check_worktree_merge_done()
+
+    # Signal file removed
+    assert not signal_file.exists()
+
+    # Worktree cleaned up
+    assert not os.path.isdir(wt)
+
+    # Notification fired
+    assert app.notify.called
+    call_args = app.notify.call_args
+    assert "done-agent" in str(call_args)

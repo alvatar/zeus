@@ -1464,8 +1464,32 @@ export default function (pi: ExtensionAPI) {
       if (mergeResult.code === 0) {
         const output = (mergeResult.stdout || "").trim();
         memoryLog("worktree-merge", `Merged ${currentBranch} into ${parentBranch} successfully`);
+
+        // Signal Zeus dashboard for cleanup (same pattern as consolidation_done)
+        const agentId = process.env.ZEUS_AGENT_ID || "";
+        const agentName = process.env.ZEUS_AGENT_NAME || "";
+        if (agentId) {
+          const busDir = path.join(getStateDir(), "agent-bus", "inbox", "zeus", "new");
+          try {
+            const fs = await import("fs");
+            fs.mkdirSync(busDir, { recursive: true });
+            const signal_payload = JSON.stringify({
+              type: "worktree_merge_done",
+              agent_id: agentId,
+              agent_name: agentName,
+              branch: currentBranch,
+              target: parentBranch,
+              repo_root: repoRoot,
+            });
+            const sigFile = path.join(busDir, `worktree-done-${agentId.slice(0, 8)}-${Date.now()}.json`);
+            fs.writeFileSync(sigFile, signal_payload);
+          } catch (e) {
+            // Best-effort signal; merge already succeeded
+          }
+        }
+
         return {
-          content: [{ type: "text", text: `Merge successful: ${currentBranch} → ${parentBranch}\n${output}` }],
+          content: [{ type: "text", text: `Merge successful: ${currentBranch} → ${parentBranch}\n${output}\n\nZeus will clean up the worktree.` }],
           details: { branch: currentBranch, target: parentBranch, status: "merged" },
         };
       }
