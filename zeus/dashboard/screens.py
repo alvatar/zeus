@@ -1322,6 +1322,47 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.do_spawn_subagent(self.agent, name)
 
 
+# ── Confirm worktree replace ──────────────────────────────────────────
+
+
+class ConfirmWorktreeReplaceScreen(_ZeusScreenMixin, ModalScreen):
+    CSS = CONFIRM_KILL_CSS  # reuse kill confirm styling
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=False),
+        Binding("y", "confirm", "Yes", show=False),
+        Binding("n", "cancel", "No", show=False),
+    ]
+
+    def __init__(self, name: str, wt_path: str) -> None:
+        super().__init__()
+        self._name = name
+        self._wt_path = wt_path
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-kill-dialog"):
+            yield Label(
+                f"Worktree [bold]{self._name}[/bold] already exists.\n"
+                f"Delete it and create a fresh one?"
+            )
+            yield Label(self._wt_path, classes="dim-label")
+            with Horizontal(id="confirm-kill-buttons"):
+                yield Button("Yes, replace", variant="warning", id="yes-btn")
+                yield Button("No", variant="default", id="no-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#yes-btn", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes-btn")
+        event.stop()
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 # ── Rename ────────────────────────────────────────────────────────────
 
 class RenameScreen(_ZeusScreenMixin, ModalScreen):

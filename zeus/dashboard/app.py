@@ -5196,8 +5196,39 @@ class ZeusApp(App):
             )
             return
 
+        from ..worktree import get_repo_root, worktree_path
+        cwd = agent.cwd or ""
+        repo_root = get_repo_root(cwd)
+        if not repo_root:
+            self.notify_force(f"Not a git repo: {cwd}", timeout=3)
+            return
+
+        wt_path = worktree_path(repo_root, clean_name)
+        if os.path.exists(wt_path):
+            from .screens import ConfirmWorktreeReplaceScreen
+            self.push_screen(
+                ConfirmWorktreeReplaceScreen(clean_name, wt_path),
+                callback=lambda confirmed: (
+                    self._replace_existing_worktree(agent, clean_name, repo_root)
+                    if confirmed else None
+                ),
+            )
+            return
+
         import asyncio
         asyncio.ensure_future(self._do_spawn_workdir(agent, clean_name))
+
+    def _replace_existing_worktree(
+        self, agent: AgentWindow, name: str, repo_root: str,
+    ) -> None:
+        """Remove existing worktree then spawn fresh."""
+        from ..worktree import remove_worktree
+        ok, msg = remove_worktree(repo_root, name)
+        if not ok:
+            self.notify_force(f"Failed to remove old worktree: {msg}", timeout=4)
+            return
+        import asyncio
+        asyncio.ensure_future(self._do_spawn_workdir(agent, name))
 
     async def _do_spawn_workdir(self, agent: AgentWindow, name: str) -> None:
         import asyncio
