@@ -693,6 +693,8 @@ SubAgentScreen {{
     color: #cccccc;
     margin: 1 0;
 }}
+
+{_button_row_css("subagent-buttons", row_margin="1 0 0 0")}
 """
 
 RENAME_CSS = """
