@@ -51,7 +51,15 @@ I now choose """
 
 [quick.4]
 name = "Build"
-text = "Stub text for Build preset."
+text = """\
+Implement it all. When you are done with a task or phase, mark it as completed \
+in the TODO document.
+Do not stop until all tasks and phases are completed.
+Add comprehensive tests at all levels for all new features or meaningful \
+changes that you introduce. Make sure that everything that you change is \
+thoroughly tested.
+Run linting and quality checks.
+Run the test suite."""
 
 
 [[premade]]
