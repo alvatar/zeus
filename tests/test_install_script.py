@@ -137,6 +137,16 @@ def test_generated_wrapper_avoids_broad_home_mounts() -> None:
     assert 'bwrap_ro "\\${HOME}/.npm"' not in text
 
 
+def test_install_deploys_consolidation_prompts() -> None:
+    text = _read("install.sh")
+
+    assert 'CONS_PROJECT_SRC="$SCRIPT_DIR/config/consolidation-project.md"' in text
+    assert 'CONS_TOPIC_SRC="$SCRIPT_DIR/config/consolidation-topic.md"' in text
+    assert 'CONS_PROJECT_DEST="${HOME}/.zeus/consolidation-project.md"' in text
+    assert 'CONS_TOPIC_DEST="${HOME}/.zeus/consolidation-topic.md"' in text
+    assert "Installed" in text
+
+
 def test_uninstall_removes_zeus_pi_extension_bundle() -> None:
     text = _read("uninstall.sh")
 

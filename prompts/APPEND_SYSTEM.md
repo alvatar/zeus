@@ -54,6 +54,24 @@ Zeus messaging protocol
   - `ZEUS_MSG_ENQUEUED=<id>`
   - if waiting: delivered vs timeout
 
+Agent Memory
+- You have persistent memory across sessions via `zeus_memory_*` tools.
+- Memories are stored in `~/.zeus/memory.db` and automatically injected into your system prompt each turn.
+- Namespaces:
+  - `global` — universal preferences/rules.
+  - `project:<name>` — project-specific knowledge (auto-detected from git repo).
+  - `new:<name>` — propose a new topic (staging; consolidation promotes to `topic:<name>`).
+  - `topic:<name>` — read-only specialized knowledge (shared across projects).
+- Use `zeus_memory_save` to persist important learnings, preferences, conventions, or patterns.
+- Use `zeus_memory_search` to find relevant memories by keyword.
+- Use `zeus_memory_list` to browse what's stored in a namespace.
+- Use `zeus_memory_recall` for exact key lookup.
+- Use `zeus_memory_delete` to remove outdated memories.
+- Use `zeus_memory_list_topics` to see linked topics for the current project.
+- When to save: corrections from the user, discovered conventions, architecture decisions, recurring patterns, gotchas.
+- Key naming: descriptive slugs like `error-handling-convention`, `test-structure-preference`.
+- Content: concise and actionable. State the rule directly, no preamble.
+
 Tmux sessions and observability
 - Use a tmux session for: all long-running processes (builds, benchmarks, etc.), any process producing long output, and **all tests** (no exceptions).
 - When writing to a log file, always tee to tmux stdout. The point of tmux is observability.

@@ -133,7 +133,30 @@ else
     echo "⚠ Message presets source missing: $PRESETS_SRC" >&2
 fi
 
-# 5. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
+# 5. Install consolidation prompt templates (always overwritten)
+CONS_PROJECT_SRC="$SCRIPT_DIR/config/consolidation-project.md"
+CONS_TOPIC_SRC="$SCRIPT_DIR/config/consolidation-topic.md"
+CONS_PROJECT_DEST="${HOME}/.zeus/consolidation-project.md"
+CONS_TOPIC_DEST="${HOME}/.zeus/consolidation-topic.md"
+
+mkdir -p "${HOME}/.zeus" 2>/dev/null || true
+
+for src_dest in "$CONS_PROJECT_SRC:$CONS_PROJECT_DEST" "$CONS_TOPIC_SRC:$CONS_TOPIC_DEST"; do
+    src="${src_dest%%:*}"
+    dest="${src_dest##*:}"
+    fname="$(basename "$dest")"
+    if [ -f "$src" ]; then
+        if cp "$src" "$dest" 2>/dev/null; then
+            echo "✓ Installed $fname at $dest"
+        else
+            echo "⚠ Could not install $fname at $dest (permission denied); skipped" >&2
+        fi
+    else
+        echo "⚠ Consolidation prompt missing: $src" >&2
+    fi
+done
+
+# 6. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
 if $WRAP_PI; then
     PI_BIN="$BIN_DIR/pi"
     PI_ORIG="$BIN_DIR/pi.zeus-orig"
@@ -377,7 +400,7 @@ EOF
     fi
 fi
 
-# 6. Patch kitty.conf (idempotent)
+# 7. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 KITTY_CONF_DIR="$(dirname "$KITTY_CONF")"
 if mkdir -p "$KITTY_CONF_DIR" 2>/dev/null; then
@@ -405,7 +428,7 @@ else
     echo "⚠ Could not create $KITTY_CONF_DIR (permission denied); skipped" >&2
 fi
 
-# 7. Sway config (just show instructions)
+# 8. Sway config (just show instructions)
 echo ""
 echo "── Manual step: Sway config ──"
 echo "Edit ~/.config/sway/config and change your terminal keybinding:"
@@ -418,7 +441,7 @@ echo ""
 echo "Then reload sway: swaymsg reload"
 echo ""
 
-# 8. Verify
+# 9. Verify
 echo "── Status ──"
 if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"
