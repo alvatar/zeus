@@ -18,7 +18,23 @@ in work/RESEARCH-<timestamp>.md
 
 [quick.2]
 name = "Plan"
-text = "Stub text for Plan preset."
+text = """\
+I want to build the feature described below. Write a detailed \
+work/PLAN-<timestamp>.md document outlining how to implement this. \
+The document should be detailed, but written in a succinct and to-the-point \
+way, with no fluff, fat, boilerplate or low-value information. High \
+signal-to-noise is extremely important.
+
+The document should be structured like this:
+
+- Summary of feature
+- Overview of the steps
+- Details of execution. Include when relevant:
+  - Code snippets of the most important key changes
+  - Invariants that will be maintained: what the change will make sure to not break
+  - Traps: if there is something predictable that could stop your progress and should be addressed beforehand.
+
+Feature:"""
 
 [quick.3]
 name = "Freeze"
