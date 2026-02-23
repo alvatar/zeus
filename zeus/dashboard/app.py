@@ -5294,7 +5294,8 @@ class ZeusApp(App):
             self.notify_force(f"Workdir error: {exc}", timeout=4)
 
     def _spawn_workdir_blocking(self, agent: AgentWindow, name: str) -> bool:
-        """Blocking: create worktree + launch agent in kitty (same as spawn_subagent)."""
+        """Blocking: create worktree + launch agent in kitty (same as NewAgentScreen)."""
+        from ..sessions import make_new_session_path
         from ..worktree import (
             create_worktree, get_current_branch, get_repo_root, worktree_branch,
         )
@@ -5315,29 +5316,21 @@ class ZeusApp(App):
         wt_path = msg  # on success, msg is the worktree path
         branch = worktree_branch(name)
 
-        # Launch in kitty, same pattern as spawn_subagent
+        # Same launch pattern as NewAgentScreen._do_invoke
         agent_id = generate_agent_id()
         parent_id = (agent.agent_id or "").strip()
+        session_path = make_new_session_path(wt_path)
 
         env: dict[str, str] = os.environ.copy()
         env["ZEUS_AGENT_NAME"] = name
         env["ZEUS_AGENT_ID"] = agent_id
         env["ZEUS_ROLE"] = "hippeus"
+        env["ZEUS_SESSION_PATH"] = session_path
         env["ZEUS_PARENT_BRANCH"] = parent_branch
         if parent_id:
             env["ZEUS_PARENT_ID"] = parent_id
 
-        # Build prompt and write to temp file
-        prompt_text = self._build_workdir_prompt(name, parent_branch, branch, wt_path, repo_root)
-
-        import tempfile
-        prompt_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", prefix="zeus-wt-", delete=False,
-        )
-        prompt_file.write(prompt_text)
-        prompt_file.close()
-
-        pi_cmd = f"pi \"$(cat {shlex.quote(prompt_file.name)})\""
+        pi_cmd = f"pi --session {shlex.quote(session_path)}"
 
         proc = subprocess.Popen(
             ["kitty", "--directory", wt_path, "--hold",
@@ -5345,12 +5338,26 @@ class ZeusApp(App):
             env=env, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        _wt_log(f"kitty launched pid={proc.pid} cwd={wt_path} prompt={prompt_file.name}")
+        _wt_log(f"kitty launched pid={proc.pid} cwd={wt_path} session={session_path}")
 
         workspace = agent.workspace
         if workspace and workspace != "?":
             from ..kitty import move_pid_to_workspace_and_focus_later
             move_pid_to_workspace_and_focus_later(proc.pid, workspace, delay=0.5)
+
+        # Send workdir instructions via message queue (delivered on next poll)
+        prompt_text = self._build_workdir_prompt(name, parent_branch, branch, wt_path, repo_root)
+        envelope = OutboundEnvelope.new(
+            source_name="zeus-dashboard",
+            target_kind="agent",
+            target_ref=agent_id,
+            target_agent_id=agent_id,
+            target_name=name,
+            delivery_mode="follow-up",
+            message=prompt_text,
+        )
+        enqueue_envelope(envelope)
+        _wt_log(f"queued workdir prompt for {name} ({agent_id})")
 
         return True
 

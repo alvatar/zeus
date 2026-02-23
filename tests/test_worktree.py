@@ -230,6 +230,10 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
 
     monkeypatch.setattr("subprocess.Popen", selective_popen)
 
+    # Mock enqueue_envelope
+    mock_enqueue = MagicMock()
+    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", mock_enqueue)
+
     agent = MagicMock()
     agent.cwd = git_repo
     agent.agent_id = "parent-id-123"
@@ -245,7 +249,7 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     assert os.path.isdir(wt)
     assert get_current_branch(wt) == "zeus/test-agent"
 
-    # Kitty was called with correct cwd and prompt piped to pi
+    # Kitty was called with correct cwd and --session (same as NewAgentScreen)
     assert mock_popen.called
     call_args = mock_popen.call_args
     cmd = call_args[0][0]  # positional arg 0
@@ -253,17 +257,22 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     assert "--directory" in cmd
     dir_idx = cmd.index("--directory")
     assert cmd[dir_idx + 1] == wt
-    # The bash command passes prompt as positional arg to pi
     bash_cmd = cmd[-1]
-    assert "pi" in bash_cmd
-    assert "$(cat " in bash_cmd
+    assert "pi --session" in bash_cmd
 
-    # Env vars set
+    # Env vars set (same as NewAgentScreen)
     env = call_args[1]["env"]
     assert env["ZEUS_AGENT_NAME"] == "test-agent"
     assert env["ZEUS_ROLE"] == "hippeus"
     assert env["ZEUS_PARENT_BRANCH"] == "main"
     assert env["ZEUS_PARENT_ID"] == "parent-id-123"
+    assert "ZEUS_SESSION_PATH" in env
+
+    # Workdir prompt enqueued via message queue
+    assert mock_enqueue.called
+    envelope = mock_enqueue.call_args[0][0]
+    assert envelope.target_agent_id == env["ZEUS_AGENT_ID"]
+    assert envelope.target_name == "test-agent"
 
     # Cleanup
     remove_worktree(git_repo, "test-agent")
