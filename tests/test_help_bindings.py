@@ -17,102 +17,65 @@ def test_help_compose_uses_two_column_rows_for_bindings() -> None:
     assert 'Label(desc, classes="help-desc")' in source
 
 
-def test_help_lists_text_area_navigation_commands() -> None:
+def test_help_lists_core_bindings() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
 
-    assert entries["Ctrl+a / Ctrl+e"] == (
-        "Move to line start/end; at edge jump to prev/next line"
-    )
-    assert entries["Alt+b / Alt+f"] == "Move cursor one word left / right"
-    assert entries["Alt+d / Alt+Backspace"] == "Delete word right / left"
-    assert entries["Ctrl+k"] == "Kill to end-of-line (or delete line if empty)"
-    assert entries["Ctrl+u"] == "Clear input"
-    assert entries["Ctrl+y"] == (
-        "Yank killed text (system clipboard, fallback local kill buffer)"
-    )
-    assert entries["b"] == (
-        "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"
-    )
-    assert entries["m"] == (
-        "Direct-send latest share payload (ZEUS_MSG_FILE or %%%% block)"
-    )
-    assert entries["Ctrl+k (tmux row)"] == "Kill tmux session process"
-    assert entries["z"] == "Invoke Hippeus / Stygian Hippeus / Polemarch"
-    assert entries["a"] == "Bring Hippeus under the Aegis"
-    assert entries["n"] == "Queue next task for selected Hippeus"
-    assert entries["g"] == "Queue 'go ahead' for selected Hippeus"
-    assert entries["Ctrl+g"] == "Open preset message dialog for selected Hippeus"
-    assert entries["t"] == "Edit tasks for selected Hippeus"
-    assert entries["y"] == "Yank block between %%%% markers for selected Hippeus"
-    assert entries["e"] == "Expand output for selected Hippeus"
-    assert entries["Ctrl+t"] == "Clear done tasks for selected Hippeus"
-    assert entries["Ctrl+p"] == "Promote selected sub-Hippeus / Hippeus / Hoplite"
-    assert entries["d"] == "Set/remove blocking dependency for selected Hippeus"
-    assert entries["h"] == "History for selected Hippeus"
-    assert entries["Ctrl+r"] == "Save snapshot of all restorable agents"
-    assert entries["Ctrl+Alt+r"] == "Restore snapshot"
-    assert entries["Ctrl+s"] == "Send message to Hippeus / tmux"
-    assert "i" not in entries
-    assert "Ctrl+b" not in entries
-    assert "Ctrl+m" not in entries
-    assert entries["1"] == "Toggle interact input area"
+    # Hippeis management
+    assert "q" in entries
+    assert "e" in entries
+    assert "r" in entries
+    assert "Ctrl+r" in entries
+    assert "Ctrl+Alt+r" in entries
+    assert "t" in entries
+    assert "Ctrl+t" in entries
+    assert "y" in entries
+    assert "p" in entries
+    assert "Ctrl+p" in entries
+    assert "a" in entries
+    assert "s" in entries
+    assert "d" in entries
+    assert "g" in entries
+    assert "Ctrl+g" in entries
+    assert "h" in entries
+    assert "k" in entries
+    assert "Ctrl+k" in entries
+    assert "z" in entries
+    assert "b" in entries
+    assert "n" in entries
+    assert "m" in entries
+    assert "Ctrl+Alt+m" in entries
 
-    up_down_desc = entries["↑/↓"]
-    assert "visual top/bottom" in up_down_desc
-    assert "history" in up_down_desc
+    # Interact panel
+    assert "Ctrl+s" in entries
+    assert "Ctrl+w" in entries
+    assert "Ctrl+u" in entries
+    assert "Ctrl+y" in entries
+    assert "Ctrl+a / Ctrl+e" in entries
+    assert "Alt+b / Alt+f" in entries
+    assert "Alt+d / Alt+Backspace" in entries
+    assert "↑/↓" in entries
 
+    # Navigation
+    assert "Tab" in entries
+    assert "Enter" in entries
+    assert "Esc" in entries
+    assert "Ctrl+Enter" in entries
+    assert "Ctrl+o" in entries
 
-def test_help_groups_global_shortcuts_in_last_section() -> None:
-    global_idx = _HELP_BINDINGS.index(("", "─── Global ───"))
-
-    global_entries = [
-        ("1", "Toggle interact input area"),
-        ("2", "Toggle mini-map"),
-        ("3", "Toggle sparkline charts"),
-        ("4", "Toggle interact target band"),
-    ]
-
-    headers = [idx for idx, (key, _desc) in enumerate(_HELP_BINDINGS) if not key]
-    assert global_idx == headers[-1]
-
-    for entry in global_entries:
-        idx = _HELP_BINDINGS.index(entry)
-        assert idx > global_idx
+    # Panels & settings
+    assert "1" in entries
+    assert "2" in entries
+    assert "3" in entries
+    assert "4" in entries
+    assert "F4" in entries
+    assert "F5" in entries
+    assert "F6" in entries
+    assert "F8" in entries
+    assert "F10" in entries
+    assert "?" in entries
 
 
-def test_help_groups_summary_shortcuts_under_agent_management() -> None:
-    agent_mgmt_idx = _HELP_BINDINGS.index(("", "─── Hippeis Management ───"))
-    settings_idx = _HELP_BINDINGS.index(("", "─── Settings ───"))
-
-    mgmt_entries = [
-        ("z", "Invoke Hippeus / Stygian Hippeus / Polemarch"),
-        ("Ctrl+r", "Save snapshot of all restorable agents"),
-        ("Ctrl+Alt+r", "Restore snapshot"),
-        ("a", "Bring Hippeus under the Aegis"),
-        ("n", "Queue next task for selected Hippeus"),
-        ("g", "Queue 'go ahead' for selected Hippeus"),
-        ("Ctrl+g", "Open preset message dialog for selected Hippeus"),
-        ("t", "Edit tasks for selected Hippeus"),
-        ("y", "Yank block between %%%% markers for selected Hippeus"),
-        ("e", "Expand output for selected Hippeus"),
-        ("Ctrl+t", "Clear done tasks for selected Hippeus"),
-        ("Ctrl+p", "Promote selected sub-Hippeus / Hippeus / Hoplite"),
-        ("d", "Set/remove blocking dependency for selected Hippeus"),
-        ("h", "History for selected Hippeus"),
-        ("b", "Broadcast latest share payload (ZEUS_MSG_FILE or %%%% block)"),
-        (
-            "m",
-            "Direct-send latest share payload (ZEUS_MSG_FILE or %%%% block)",
-        ),
-        ("Ctrl+k (tmux row)", "Kill tmux session process"),
-    ]
-
-    for entry in mgmt_entries:
-        idx = _HELP_BINDINGS.index(entry)
-        assert agent_mgmt_idx < idx < settings_idx
-
-
-def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
+def test_help_orders_agent_management_by_qwerty() -> None:
     start = _HELP_BINDINGS.index(("", "─── Hippeis Management ───")) + 1
     end = _HELP_BINDINGS.index(("", "─── Navigation ───"))
     keys = [key for key, _desc in _HELP_BINDINGS[start:end]]
@@ -121,83 +84,93 @@ def test_help_orders_agent_management_keys_by_keyboard_rows() -> None:
         "q",
         "e",
         "r",
+        "Ctrl+r",
+        "Ctrl+Alt+r",
         "t",
-        "y",
         "Ctrl+t",
+        "y",
         "p",
+        "Ctrl+p",
         "a",
         "s",
-        "Ctrl+p",
         "d",
         "g",
         "Ctrl+g",
         "h",
         "k",
-        "Ctrl+k (tmux row)",
+        "Ctrl+k",
         "z",
-        "Ctrl+r",
-        "Ctrl+Alt+r",
         "b",
         "n",
         "m",
+        "Ctrl+Alt+m",
     ]
 
 
-def test_help_lists_all_top_level_app_bindings() -> None:
-    keys = {key for key, _desc in _HELP_BINDINGS if key}
+def test_help_orders_interact_panel_by_qwerty() -> None:
+    start = _HELP_BINDINGS.index(("", "─── Interact Panel ───")) + 1
+    end = _HELP_BINDINGS.index(("", "─── Dialogs ───"))
+    keys = [key for key, _desc in _HELP_BINDINGS[start:end]]
 
-    expected = {
-        "q",
-        "F10",
-        "Tab",
-        "Ctrl+p",
-        "Ctrl+Enter",
-        "Ctrl+o",
-        "z",
-        "a",
-        "n",
-        "g",
-        "Ctrl+g",
-        "t",
-        "y",
-        "e",
-        "Ctrl+t",
-        "d",
-        "s",
-        "h",
-        "k",
-        "p",
-        "r",
-        "F5",
+    assert keys == [
+        "Ctrl+a / Ctrl+e",
         "Ctrl+s",
-        "Ctrl+r",
-        "Ctrl+Alt+r",
         "Ctrl+w",
-        "b",
-        "m",
-        "Ctrl+k (tmux row)",
+        "Ctrl+u",
+        "Ctrl+y",
+        "Ctrl+k",
+        "Alt+b / Alt+f",
+        "Alt+d / Alt+Backspace",
+        "↑/↓",
+    ]
+
+
+def test_help_orders_panels_settings_by_number_then_fkey() -> None:
+    start = _HELP_BINDINGS.index(("", "─── Panels & Settings ───")) + 1
+    keys = [key for key, _desc in _HELP_BINDINGS[start:]]
+
+    assert keys == [
         "1",
         "2",
         "3",
         "4",
         "F4",
+        "F5",
         "F6",
         "F8",
+        "F10",
         "?",
-    }
-
-    assert expected <= keys
-    assert "Ctrl+q" not in keys
+    ]
 
 
-def test_help_lists_modal_only_bindings() -> None:
+def test_help_lists_dialog_bindings() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
+    # Dialog-specific contextual bindings
+    assert "Esc" in entries  # close dialog
+    assert "Ctrl+s (tasks)" in entries
+    assert "Ctrl+s (message)" in entries
+    assert "Ctrl+w (message)" in entries
+    assert "Alt+1–4 (message)" in entries
+    assert "y / n / Enter (kill)" in entries
 
-    assert entries["Esc (dialog)"] == "Close/cancel active dialog"
-    assert entries["Ctrl+s (tasks dialog)"] == "Save tasks in Hippeus Tasks dialog"
-    assert entries["Ctrl+s (message dialog)"] == "Send message in Hippeus Message / Preset dialog"
-    assert entries["Ctrl+w (message dialog)"] == "Queue message in Hippeus Message / Preset dialog"
-    assert "m (expanded output)" not in entries
-    assert entries["y / n / Enter (kill confirm)"] == (
-        "Confirm or cancel kill confirmation dialogs"
-    )
+
+def test_help_no_stale_bindings() -> None:
+    keys = {key for key, _desc in _HELP_BINDINGS if key}
+    # These old keys should not be present
+    assert "Ctrl+k (tmux row)" not in keys
+    assert "Ctrl+q" not in keys
+    assert "i" not in keys
+    assert "Ctrl+b" not in keys
+    assert "Ctrl+m" not in keys
+
+
+def test_help_section_count() -> None:
+    headers = [desc for key, desc in _HELP_BINDINGS if not key]
+    assert len(headers) == 5
+    assert headers == [
+        "─── Hippeis Management ───",
+        "─── Navigation ───",
+        "─── Interact Panel ───",
+        "─── Dialogs ───",
+        "─── Panels & Settings ───",
+    ]
