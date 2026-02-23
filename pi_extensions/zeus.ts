@@ -581,9 +581,24 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      const helpText = [
+        "🧠 /memory commands:",
+        "  /memory status          — DB path, memory count, verbose state",
+        "  /memory verbose on|off  — toggle injection/warm-path logging",
+        "",
+        "🧠 Memory tools (use as normal tool calls):",
+        "  zeus_memory_save     — store a memory (global, project:<name>, new:<name>)",
+        "  zeus_memory_recall   — exact lookup by namespace + key",
+        "  zeus_memory_search   — full-text search across memories",
+        "  zeus_memory_list     — browse a namespace (default: current project)",
+        "  zeus_memory_delete   — permanently remove a memory",
+        "  zeus_memory_list_topics   — linked topics + pending count",
+        "  zeus_memory_rename_project — rename a project namespace",
+      ].join("\n");
+
       pi.sendMessage({
         customType: "zeus_memory_log",
-        content: "🧠 Usage: /memory verbose on|off | /memory status",
+        content: helpText,
         display: true,
       });
     },
