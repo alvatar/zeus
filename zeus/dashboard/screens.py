@@ -707,7 +707,19 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
     ]
 
     MESSAGE_PRESETS: list[tuple[str, str]] = [
-        ("Research", "Stub text for Research preset."),
+        (
+            "Research",
+            "Read this target files/folders in depth. Deeply understand how it all works: "
+            "architecture, design, algorithmic decisions, what it solves, how and why. "
+            "Learn specific details. Identify unique aspects that deviate from typical "
+            "designs or assumptions. Understand it deeply and look for potential bugs.\n"
+            "\n"
+            "Then write a detailed and structured report of your learnings and findings "
+            "in work/RESEARCH-<timestamp>.md\n"
+            "\n"
+            "- Target: <FILL>\n"
+            "- Research focus: <FILL>",
+        ),
         ("Plan", "Stub text for Plan preset."),
         ("Freeze", "Stub text for Freeze preset."),
         ("Build", "Stub text for Build preset."),
