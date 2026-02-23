@@ -5862,16 +5862,18 @@ class ZeusApp(App):
         """Spawn an ephemeral consolidation agent via asyncio.to_thread."""
         import asyncio
         try:
-            result = await asyncio.to_thread(self._do_spawn_consolidation, params)
+            result = await asyncio.to_thread(self._do_spawn_consolidation_blocking, params)
             if result:
-                self.notify(f"Consolidation agent started: {result}", severity="information")
+                agent_id, tmux_name = result
+                self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
+                self.notify(f"Consolidation agent started: {tmux_name}", severity="information")
         except Exception as exc:
             import sys
             print(f"[consolidation-spawn] error: {exc}", file=sys.stderr)
             self.notify(f"Failed to start consolidation: {exc}", severity="error")
 
-    def _do_spawn_consolidation(self, params: dict) -> str:
-        """Blocking: launch an ephemeral Pi agent for consolidation."""
+    def _do_spawn_consolidation_blocking(self, params: dict) -> tuple[str, str]:
+        """Blocking: launch an ephemeral Pi agent. Returns (agent_id, tmux_name)."""
         from ..memory import resolve_project_name
 
         cons_type = params.get("type", "project")
@@ -5943,10 +5945,7 @@ class ZeusApp(App):
         except Exception:
             pass
 
-        # Start safety net timer (30 min)
-        self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
-
-        return agent_name
+        return agent_id, tmux_name
 
     def _start_consolidation_timeout(
         self, agent_id: str, tmux_name: str, timeout_s: int = 1800
