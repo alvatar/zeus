@@ -1067,3 +1067,32 @@ ConfirmDirectMessageScreen {{
 
 {_button_row_css("direct-buttons")}
 """
+
+CONSOLIDATION_CSS = f"""
+ConsolidationScreen {{
+    align: center middle;
+    background: transparent;
+}}
+
+#consolidation-dialog {{
+    width: 78;
+    height: auto;
+    border: thick #d78700;
+    background: #0a0a0a;
+    padding: 2 3;
+}}
+
+#consolidation-dialog Label {{
+    width: 100%;
+    margin: 0 0 1 0;
+    color: #cccccc;
+}}
+
+#consolidation-model,
+#consolidation-topic {{
+    width: 100%;
+    margin: 0 0 1 0;
+}}
+
+{_button_row_css("consolidation-buttons", align="right middle")}
+"""

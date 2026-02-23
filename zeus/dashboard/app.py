@@ -142,6 +142,7 @@ from .screens import (
     ConfirmDirectMessageScreen,
     SaveSnapshotScreen,
     RestoreSnapshotScreen,
+    ConsolidationScreen,
     HelpScreen,
     _list_available_model_specs,
 )
@@ -491,6 +492,15 @@ def _with_tasks_column(order: tuple[str, ...]) -> tuple[str, ...]:
     return order + ("■",)
 
 
+def _read_consolidation_prompt(filepath: str) -> str:
+    """Read a consolidation prompt template, returning empty string on failure."""
+    try:
+        with open(filepath, "r") as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
 def _format_ram_mb(ram_mb: float) -> str:
     """Render RAM in compact M/G units for narrow table columns."""
     if ram_mb >= 1000:
@@ -550,6 +560,13 @@ class ZeusApp(App):
         Binding("f6", "toggle_split", "Split"),
 
         Binding("f8", "toggle_interact_panel", "Panel"),
+        Binding(
+            "alt+ctrl+m,ctrl+alt+m",
+            "consolidation",
+            "Memory consolidation",
+            show=False,
+            priority=True,
+        ),
         Binding("question_mark", "show_help", "?", key_display="?"),
     ]
 
@@ -5436,6 +5453,153 @@ class ZeusApp(App):
         self._handle_restore_result(result)
 
     # ── Log panel ─────────────────────────────────────────────────────
+
+    def action_consolidation(self) -> None:
+        """Ctrl+Alt+M: open memory consolidation dialog."""
+        if self._has_blocking_modal_open():
+            return
+
+        topics: list[str] = []
+        try:
+            from ..memory import get_all_topic_namespaces
+            topics = get_all_topic_namespaces()
+        except Exception:
+            pass
+
+        model_specs = getattr(self, "_invoke_model_specs", None) or []
+        screen = ConsolidationScreen(
+            available_model_specs=model_specs,
+            topics=topics,
+        )
+        self.push_screen(screen, callback=self._on_consolidation_result)
+
+    def _on_consolidation_result(self, result: dict | None) -> None:
+        """Handle consolidation dialog result — spawn ephemeral agent."""
+        if not result:
+            return
+        import asyncio
+        asyncio.ensure_future(self._spawn_consolidation_agent(result))
+
+    async def _spawn_consolidation_agent(self, params: dict) -> None:
+        """Spawn an ephemeral consolidation agent via asyncio.to_thread."""
+        import asyncio
+        try:
+            result = await asyncio.to_thread(self._do_spawn_consolidation, params)
+            if result:
+                self.notify(f"Consolidation agent started: {result}", severity="information")
+        except Exception as exc:
+            import sys
+            print(f"[consolidation-spawn] error: {exc}", file=sys.stderr)
+            self.notify(f"Failed to start consolidation: {exc}", severity="error")
+
+    def _do_spawn_consolidation(self, params: dict) -> str:
+        """Blocking: launch an ephemeral Pi agent for consolidation."""
+        from ..memory import resolve_project_name
+
+        cons_type = params.get("type", "project")
+        model_spec = params.get("model_spec", "")
+        topic = params.get("topic", "")
+
+        agent_id = generate_agent_id()
+        project_name = resolve_project_name()
+
+        # Load the consolidation prompt
+        zeus_home = os.environ.get("ZEUS_HOME", os.path.join(os.environ.get("HOME", ""), ".zeus"))
+        if cons_type == "topic":
+            prompt_src = os.path.join(zeus_home, "consolidation-topic.md")
+            prompt_text = _read_consolidation_prompt(prompt_src)
+            prompt_text = prompt_text.replace("<namespace>", topic)
+            agent_name = f"consolidate-topic-{topic}"
+        else:
+            prompt_src = os.path.join(zeus_home, "consolidation-project.md")
+            prompt_text = _read_consolidation_prompt(prompt_src)
+            prompt_text = prompt_text.replace("<project_name>", project_name or "unknown")
+            agent_name = f"consolidate-project-{project_name or 'unknown'}"
+
+        if not prompt_text:
+            raise RuntimeError(f"Consolidation prompt not found: {prompt_src}")
+
+        # Write prompt to temp file for Pi --prompt
+        import tempfile
+        prompt_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", prefix="zeus-cons-", delete=False
+        )
+        prompt_file.write(prompt_text)
+        prompt_file.close()
+
+        # Mark as ephemeral
+        ephemeral_dir = os.path.join(zeus_home, "ephemeral")
+        os.makedirs(ephemeral_dir, exist_ok=True)
+        with open(os.path.join(ephemeral_dir, agent_id), "w") as f:
+            f.write(agent_name)
+
+        # Build pi command
+        pi_bin = os.environ.get("ZEUS_DIRECT_PI_BIN") or shutil.which("pi") or "pi"
+        cmd_parts = [pi_bin]
+        if model_spec:
+            cmd_parts.extend(["--model", model_spec])
+        cmd_parts.extend(["--prompt", f"$(cat {shlex.quote(prompt_file.name)})"])
+
+        # Wrap in tmux session with Zeus agent env
+        tmux_name = f"zeus-cons-{agent_id[:8]}"
+        env_args = [
+            "new-session", "-d", "-s", tmux_name,
+            "-e", f"ZEUS_AGENT_ID={agent_id}",
+            "-e", f"ZEUS_AGENT_NAME={agent_name}",
+            "-e", f"ZEUS_ROLE=hoplite",
+        ]
+        # The shell command: cat prompt, pipe to pi
+        shell_cmd = f"cat {shlex.quote(prompt_file.name)} | {pi_bin}"
+        if model_spec:
+            shell_cmd = f"cat {shlex.quote(prompt_file.name)} | {pi_bin} --model {shlex.quote(model_spec)}"
+        env_args.append(shell_cmd)
+
+        subprocess.run(["tmux", *env_args], check=True, timeout=10)
+
+        # Stamp ownership
+        try:
+            subprocess.run(
+                ["tmux", "set-option", "-t", tmux_name, "@zeus_owner", agent_id],
+                check=False, timeout=5,
+            )
+        except Exception:
+            pass
+
+        # Start safety net timer (30 min)
+        self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
+
+        return agent_name
+
+    def _start_consolidation_timeout(
+        self, agent_id: str, tmux_name: str, timeout_s: int = 1800
+    ) -> None:
+        """Start a background timer that warns if consolidation takes too long."""
+        import asyncio
+
+        async def _timeout_check() -> None:
+            await asyncio.sleep(timeout_s)
+            # Check if still running
+            try:
+                r = subprocess.run(
+                    ["tmux", "has-session", "-t", tmux_name],
+                    capture_output=True, timeout=5,
+                )
+                if r.returncode == 0:
+                    # Still running — show warning
+                    self.push_screen(
+                        NoticeScreen(
+                            title="Consolidation Timeout",
+                            body=(
+                                f"Consolidation agent '{tmux_name}' has been running "
+                                f"for {timeout_s // 60} minutes. It may be stuck.\n\n"
+                                f"You can kill it with: tmux kill-session -t {tmux_name}"
+                            ),
+                        )
+                    )
+            except Exception:
+                pass
+
+        asyncio.ensure_future(_timeout_check())
 
     def action_show_help(self) -> None:
         if self._has_blocking_modal_open():

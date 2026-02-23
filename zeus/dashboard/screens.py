@@ -57,6 +57,7 @@ from .css import (
     BROADCAST_CONFIRM_CSS,
     DIRECT_MESSAGE_CONFIRM_CSS,
     HELP_CSS,
+    CONSOLIDATION_CSS,
 )
 from .stream import (
     kitty_ansi_to_standard,
@@ -2154,7 +2155,101 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("2", "Toggle mini-map"),
     ("3", "Toggle sparkline charts"),
     ("4", "Toggle interact target band"),
+    ("Ctrl+Alt+m", "Memory consolidation"),
 ]
+
+
+# ── Memory consolidation ─────────────────────────────────────────────
+
+
+class ConsolidationScreen(_ZeusScreenMixin, ModalScreen):
+    """Ctrl+Alt+M: launch ephemeral memory consolidation agents."""
+
+    CSS = CONSOLIDATION_CSS
+    BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
+
+    def __init__(
+        self,
+        *,
+        available_model_specs: list[str] | None = None,
+        topics: list[str] | None = None,
+    ) -> None:
+        super().__init__()
+        self._available_model_specs: list[str] = list(available_model_specs or [])
+        self._topics: list[str] = list(topics or [])
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="consolidation-dialog"):
+            yield Label("Memory Consolidation")
+            yield Label("Model:")
+            model_opts = (
+                [(spec, spec) for spec in self._available_model_specs]
+                if self._available_model_specs
+                else [("Default (auto)", "__default__")]
+            )
+            yield Select(
+                model_opts,
+                value=model_opts[0][1] if model_opts else "__default__",
+                id="consolidation-model",
+                allow_blank=False,
+            )
+            yield Label("Topic (for topic consolidation):")
+            topic_opts: list[tuple[str, str]] = [("(none)", "__none__")]
+            for t in self._topics:
+                topic_opts.append((t, t))
+            yield Select(
+                topic_opts,
+                value="__none__",
+                id="consolidation-topic",
+                allow_blank=False,
+            )
+            with Horizontal(id="consolidation-buttons"):
+                yield Button(
+                    "Consolidate Project",
+                    variant="primary",
+                    id="consolidate-project-btn",
+                )
+                yield Button(
+                    "Consolidate Topic",
+                    variant="warning",
+                    id="consolidate-topic-btn",
+                )
+                yield Button("Cancel", id="consolidate-cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#consolidation-model", Select).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        btn_id = event.button.id or ""
+        if btn_id == "consolidate-cancel-btn":
+            self.dismiss(None)
+            return
+        model_select = self.query_one("#consolidation-model", Select)
+        model_spec = (
+            str(model_select.value)
+            if model_select.value != "__default__"
+            else ""
+        )
+        if btn_id == "consolidate-project-btn":
+            self.dismiss(
+                {
+                    "type": "project",
+                    "model_spec": model_spec,
+                }
+            )
+        elif btn_id == "consolidate-topic-btn":
+            topic_select = self.query_one("#consolidation-topic", Select)
+            topic_val = str(topic_select.value)
+            if topic_val == "__none__":
+                self.notify("Select a topic first.", severity="warning")
+                return
+            self.dismiss(
+                {
+                    "type": "topic",
+                    "topic": topic_val,
+                    "model_spec": model_spec,
+                }
+            )
 
 
 class HelpScreen(ModalScreen):
