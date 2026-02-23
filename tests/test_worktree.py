@@ -253,10 +253,10 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     assert "--directory" in cmd
     dir_idx = cmd.index("--directory")
     assert cmd[dir_idx + 1] == wt
-    # The bash command should pass prompt via --prompt flag
+    # The bash command passes prompt as positional arg to pi
     bash_cmd = cmd[-1]
-    assert "--prompt" in bash_cmd
     assert "pi" in bash_cmd
+    assert "$(cat " in bash_cmd
 
     # Env vars set
     env = call_args[1]["env"]
