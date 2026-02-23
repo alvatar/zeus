@@ -5877,8 +5877,13 @@ class ZeusApp(App):
             _cons_log(f"blocking returned: {result!r}")
             if result:
                 agent_id, tmux_name = result
-                self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
+                _cons_log(f"starting timeout + notify for {tmux_name}")
+                try:
+                    self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
+                except Exception as te:
+                    _cons_log(f"timeout start error: {te}")
                 self.notify(f"Consolidation agent started: {tmux_name}", severity="information")
+                _cons_log("done")
         except Exception as exc:
             import traceback
             _cons_log(f"error: {exc}\n{traceback.format_exc()}")
@@ -5940,10 +5945,10 @@ class ZeusApp(App):
             "-e", f"ZEUS_AGENT_NAME={agent_name}",
             "-e", f"ZEUS_ROLE=hoplite",
         ]
-        # Launch pi with prompt as positional arg via bash -lc (not piped — Pi needs stdin for tool use)
-        pi_cmd = f"{pi_bin} \"$(cat {shlex.quote(prompt_file.name)})\""
+        # Launch pi with @file syntax (positional arg with $(cat) breaks on long prompts)
+        pi_cmd = f"{pi_bin} @{shlex.quote(prompt_file.name)}"
         if model_spec:
-            pi_cmd = f"{pi_bin} --model {shlex.quote(model_spec)} \"$(cat {shlex.quote(prompt_file.name)})\""
+            pi_cmd = f"{pi_bin} --model {shlex.quote(model_spec)} @{shlex.quote(prompt_file.name)}"
         shell_cmd = f"bash -lc {shlex.quote(pi_cmd)}"
         env_args.append(shell_cmd)
 
