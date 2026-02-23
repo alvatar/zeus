@@ -761,7 +761,7 @@ class ZeusApp(App):
         self._load_agent_tasks()
         self._load_agent_dependencies()
         self._load_panel_visibility()
-        self._load_invoke_preferences()
+        self._load_model_preferences()
         self._warm_invoke_model_specs()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -3964,8 +3964,8 @@ class ZeusApp(App):
 
     # ── Invoke preferences ──────────────────────────────────────────
 
-    def _load_invoke_preferences(self) -> None:
-        """Load invoke dialog preferences from disk."""
+    def _load_model_preferences(self) -> None:
+        """Load per-dialog model preferences from disk."""
         data = self._read_json_dict(INVOKE_PREFERENCES_FILE)
         if data is None:
             return
@@ -3977,8 +3977,8 @@ class ZeusApp(App):
         if isinstance(raw_cons, str):
             self._last_consolidation_model_spec = raw_cons.strip()
 
-    def _save_invoke_preferences(self) -> None:
-        """Persist invoke dialog preferences to disk."""
+    def _save_model_preferences(self) -> None:
+        """Persist per-dialog model preferences to disk."""
         self._write_json_dict(
             INVOKE_PREFERENCES_FILE,
             {
@@ -4443,7 +4443,7 @@ class ZeusApp(App):
         if not self.is_running:
             return
         try:
-            self._save_invoke_preferences()
+            self._save_model_preferences()
         except OSError:
             return
 
@@ -5875,7 +5875,7 @@ class ZeusApp(App):
         model_spec = (result.get("model_spec") or "").strip()
         if model_spec:
             self._last_consolidation_model_spec = model_spec
-            self._save_invoke_preferences()
+            self._save_model_preferences()
         # Grab a cwd from any active agent for project name resolution
         for aw in self._agent_windows:
             if (aw.cwd or "").strip():
