@@ -482,6 +482,99 @@ export default function (pi: ExtensionAPI) {
   subscribe("session_tree");
   subscribe("turn_end");
 
+  // ── Memory config ─────────────────────────────────────────────────────
+  const MEMORY_CONFIG_PATH = path.join(getStateDir(), "memory-config.json");
+
+  interface MemoryConfig {
+    verbose: boolean;
+  }
+
+  function loadMemoryConfig(): MemoryConfig {
+    try {
+      const raw = JSON.parse(fs.readFileSync(MEMORY_CONFIG_PATH, "utf-8"));
+      return { verbose: raw.verbose !== false }; // default true
+    } catch {
+      return { verbose: true }; // default on
+    }
+  }
+
+  function saveMemoryConfig(cfg: MemoryConfig): void {
+    try {
+      fs.mkdirSync(path.dirname(MEMORY_CONFIG_PATH), { recursive: true });
+      fs.writeFileSync(MEMORY_CONFIG_PATH, JSON.stringify(cfg, null, 2));
+    } catch { /* best effort */ }
+  }
+
+  let memoryConfig = loadMemoryConfig();
+
+  /** Log a memory event as a visible custom message (when verbose). */
+  function memoryLog(label: string, detail: string): void {
+    if (!memoryConfig.verbose) return;
+    try {
+      pi.sendMessage({
+        customType: "zeus_memory_log",
+        content: `🧠 [memory:${label}] ${detail}`,
+        display: "dimmed",
+      });
+    } catch { /* best effort */ }
+  }
+
+  // ── /memory command ───────────────────────────────────────────────────
+  pi.registerCommand("memory", {
+    description: "Memory system control — /memory verbose on|off|status",
+    async handler(args: string, _ctx) {
+      const parts = args.trim().toLowerCase().split(/\s+/);
+      const sub = parts[0] || "status";
+
+      if (sub === "verbose") {
+        const val = parts[1];
+        if (val === "on" || val === "true" || val === "1") {
+          memoryConfig.verbose = true;
+          saveMemoryConfig(memoryConfig);
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: ON" });
+        } else if (val === "off" || val === "false" || val === "0") {
+          memoryConfig.verbose = false;
+          saveMemoryConfig(memoryConfig);
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: OFF" });
+        } else {
+          pi.sendMessage({
+            customType: "zeus_memory_log",
+            content: `🧠 Memory verbose logging is currently: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
+          });
+        }
+        return;
+      }
+
+      if (sub === "status") {
+        const dbPath = path.join(getStateDir(), "memory.db");
+        const exists = fs.existsSync(dbPath);
+        let count = "?";
+        if (exists) {
+          try {
+            const r = await pi.exec("sqlite3", [dbPath, "SELECT COUNT(*) FROM memories WHERE archived = 0;"], { timeout: 3000 });
+            if (r.code === 0) count = (r.stdout || "").trim();
+          } catch { /* */ }
+        }
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: [
+            `🧠 Memory system status:`,
+            `  DB: ${dbPath} (${exists ? "exists" : "not created yet"})`,
+            `  Memories: ${count}`,
+            `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
+            `  Config: ${MEMORY_CONFIG_PATH}`,
+          ].join("\n"),
+        });
+        return;
+      }
+
+      pi.sendMessage({
+        customType: "zeus_memory_log",
+        content: "🧠 Usage: /memory verbose on|off | /memory status",
+      });
+    },
+  });
+
   // ── Warm path: correction detector ────────────────────────────────────
   // When a user prompt contains correction keywords after a tool-calling
   // turn, save the correction as a pending memory for consolidation.
@@ -526,6 +619,7 @@ export default function (pi: ExtensionAPI) {
         `INSERT OR IGNORE INTO memories (namespace, key, content, tags, source_agent, source_project)
          VALUES ('${sqlEscape(ns)}', '${sqlEscape(key)}', '${sqlEscape(content)}', 'correction,pending', '${sqlEscape(agentId)}', '${sqlEscape(project)}');`,
       ], { timeout: 5000 });
+      memoryLog("correction", `Detected correction → saved '${key}' in ${ns} (${content.length} chars)`);
     } catch {
       // Warm path is best-effort; never break the agent loop.
     }
@@ -584,6 +678,7 @@ export default function (pi: ExtensionAPI) {
         `INSERT OR IGNORE INTO memories (namespace, key, content, tags, source_agent, source_project)
          VALUES ('${sqlEscape(ns)}', '${sqlEscape(key)}', '${sqlEscape(errorText)}', 'mistake,automated', '${sqlEscape(agentId)}', '${sqlEscape(project)}');`,
       ], { timeout: 5000 });
+      memoryLog("mistake", `Detected edit→error → saved '${key}' in ${ns}`);
     } catch {
       // Warm path is best-effort.
     }
@@ -706,6 +801,8 @@ export default function (pi: ExtensionAPI) {
         "",
         ...sections,
       ].join("\n");
+
+      memoryLog("inject", `${rows.length} memories injected (${totalChars} chars) — global:${globalMems.length} project:${projectMems.length} topics:${topicNames.length}`);
 
       return { systemPrompt: event.systemPrompt + memoryBlock };
     } catch {
