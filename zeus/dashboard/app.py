@@ -5940,10 +5940,11 @@ class ZeusApp(App):
             "-e", f"ZEUS_AGENT_NAME={agent_name}",
             "-e", f"ZEUS_ROLE=hoplite",
         ]
-        # The shell command: cat prompt, pipe to pi
-        shell_cmd = f"cat {shlex.quote(prompt_file.name)} | {pi_bin}"
+        # Launch pi with prompt as positional arg via bash -lc (not piped — Pi needs stdin for tool use)
+        pi_cmd = f"{pi_bin} \"$(cat {shlex.quote(prompt_file.name)})\""
         if model_spec:
-            shell_cmd = f"cat {shlex.quote(prompt_file.name)} | {pi_bin} --model {shlex.quote(model_spec)}"
+            pi_cmd = f"{pi_bin} --model {shlex.quote(model_spec)} \"$(cat {shlex.quote(prompt_file.name)})\""
+        shell_cmd = f"bash -lc {shlex.quote(pi_cmd)}"
         env_args.append(shell_cmd)
 
         subprocess.run(["tmux", *env_args], check=True, timeout=10)

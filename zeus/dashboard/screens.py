@@ -2289,12 +2289,16 @@ class ConsolidationScreen(_ZeusScreenMixin, ModalScreen):
             else ""
         )
         if btn_id == "consolidate-project-btn":
-            self.dismiss(
-                {
-                    "type": "project",
-                    "model_spec": model_spec,
-                }
-            )
+            result = {
+                "type": "project",
+                "model_spec": model_spec,
+            }
+            try:
+                with open("/tmp/zeus-consolidation.log", "a") as f:
+                    f.write(f"[screen] dismissing with {result!r}\n")
+            except OSError:
+                pass
+            self.dismiss(result)
         elif btn_id == "consolidate-topic-btn":
             topic_select = self.query_one("#consolidation-topic", Select)
             topic_val = str(topic_select.value)

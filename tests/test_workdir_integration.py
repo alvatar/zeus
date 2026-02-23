@@ -185,9 +185,11 @@ def test_consolidation_blocking_runs_in_thread(
     monkeypatch.setenv("ZEUS_HOME", zeus_home)
 
     # Mock subprocess.run so we don't actually launch tmux
+    captured_cmds: list[list[str]] = []
     real_run = subprocess.run
     def mock_run(cmd, **kwargs):
         if cmd and cmd[0] == "tmux":
+            captured_cmds.append(list(cmd))
             return MagicMock(returncode=0)
         return real_run(cmd, **kwargs)
     monkeypatch.setattr("subprocess.run", mock_run)
@@ -205,6 +207,49 @@ def test_consolidation_blocking_runs_in_thread(
     agent_id, tmux_name = result
     assert agent_id
     assert tmux_name.startswith("zeus-cons-")
+
+    # Verify the tmux command uses bash -lc with positional arg, not pipe
+    new_session_cmd = captured_cmds[0]
+    shell_cmd = new_session_cmd[-1]
+    assert "bash -lc" in shell_cmd, f"Must use bash -lc, got: {shell_cmd}"
+    assert "| pi" not in shell_cmd, f"Must not pipe stdin: {shell_cmd}"
+    assert "pi" in shell_cmd
+
+
+def test_consolidation_with_model_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consolidation with model_spec must pass --model to pi."""
+    from zeus.dashboard.app import ZeusApp
+    import concurrent.futures
+
+    zeus_home = str(tmp_path / "zeus")
+    os.makedirs(zeus_home, exist_ok=True)
+    (Path(zeus_home) / "consolidation-project.md").write_text(
+        "Consolidate <project_name>."
+    )
+    monkeypatch.setenv("ZEUS_HOME", zeus_home)
+
+    captured_cmds: list[list[str]] = []
+    real_run = subprocess.run
+    def mock_run(cmd, **kwargs):
+        if cmd and cmd[0] == "tmux":
+            captured_cmds.append(list(cmd))
+            return MagicMock(returncode=0)
+        return real_run(cmd, **kwargs)
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    app = ZeusApp.__new__(ZeusApp)
+    params = {"type": "project", "model_spec": "anthropic/claude-opus-4-6", "topic": ""}
+
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        future = pool.submit(app._do_spawn_consolidation_blocking, params)
+        result = future.result(timeout=10)
+
+    assert result is not None
+    shell_cmd = captured_cmds[0][-1]
+    assert "--model" in shell_cmd
+    assert "anthropic/claude-opus-4-6" in shell_cmd
 
 
 # ── Merge cleanup purges queue ────────────────────────────────────────
