@@ -706,24 +706,7 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("alt+4", "preset_4", "Preset 4", show=False),
     ]
 
-    MESSAGE_PRESETS: list[tuple[str, str]] = [
-        (
-            "Research",
-            "Read this target files/folders in depth. Deeply understand how it all works: "
-            "architecture, design, algorithmic decisions, what it solves, how and why. "
-            "Learn specific details. Identify unique aspects that deviate from typical "
-            "designs or assumptions. Understand it deeply and look for potential bugs.\n"
-            "\n"
-            "Then write a detailed and structured report of your learnings and findings "
-            "in work/RESEARCH-<timestamp>.md\n"
-            "\n"
-            "- Target: <FILL>\n"
-            "- Research focus: <FILL>",
-        ),
-        ("Plan", "Stub text for Plan preset."),
-        ("Freeze", "Stub text for Freeze preset."),
-        ("Build", "Stub text for Build preset."),
-    ]
+    MESSAGE_PRESETS: list[tuple[str, str]] = []  # loaded at __init__ time
 
     def __init__(
         self,
@@ -732,9 +715,12 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         *,
         compact_for_expanded_output: bool = False,
     ) -> None:
+        from ..message_presets import load_quick_presets
+
         super().__init__()
         self.agent = agent
         self.draft = draft
+        self.MESSAGE_PRESETS = load_quick_presets()
         self.compact_for_expanded_output = compact_for_expanded_output
         if self.compact_for_expanded_output:
             self.add_class("from-expanded-output")

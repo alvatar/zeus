@@ -118,7 +118,22 @@ else
     echo "⚠ Zeus pi extension source missing: $ZEUS_PI_EXTENSION_SRC" >&2
 fi
 
-# 4. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
+# 4. Install message presets (always overwritten)
+PRESETS_SRC="$SCRIPT_DIR/config/message-presets.toml"
+PRESETS_DEST="${HOME}/.zeus/message-presets.toml"
+
+if [ -f "$PRESETS_SRC" ]; then
+    mkdir -p "${HOME}/.zeus" 2>/dev/null || true
+    if cp "$PRESETS_SRC" "$PRESETS_DEST" 2>/dev/null; then
+        echo "✓ Installed message presets at $PRESETS_DEST"
+    else
+        echo "⚠ Could not install message presets at $PRESETS_DEST (permission denied); skipped" >&2
+    fi
+else
+    echo "⚠ Message presets source missing: $PRESETS_SRC" >&2
+fi
+
+# 5. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
 if $WRAP_PI; then
     PI_BIN="$BIN_DIR/pi"
     PI_ORIG="$BIN_DIR/pi.zeus-orig"
@@ -362,7 +377,7 @@ EOF
     fi
 fi
 
-# 5. Patch kitty.conf (idempotent)
+# 6. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 KITTY_CONF_DIR="$(dirname "$KITTY_CONF")"
 if mkdir -p "$KITTY_CONF_DIR" 2>/dev/null; then
@@ -390,7 +405,7 @@ else
     echo "⚠ Could not create $KITTY_CONF_DIR (permission denied); skipped" >&2
 fi
 
-# 6. Sway config (just show instructions)
+# 7. Sway config (just show instructions)
 echo ""
 echo "── Manual step: Sway config ──"
 echo "Edit ~/.config/sway/config and change your terminal keybinding:"
@@ -403,7 +418,7 @@ echo ""
 echo "Then reload sway: swaymsg reload"
 echo ""
 
-# 7. Verify
+# 8. Verify
 echo "── Status ──"
 if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"

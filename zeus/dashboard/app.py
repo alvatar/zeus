@@ -579,9 +579,7 @@ class ZeusApp(App):
         "Did you do everything I asked you to? "
         "If not do it without stopping again."
     )
-    _PREMADE_MESSAGES: tuple[tuple[str, str], ...] = (
-        ("Self-review", "Review your output against your own claims again"),
-    )
+    _PREMADE_MESSAGES: tuple[tuple[str, str], ...] = ()  # loaded dynamically
     _CELEBRATION_COOLDOWN_S = 3600.0
     _CELEBRATION_MIN_ACTIVE_AGENTS = 4
 
@@ -4460,7 +4458,9 @@ class ZeusApp(App):
         if not agent:
             self.notify("Select a Hippeus row to message", timeout=2)
             return
-        self.push_screen(PremadeMessageScreen(agent, list(self._PREMADE_MESSAGES)))
+        from ..message_presets import load_premade_templates
+
+        self.push_screen(PremadeMessageScreen(agent, load_premade_templates()))
 
     def action_message_history(self) -> None:
         if self._should_ignore_table_action():

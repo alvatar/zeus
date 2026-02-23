@@ -1,0 +1,34 @@
+# Zeus message presets
+# quick.1–quick.4: Alt+1–Alt+4 buttons in Message dialog (m key)
+# [[premade]]: Ctrl+G preset message templates
+
+[quick.1]
+name = "Research"
+text = """
+Read this target files/folders in depth. Deeply understand how it all works: \
+architecture, design, algorithmic decisions, what it solves, how and why. \
+Learn specific details. Identify unique aspects that deviate from typical \
+designs or assumptions. Understand it deeply and look for potential bugs.
+
+Then write a detailed and structured report of your learnings and findings \
+in work/RESEARCH-<timestamp>.md
+
+- Target: <FILL>
+- Research focus: <FILL>"""
+
+[quick.2]
+name = "Plan"
+text = "Stub text for Plan preset."
+
+[quick.3]
+name = "Freeze"
+text = "Stub text for Freeze preset."
+
+[quick.4]
+name = "Build"
+text = "Stub text for Build preset."
+
+
+[[premade]]
+name = "Self-review"
+text = "Review your output against your own claims again"

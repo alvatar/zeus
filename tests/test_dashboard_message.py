@@ -1347,9 +1347,10 @@ def test_app_ctrl_w_routes_to_premade_message_modal_when_open(monkeypatch) -> No
 
 # ── Message preset buttons ──────────────────────────────────────────
 
-def test_message_screen_has_four_preset_class_entries() -> None:
-    assert len(AgentMessageScreen.MESSAGE_PRESETS) == 4
-    for title, text in AgentMessageScreen.MESSAGE_PRESETS:
+def test_message_screen_loads_four_presets_on_init() -> None:
+    screen = AgentMessageScreen(_agent("alpha", 1))
+    assert len(screen.MESSAGE_PRESETS) == 4
+    for title, text in screen.MESSAGE_PRESETS:
         assert title
         assert text
 
@@ -1385,7 +1386,7 @@ def test_message_screen_apply_preset_replaces_text() -> None:
     screen._apply_preset(0)
 
     ta.clear.assert_called_once()
-    ta.insert.assert_called_once_with(AgentMessageScreen.MESSAGE_PRESETS[0][1])
+    ta.insert.assert_called_once_with(screen.MESSAGE_PRESETS[0][1])
     ta.focus.assert_called_once()
 
 
