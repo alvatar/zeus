@@ -5337,7 +5337,7 @@ class ZeusApp(App):
         prompt_file.write(prompt_text)
         prompt_file.close()
 
-        pi_cmd = f"cat {shlex.quote(prompt_file.name)} | pi"
+        pi_cmd = f"pi --prompt \"$(cat {shlex.quote(prompt_file.name)})\""
 
         proc = subprocess.Popen(
             ["kitty", "--directory", wt_path, "--hold",
