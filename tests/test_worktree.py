@@ -178,18 +178,10 @@ def test_merge_conflict_detected(git_repo: str) -> None:
 # ── Dashboard spawn integration ──────────────────────────────────────
 
 
-def test_send_workdir_prompt_enqueues(git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """_send_workdir_prompt must call enqueue_envelope with a valid OutboundEnvelope."""
+def test_build_workdir_prompt_fills_placeholders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_build_workdir_prompt must fill all template placeholders."""
     from zeus.dashboard.app import ZeusApp
 
-    # Redirect queue dir so we don't pollute real state
-    q_dir = tmp_path / "queue" / "new"
-    q_dir.mkdir(parents=True)
-    monkeypatch.setenv("ZEUS_STATE_DIR", str(tmp_path))
-    from zeus.message_queue import _new_dir
-    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", MagicMock())
-
-    # Provide a prompt template
     zeus_home = str(tmp_path / "zeus")
     os.makedirs(zeus_home, exist_ok=True)
     (Path(zeus_home) / "workdir-agent.md").write_text(
@@ -198,8 +190,7 @@ def test_send_workdir_prompt_enqueues(git_repo: str, tmp_path: Path, monkeypatch
     monkeypatch.setenv("ZEUS_HOME", zeus_home)
 
     app = ZeusApp.__new__(ZeusApp)
-    app._send_workdir_prompt(
-        agent_id="abc123",
+    result = app._build_workdir_prompt(
         name="test-wt",
         parent_branch="main",
         branch="zeus/test-wt",
@@ -207,15 +198,12 @@ def test_send_workdir_prompt_enqueues(git_repo: str, tmp_path: Path, monkeypatch
         repo_root="/tmp/repo",
     )
 
-    from zeus.dashboard.app import enqueue_envelope as mock_enqueue
-    assert mock_enqueue.called
-    envelope = mock_enqueue.call_args[0][0]
-    assert envelope.target_agent_id == "abc123"
-    assert envelope.target_name == "test-wt"
-    assert "test-wt" in envelope.message
-    assert "zeus/test-wt" in envelope.message
-    assert "/tmp/wt" in envelope.message
-    assert "<agent_name>" not in envelope.message  # placeholders replaced
+    assert "test-wt" in result
+    assert "zeus/test-wt" in result
+    assert "/tmp/wt" in result
+    assert "/tmp/repo" in result
+    assert "<agent_name>" not in result
+    assert "<branch_name>" not in result
 
 
 def test_spawn_workdir_blocking_creates_worktree_and_launches(
@@ -242,9 +230,6 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
 
     monkeypatch.setattr("subprocess.Popen", selective_popen)
 
-    # Mock enqueue_envelope
-    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", MagicMock())
-
     agent = MagicMock()
     agent.cwd = git_repo
     agent.agent_id = "parent-id-123"
@@ -260,7 +245,7 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     assert os.path.isdir(wt)
     assert get_current_branch(wt) == "zeus/test-agent"
 
-    # Kitty was called with correct cwd
+    # Kitty was called with correct cwd and prompt piped to pi
     assert mock_popen.called
     call_args = mock_popen.call_args
     cmd = call_args[0][0]  # positional arg 0
@@ -268,6 +253,10 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     assert "--directory" in cmd
     dir_idx = cmd.index("--directory")
     assert cmd[dir_idx + 1] == wt
+    # The bash command should pipe the prompt to pi
+    bash_cmd = cmd[-1]
+    assert "cat " in bash_cmd
+    assert "| pi" in bash_cmd
 
     # Env vars set
     env = call_args[1]["env"]

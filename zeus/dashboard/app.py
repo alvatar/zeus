@@ -5327,34 +5327,42 @@ class ZeusApp(App):
         if parent_id:
             env["ZEUS_PARENT_ID"] = parent_id
 
+        # Build prompt and write to temp file
+        prompt_text = self._build_workdir_prompt(name, parent_branch, branch, wt_path, repo_root)
+
+        import tempfile
+        prompt_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", prefix="zeus-wt-", delete=False,
+        )
+        prompt_file.write(prompt_text)
+        prompt_file.close()
+
+        pi_cmd = f"cat {shlex.quote(prompt_file.name)} | pi"
+
         proc = subprocess.Popen(
             ["kitty", "--directory", wt_path, "--hold",
-             "bash", "-lc", "pi"],
+             "bash", "-lc", pi_cmd],
             env=env, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        _wt_log(f"kitty launched pid={proc.pid} cwd={wt_path}")
+        _wt_log(f"kitty launched pid={proc.pid} cwd={wt_path} prompt={prompt_file.name}")
 
         workspace = agent.workspace
         if workspace and workspace != "?":
             from ..kitty import move_pid_to_workspace_and_focus_later
             move_pid_to_workspace_and_focus_later(proc.pid, workspace, delay=0.5)
 
-        # Queue the workdir prompt as first message via agent bus
-        self._send_workdir_prompt(agent_id, name, parent_branch, branch, wt_path, repo_root)
-
         return True
 
-    def _send_workdir_prompt(
+    def _build_workdir_prompt(
         self,
-        agent_id: str,
         name: str,
         parent_branch: str,
         branch: str,
         wt_path: str,
         repo_root: str,
-    ) -> None:
-        """Queue the workdir agent prompt via the message queue."""
+    ) -> str:
+        """Load and fill the workdir agent prompt template."""
         zeus_home = os.environ.get(
             "ZEUS_HOME",
             os.path.join(os.environ.get("HOME", ""), ".zeus"),
@@ -5382,18 +5390,7 @@ class ZeusApp(App):
                 f"You are working in git worktree branch `{branch}` "
                 f"at `{wt_path}`. Merge with `zeus_worktree_merge` when done."
             )
-
-        envelope = OutboundEnvelope.new(
-            source_name="zeus-dashboard",
-            target_kind="agent",
-            target_ref=agent_id,
-            target_agent_id=agent_id,
-            target_name=name,
-            delivery_mode="follow-up",
-            message=prompt_text,
-        )
-        enqueue_envelope(envelope)
-        _wt_log(f"queued workdir prompt for {name} ({agent_id})")
+        return prompt_text
 
     def action_rename(self) -> None:
         if self._should_ignore_table_action():
