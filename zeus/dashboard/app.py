@@ -5234,17 +5234,25 @@ class ZeusApp(App):
         wt_path = worktree_path(repo_root, clean_name)
         _wt_log(f"wt_path={wt_path!r} exists={os.path.exists(wt_path)}")
         if os.path.exists(wt_path):
-            # Dismiss the SubAgent screen first, then show the confirm dialog
             if dismiss_screen:
                 dismiss_screen.dismiss()
-            from .screens import ConfirmWorktreeReplaceScreen
-            self.push_screen(
-                ConfirmWorktreeReplaceScreen(clean_name, wt_path),
-                callback=lambda confirmed: (
-                    self._replace_existing_worktree(agent, clean_name, repo_root)
-                    if confirmed else None
-                ),
-            )
+
+            def _push_confirm() -> None:
+                from .screens import ConfirmWorktreeReplaceScreen
+                _wt_log("pushing ConfirmWorktreeReplaceScreen")
+
+                def _on_confirm(confirmed: bool | None) -> None:
+                    _wt_log(f"confirm callback: confirmed={confirmed!r}")
+                    if confirmed:
+                        self._replace_existing_worktree(agent, clean_name, repo_root)
+
+                self.push_screen(
+                    ConfirmWorktreeReplaceScreen(clean_name, wt_path),
+                    callback=_on_confirm,
+                )
+
+            # Delay push so SubAgent dismiss completes first
+            self.set_timer(0.1, _push_confirm)
             return
 
         if dismiss_screen:
