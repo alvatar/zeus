@@ -494,6 +494,17 @@ def _with_tasks_column(order: tuple[str, ...]) -> tuple[str, ...]:
     return order + ("■",)
 
 
+_WT_LOG = "/tmp/zeus-workdir-spawn.log"
+
+def _wt_log(msg: str) -> None:
+    """Write workdir spawn trace to a file for debugging."""
+    try:
+        with open(_WT_LOG, "a") as f:
+            f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+    except OSError:
+        pass
+
+
 def _read_consolidation_prompt(filepath: str) -> str:
     """Read a consolidation prompt template, returning empty string on failure."""
     try:
@@ -5222,33 +5233,32 @@ class ZeusApp(App):
         self, agent: AgentWindow, name: str, repo_root: str,
     ) -> None:
         """Remove existing worktree then spawn fresh."""
-        import sys
         from ..worktree import remove_worktree
+        _wt_log(f"replace: removing {name} from {repo_root}")
         ok, msg = remove_worktree(repo_root, name)
         if not ok:
-            print(f"[workdir-replace] remove failed: {msg}", file=sys.stderr)
+            _wt_log(f"replace: remove failed: {msg}")
             self.notify_force(f"Failed to remove old worktree: {msg}", timeout=4)
             return
         import asyncio
-        print(f"[workdir-replace] removed, spawning {name}", file=sys.stderr)
+        _wt_log(f"replace: removed, spawning {name}")
         asyncio.ensure_future(self._do_spawn_workdir(agent, name))
 
     async def _do_spawn_workdir(self, agent: AgentWindow, name: str) -> None:
-        import asyncio, sys
-        print(f"[workdir-spawn] starting for {name}, agent={agent.name}, cwd={agent.cwd}", file=sys.stderr)
+        import asyncio
+        _wt_log(f"starting for {name}, agent={agent.name}, cwd={agent.cwd}")
         try:
             result = await asyncio.to_thread(self._spawn_workdir_blocking, agent, name)
             if result:
-                print(f"[workdir-spawn] success: {name}", file=sys.stderr)
+                _wt_log(f"success: {name}")
                 self.notify(f"🌿 Workdir agent: {name}", timeout=3)
                 self.set_timer(1.5, self.poll_and_update)
             else:
-                print(f"[workdir-spawn] returned False for {name}", file=sys.stderr)
+                _wt_log(f"returned False for {name}")
                 self.notify_force(f"Failed to create workdir agent for {name}", timeout=3)
         except Exception as exc:
             import traceback
-            print(f"[workdir-spawn] error: {exc}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
+            _wt_log(f"error: {exc}\n{traceback.format_exc()}")
             self.notify_force(f"Workdir error: {exc}", timeout=4)
 
     def _spawn_workdir_blocking(self, agent: AgentWindow, name: str) -> bool:
