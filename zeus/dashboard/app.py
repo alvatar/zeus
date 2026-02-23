@@ -5841,7 +5841,7 @@ class ZeusApp(App):
 
     def _find_agent_by_id(self, agent_id: str) -> AgentWindow | None:
         """Find an agent by its agent_id."""
-        for aw in self._agent_windows:
+        for aw in self.agents:
             if (aw.agent_id or "").strip() == agent_id:
                 return aw
         return None
@@ -5877,7 +5877,7 @@ class ZeusApp(App):
             self._last_consolidation_model_spec = model_spec
             self._save_model_preferences()
         # Grab a cwd from any active agent for project name resolution
-        for aw in self._agent_windows:
+        for aw in self.agents:
             if (aw.cwd or "").strip():
                 result["cwd"] = aw.cwd.strip()
                 break
