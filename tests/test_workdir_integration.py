@@ -145,13 +145,14 @@ def test_consolidation_blocking_does_not_call_timeout(
     from zeus.dashboard.app import ZeusApp
     import inspect
 
-    # Read the source of _do_spawn_consolidation_blocking
     source = inspect.getsource(ZeusApp._do_spawn_consolidation_blocking)
-
-    # It must not contain _start_consolidation_timeout
     assert "_start_consolidation_timeout" not in source, (
         "_do_spawn_consolidation_blocking must not call _start_consolidation_timeout "
         "(it runs in a worker thread, asyncio.ensure_future needs the main loop)"
+    )
+    assert "asyncio" not in source, (
+        "_do_spawn_consolidation_blocking must not use asyncio "
+        "(it runs in a worker thread)"
     )
 
 
@@ -167,6 +168,43 @@ def test_consolidation_timeout_called_from_async_caller(
         "_spawn_consolidation_agent must call _start_consolidation_timeout "
         "(it runs on the main event loop thread)"
     )
+
+
+def test_consolidation_blocking_runs_in_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_do_spawn_consolidation_blocking must actually work from a thread without asyncio errors."""
+    from zeus.dashboard.app import ZeusApp
+    import concurrent.futures
+
+    zeus_home = str(tmp_path / "zeus")
+    os.makedirs(zeus_home, exist_ok=True)
+    (Path(zeus_home) / "consolidation-project.md").write_text(
+        "Consolidate project <project_name>."
+    )
+    monkeypatch.setenv("ZEUS_HOME", zeus_home)
+
+    # Mock subprocess.run so we don't actually launch tmux
+    real_run = subprocess.run
+    def mock_run(cmd, **kwargs):
+        if cmd and cmd[0] == "tmux":
+            return MagicMock(returncode=0)
+        return real_run(cmd, **kwargs)
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    app = ZeusApp.__new__(ZeusApp)
+
+    params = {"type": "project", "model_spec": "", "topic": ""}
+
+    # Run in a thread pool — same as asyncio.to_thread does
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        future = pool.submit(app._do_spawn_consolidation_blocking, params)
+        result = future.result(timeout=10)
+
+    assert result is not None
+    agent_id, tmux_name = result
+    assert agent_id
+    assert tmux_name.startswith("zeus-cons-")
 
 
 # ── Merge cleanup purges queue ────────────────────────────────────────
