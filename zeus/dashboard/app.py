@@ -5865,6 +5865,11 @@ class ZeusApp(App):
         _cons_log(f"callback result={result!r}")
         if not result:
             return
+        # Grab a cwd from any active agent for project name resolution
+        for aw in self._agent_windows:
+            if (aw.cwd or "").strip():
+                result["cwd"] = aw.cwd.strip()
+                break
         import asyncio
         asyncio.ensure_future(self._spawn_consolidation_agent(result))
 
@@ -5898,9 +5903,10 @@ class ZeusApp(App):
         cons_type = params.get("type", "project")
         model_spec = params.get("model_spec", "")
         topic = params.get("topic", "")
+        cwd = params.get("cwd", "") or os.getcwd()
 
         agent_id = generate_agent_id()
-        project_name = resolve_project_name()
+        project_name = resolve_project_name(cwd=cwd)
 
         # Load the consolidation prompt
         zeus_home = os.environ.get("ZEUS_HOME", os.path.join(os.environ.get("HOME", ""), ".zeus"))
@@ -5933,7 +5939,6 @@ class ZeusApp(App):
             f.write(agent_name)
 
         # Launch as Stygian Hippeus (same pattern as launch_stygian_hippeus)
-        cwd = os.getcwd()
         session_path = make_new_session_path(cwd)
         session_name = f"zeus-cons-{agent_id[:8]}"
 
