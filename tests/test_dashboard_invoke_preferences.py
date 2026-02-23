@@ -38,7 +38,7 @@ def test_set_last_invoke_model_spec_persists_when_running(tmp_path, monkeypatch)
     app.do_set_last_invoke_model_spec(" openai/gpt-4o ")
 
     data = json.loads(path.read_text())
-    assert data == {"last_model_spec": "openai/gpt-4o"}
+    assert data["last_model_spec"] == "openai/gpt-4o"
 
 
 def test_set_last_invoke_model_spec_skips_disk_when_not_running(tmp_path, monkeypatch) -> None:

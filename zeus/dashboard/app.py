@@ -637,6 +637,7 @@ class ZeusApp(App):
     _dopamine_armed: bool = True
     _steady_armed: bool = True
     _last_invoke_model_spec: str = ""
+    _last_consolidation_model_spec: str = ""
     _invoke_model_specs: list[str] = []
     _invoke_model_specs_loaded: bool = False
     _celebration_cooldown_started_at: float | None = None
@@ -3972,6 +3973,9 @@ class ZeusApp(App):
         raw_last = data.get("last_model_spec")
         if isinstance(raw_last, str):
             self._last_invoke_model_spec = raw_last.strip()
+        raw_cons = data.get("last_consolidation_model_spec")
+        if isinstance(raw_cons, str):
+            self._last_consolidation_model_spec = raw_cons.strip()
 
     def _save_invoke_preferences(self) -> None:
         """Persist invoke dialog preferences to disk."""
@@ -3979,6 +3983,7 @@ class ZeusApp(App):
             INVOKE_PREFERENCES_FILE,
             {
                 "last_model_spec": (self._last_invoke_model_spec or "").strip(),
+                "last_consolidation_model_spec": (self._last_consolidation_model_spec or "").strip(),
             },
         )
 
@@ -5857,6 +5862,7 @@ class ZeusApp(App):
         screen = ConsolidationScreen(
             available_model_specs=model_specs,
             topics=topics,
+            preferred_model_spec=self._last_consolidation_model_spec,
         )
         self.push_screen(screen, callback=self._on_consolidation_result)
 
@@ -5865,6 +5871,11 @@ class ZeusApp(App):
         _cons_log(f"callback result={result!r}")
         if not result:
             return
+        # Persist last-used consolidation model
+        model_spec = (result.get("model_spec") or "").strip()
+        if model_spec:
+            self._last_consolidation_model_spec = model_spec
+            self._save_invoke_preferences()
         # Grab a cwd from any active agent for project name resolution
         for aw in self._agent_windows:
             if (aw.cwd or "").strip():

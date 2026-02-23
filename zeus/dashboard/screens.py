@@ -2231,10 +2231,12 @@ class ConsolidationScreen(_ZeusScreenMixin, ModalScreen):
         *,
         available_model_specs: list[str] | None = None,
         topics: list[str] | None = None,
+        preferred_model_spec: str = "",
     ) -> None:
         super().__init__()
         self._available_model_specs: list[str] = list(available_model_specs or [])
         self._topics: list[str] = list(topics or [])
+        self._preferred_model_spec: str = preferred_model_spec.strip()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="consolidation-dialog"):
@@ -2245,9 +2247,14 @@ class ConsolidationScreen(_ZeusScreenMixin, ModalScreen):
                 if self._available_model_specs
                 else [("Default (auto)", "__default__")]
             )
+            preferred = self._preferred_model_spec
+            if preferred and preferred in [v for _, v in model_opts]:
+                initial_value = preferred
+            else:
+                initial_value = model_opts[0][1] if model_opts else "__default__"
             yield Select(
                 model_opts,
-                value=model_opts[0][1] if model_opts else "__default__",
+                value=initial_value,
                 id="consolidation-model",
                 allow_blank=False,
             )
