@@ -496,11 +496,20 @@ def _with_tasks_column(order: tuple[str, ...]) -> tuple[str, ...]:
 
 
 _WT_LOG = "/tmp/zeus-workdir-spawn.log"
+_CONS_LOG = "/tmp/zeus-consolidation.log"
 
 def _wt_log(msg: str) -> None:
     """Write workdir spawn trace to a file for debugging."""
     try:
         with open(_WT_LOG, "a") as f:
+            f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+    except OSError:
+        pass
+
+def _cons_log(msg: str) -> None:
+    """Write consolidation spawn trace to a file for debugging."""
+    try:
+        with open(_CONS_LOG, "a") as f:
             f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
     except OSError:
         pass
@@ -5853,6 +5862,7 @@ class ZeusApp(App):
 
     def _on_consolidation_result(self, result: dict | None) -> None:
         """Handle consolidation dialog result — spawn ephemeral agent."""
+        _cons_log(f"callback result={result!r}")
         if not result:
             return
         import asyncio
@@ -5861,16 +5871,18 @@ class ZeusApp(App):
     async def _spawn_consolidation_agent(self, params: dict) -> None:
         """Spawn an ephemeral consolidation agent via asyncio.to_thread."""
         import asyncio
+        _cons_log(f"async spawn starting params={params!r}")
         try:
             result = await asyncio.to_thread(self._do_spawn_consolidation_blocking, params)
+            _cons_log(f"blocking returned: {result!r}")
             if result:
                 agent_id, tmux_name = result
                 self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
                 self.notify(f"Consolidation agent started: {tmux_name}", severity="information")
         except Exception as exc:
-            import sys
-            print(f"[consolidation-spawn] error: {exc}", file=sys.stderr)
-            self.notify(f"Failed to start consolidation: {exc}", severity="error")
+            import traceback
+            _cons_log(f"error: {exc}\n{traceback.format_exc()}")
+            self.notify_force(f"Failed to start consolidation: {exc}", timeout=5)
 
     def _do_spawn_consolidation_blocking(self, params: dict) -> tuple[str, str]:
         """Blocking: launch an ephemeral Pi agent. Returns (agent_id, tmux_name)."""
