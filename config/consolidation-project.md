@@ -47,27 +47,7 @@ For each `new:<topic_name>` memory:
 3. If it's a valid topic: save it to `topic:<topic_name>` with a clean key and content. Then delete the `new:*` original.
 4. If it belongs in the project namespace: save to `project:<project_name>`. Then delete the `new:*` original.
 
-### Step 2: Process corrections (tag: `correction,pending`)
-
-List memories in `project:<project_name>` with tag `correction,pending`.
-
-For each correction:
-1. Read the correction content (it's the user's corrective prompt).
-2. Extract the underlying rule or preference.
-3. Save it as a normal memory with a descriptive key and appropriate tags (remove `correction,pending`).
-4. Delete the original correction entry.
-
-### Step 3: Process mistakes (tag: `mistake,automated`)
-
-List memories in `project:<project_name>` with tag `mistake,automated`.
-
-For each mistake:
-1. Read the mistake content (it describes an edit→error pattern).
-2. Decide: Is this a recurring pattern worth remembering, or a one-off fluke?
-3. If it's a pattern: rewrite as a normal memory with actionable content (e.g., "Always run X after editing Y"). Delete the original.
-4. If it's a one-off: just delete it.
-
-### Step 4: Deduplicate and improve
+### Step 2: Deduplicate and improve
 
 List all remaining memories in `project:<project_name>`.
 
@@ -75,16 +55,14 @@ List all remaining memories in `project:<project_name>`.
 2. Identify vague or poorly-written memories. Rewrite them to be concise and actionable.
 3. Identify memories that are actually global (not project-specific). Move them to `global`.
 
-### Step 5: Report
+### Step 3: Report
 
 Provide a summary of what you did:
 - How many `new:*` memories processed (promoted to topic vs merged to project).
-- How many corrections processed.
-- How many mistakes processed (kept vs deleted).
 - How many duplicates merged.
 - How many memories improved or moved.
 - Final count of memories in `project:<project_name>`.
 
-### Step 6: Signal completion
+### Step 4: Signal completion
 
 Call **zeus_consolidation_done** to signal that consolidation is complete. This is mandatory — Zeus needs this signal to clean up the ephemeral agent.
