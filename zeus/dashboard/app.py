@@ -4234,8 +4234,28 @@ class ZeusApp(App):
             return
 
         close_window(agent)
+        self._cleanup_worktree_if_needed(agent)
         self.notify(f"Killed: {agent.name}", timeout=2)
         self.poll_and_update()
+
+    def _cleanup_worktree_if_needed(self, agent: AgentWindow) -> None:
+        """Remove worktree + branch if this was a workdir agent."""
+        try:
+            from ..worktree import get_repo_root, remove_worktree, worktree_path
+            # Check if a worktree exists for this agent name
+            cwd = agent.cwd or ""
+            # The worktree cwd is inside .worktrees/<name>, so repo root is two levels up
+            repo_root = get_repo_root(cwd)
+            if not repo_root:
+                return
+            wt = worktree_path(repo_root, agent.name)
+            if os.path.isdir(wt):
+                ok, msg = remove_worktree(repo_root, agent.name)
+                if not ok:
+                    import sys
+                    print(f"[worktree-cleanup] {msg}", file=sys.stderr)
+        except Exception:
+            pass
 
     def do_kill_tmux(self, sess: TmuxSession) -> None:
         """Detach tmux session and close the kitty window hosting it."""
@@ -5161,6 +5181,122 @@ class ZeusApp(App):
             self.notify_force(
                 f"Failed to fork session for {agent.name}", timeout=3
             )
+
+    def do_spawn_workdir_agent(self, agent: AgentWindow, name: str) -> None:
+        """Create a git worktree and launch a workdir agent in it."""
+        clean_name = name.strip()
+        if self._is_agent_name_taken(clean_name):
+            self.notify_force(f"Name already exists: {clean_name}", timeout=3)
+            return
+
+        if not (agent.agent_id or "").strip():
+            self.notify_force(
+                f"Cannot spawn workdir agent from {agent.name}: missing parent agent id",
+                timeout=3,
+            )
+            return
+
+        import asyncio
+        asyncio.ensure_future(self._do_spawn_workdir(agent, clean_name))
+
+    async def _do_spawn_workdir(self, agent: AgentWindow, name: str) -> None:
+        import asyncio
+        try:
+            result = await asyncio.to_thread(self._spawn_workdir_blocking, agent, name)
+            if result:
+                self.notify(f"🌿 Workdir agent: {name}", timeout=3)
+                self.set_timer(1.5, self.poll_and_update)
+            else:
+                self.notify_force(f"Failed to create workdir agent for {name}", timeout=3)
+        except Exception as exc:
+            import sys
+            print(f"[workdir-spawn] error: {exc}", file=sys.stderr)
+            self.notify_force(f"Workdir error: {exc}", timeout=4)
+
+    def _spawn_workdir_blocking(self, agent: AgentWindow, name: str) -> bool:
+        """Blocking: create worktree + launch agent."""
+        from ..worktree import (
+            create_worktree, get_current_branch, get_repo_root, worktree_branch,
+        )
+
+        cwd = agent.cwd or ""
+        repo_root = get_repo_root(cwd)
+        if not repo_root:
+            raise RuntimeError(f"Not a git repo: {cwd}")
+
+        parent_branch = get_current_branch(repo_root)
+        if not parent_branch:
+            raise RuntimeError("Cannot determine current branch")
+
+        ok, msg = create_worktree(repo_root, name, base_branch=parent_branch)
+        if not ok:
+            raise RuntimeError(msg)
+
+        wt_path = msg  # on success, msg is the worktree path
+        branch = worktree_branch(name)
+
+        # Load and fill the workdir prompt template
+        zeus_home = os.environ.get(
+            "ZEUS_HOME",
+            os.path.join(os.environ.get("HOME", ""), ".zeus"),
+        )
+        prompt_src = os.path.join(zeus_home, "workdir-agent.md")
+        prompt_text = _read_consolidation_prompt(prompt_src)
+        if not prompt_text:
+            # Fallback to config/ in source tree
+            prompt_src = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "config", "workdir-agent.md",
+            )
+            prompt_text = _read_consolidation_prompt(prompt_src)
+
+        if prompt_text:
+            prompt_text = (
+                prompt_text
+                .replace("<agent_name>", name)
+                .replace("<parent_branch>", parent_branch)
+                .replace("<branch_name>", branch)
+                .replace("<worktree_path>", wt_path)
+                .replace("<repo_root>", repo_root)
+            )
+
+        # Write prompt to temp file
+        import tempfile
+        prompt_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", prefix="zeus-wt-", delete=False,
+        )
+        prompt_file.write(prompt_text or f"You are working in git worktree branch {branch}. Merge with zeus_worktree_merge when done.")
+        prompt_file.close()
+
+        # Fork session from parent into the worktree cwd
+        agent_id = generate_agent_id()
+        pi_bin = os.environ.get("ZEUS_DIRECT_PI_BIN") or shutil.which("pi") or "pi"
+
+        # Build tmux command: cat prompt | pi (in worktree dir)
+        shell_cmd = f"cat {shlex.quote(prompt_file.name)} | {pi_bin}"
+
+        tmux_args = [
+            "new-session", "-d", "-s", f"zeus-wt-{name}",
+            "-c", wt_path,
+            "-e", f"ZEUS_AGENT_ID={agent_id}",
+            "-e", f"ZEUS_AGENT_NAME={name}",
+            "-e", f"ZEUS_ROLE=hippeus",
+            "-e", f"ZEUS_PARENT_BRANCH={parent_branch}",
+            shell_cmd,
+        ]
+
+        subprocess.run(["tmux", *tmux_args], check=True, timeout=10)
+
+        # Stamp ownership
+        try:
+            subprocess.run(
+                ["tmux", "set-option", "-t", f"zeus-wt-{name}", "@zeus_owner", agent_id],
+                check=False, timeout=5,
+            )
+        except Exception:
+            pass
+
+        return True
 
     def action_rename(self) -> None:
         if self._should_ignore_table_action():

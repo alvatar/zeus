@@ -72,6 +72,10 @@ Agent Memory
 - Key naming: descriptive slugs like `error-handling-convention`, `test-structure-preference`.
 - Content: concise and actionable. State the rule directly, no preamble.
 
+Git worktrees
+- If you are working in a git worktree (branch prefix `zeus/`), use `zeus_worktree_merge` to merge your branch back when done.
+- Commit all changes before merging. The tool will report conflicts if any — resolve them, then retry.
+
 Tmux sessions and observability
 - Use a tmux session for: all long-running processes (builds, benchmarks, etc.), any process producing long output, and **all tests** (no exceptions).
 - When writing to a log file, always tee to tmux stdout. The point of tmux is observability.

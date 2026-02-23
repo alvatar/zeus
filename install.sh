@@ -136,12 +136,14 @@ fi
 # 5. Install consolidation prompt templates (always overwritten)
 CONS_PROJECT_SRC="$SCRIPT_DIR/config/consolidation-project.md"
 CONS_TOPIC_SRC="$SCRIPT_DIR/config/consolidation-topic.md"
+WORKDIR_SRC="$SCRIPT_DIR/config/workdir-agent.md"
 CONS_PROJECT_DEST="${HOME}/.zeus/consolidation-project.md"
 CONS_TOPIC_DEST="${HOME}/.zeus/consolidation-topic.md"
+WORKDIR_DEST="${HOME}/.zeus/workdir-agent.md"
 
 mkdir -p "${HOME}/.zeus" 2>/dev/null || true
 
-for src_dest in "$CONS_PROJECT_SRC:$CONS_PROJECT_DEST" "$CONS_TOPIC_SRC:$CONS_TOPIC_DEST"; do
+for src_dest in "$CONS_PROJECT_SRC:$CONS_PROJECT_DEST" "$CONS_TOPIC_SRC:$CONS_TOPIC_DEST" "$WORKDIR_SRC:$WORKDIR_DEST"; do
     src="${src_dest%%:*}"
     dest="${src_dest##*:}"
     fname="$(basename "$dest")"

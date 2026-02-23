@@ -1309,12 +1309,11 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.query_one("#subagent-name", Input).focus()
             return
         mode = self._selected_mode()
-        if mode == "workdir":
-            self.dismiss()
-            self.notify("Workdir Hippeus: not yet implemented", severity="warning")
-            return
         self.dismiss()
-        self.zeus.do_spawn_subagent(self.agent, name)
+        if mode == "workdir":
+            self.zeus.do_spawn_workdir_agent(self.agent, name)
+        else:
+            self.zeus.do_spawn_subagent(self.agent, name)
 
 
 # ── Rename ────────────────────────────────────────────────────────────
