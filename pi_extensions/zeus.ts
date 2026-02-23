@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -480,4 +481,82 @@ export default function (pi: ExtensionAPI) {
   subscribe("session_fork");
   subscribe("session_tree");
   subscribe("turn_end");
+
+  // ── zeus_tmux tool ──────────────────────────────────────────────────
+  // Creates a tmux session with automatic Zeus ownership stamping.
+  // Agents should use this instead of raw `tmux new-session` commands.
+  pi.registerTool({
+    name: "zeus_tmux",
+    label: "Zeus tmux",
+    description:
+      "Create a tmux session tracked by Zeus. Automatically stamps ownership so the session appears under this agent in the dashboard. Use this instead of raw tmux commands.",
+    parameters: Type.Object({
+      session_name: Type.String({ description: "tmux session name (e.g. 'my-build-1234')" }),
+      command: Type.String({
+        description: "Shell command to run inside the session (e.g. 'cargo test 2>&1 | tee /tmp/test.log')",
+      }),
+      cwd: Type.Optional(
+        Type.String({ description: "Working directory for the session (default: current directory)" }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal) {
+      const agentId = getAgentId();
+      const sessionName = params.session_name.trim();
+      if (!sessionName) {
+        return {
+          content: [{ type: "text", text: "Error: session_name is required" }],
+          details: { error: "empty session_name" },
+        };
+      }
+
+      // Build tmux new-session command
+      const tmuxArgs: string[] = ["new-session", "-d", "-s", sessionName];
+
+      // Pass ZEUS_AGENT_ID into the tmux session environment
+      if (agentId) {
+        tmuxArgs.push("-e", `ZEUS_AGENT_ID=${agentId}`);
+      }
+
+      // Set working directory if provided
+      if (params.cwd) {
+        tmuxArgs.push("-c", params.cwd);
+      }
+
+      // The shell command to run
+      tmuxArgs.push(params.command);
+
+      try {
+        const createResult = await pi.exec("tmux", tmuxArgs, { signal, timeout: 10000 });
+        if (createResult.code !== 0) {
+          const errMsg = (createResult.stderr || createResult.stdout || "").trim();
+          return {
+            content: [{ type: "text", text: `tmux new-session failed (exit ${createResult.code}): ${errMsg}` }],
+            details: { exit_code: createResult.code, stderr: errMsg },
+          };
+        }
+
+        // Stamp @zeus_owner for deterministic dashboard matching
+        if (agentId) {
+          try {
+            await pi.exec("tmux", ["set-option", "-t", sessionName, "@zeus_owner", agentId], {
+              signal,
+              timeout: 5000,
+            });
+          } catch {
+            // Best-effort: session is created, ownership stamp failed.
+          }
+        }
+
+        return {
+          content: [{ type: "text", text: `tmux session '${sessionName}' created.` }],
+          details: { session_name: sessionName, agent_id: agentId || null },
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: `Error creating tmux session: ${err?.message || String(err)}` }],
+          details: { error: String(err) },
+        };
+      }
+    },
+  });
 }

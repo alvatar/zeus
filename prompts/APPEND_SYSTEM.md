@@ -53,3 +53,11 @@ Zeus messaging protocol
   - payload mode used (`--text` / `stdin` / `--file`)
   - `ZEUS_MSG_ENQUEUED=<id>`
   - if waiting: delivered vs timeout
+
+Tmux sessions and observability
+- Use a tmux session for: all long-running processes (builds, benchmarks, etc.), any process producing long output, and **all tests** (no exceptions).
+- When writing to a log file, always tee to tmux stdout. The point of tmux is observability.
+- Create sessions with the `zeus_tmux` tool (not raw `tmux` commands):
+  - `zeus_tmux(session_name="<name>", command="cargo test ... 2>&1 | tee /tmp/test-output.log")`
+- Report the session name so the user can `tmux attach -t <name>`.
+- Poll the log file to check results and report back.
