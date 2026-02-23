@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import argparse
 from collections.abc import Mapping
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -1117,6 +1118,7 @@ class ZeusApp(App):
         """Apply gathered data to the UI (runs on the main thread)."""
         old_states = self.prev_states
         self._commit_poll_state(r)
+        self._check_consolidation_done()
         self._deliver_pending_polemarch_bootstraps()
 
         state_changed_any = self._any_agent_state_changed(old_states)
@@ -5454,6 +5456,69 @@ class ZeusApp(App):
         self._handle_restore_result(result)
 
     # ── Log panel ─────────────────────────────────────────────────────
+
+    def _check_consolidation_done(self) -> None:
+        """Scan Zeus bus inbox for consolidation_done signals; kill ephemeral agents."""
+        from ..config import AGENT_BUS_INBOX_DIR
+
+        zeus_inbox = AGENT_BUS_INBOX_DIR / "zeus" / "new"
+        if not zeus_inbox.is_dir():
+            return
+
+        zeus_home = os.environ.get(
+            "ZEUS_HOME",
+            os.path.join(os.environ.get("HOME", ""), ".zeus"),
+        )
+        ephemeral_dir = os.path.join(zeus_home, "ephemeral")
+
+        for fname in os.listdir(zeus_inbox):
+            if not fname.endswith(".json"):
+                continue
+            fpath = zeus_inbox / fname
+            try:
+                data = json.loads(fpath.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            if data.get("type") != "consolidation_done":
+                continue
+
+            agent_id = data.get("agent_id", "")
+            if not agent_id:
+                # Malformed — remove and skip
+                try:
+                    fpath.unlink()
+                except OSError:
+                    pass
+                continue
+
+            # Kill the tmux session owned by this agent
+            tmux_name = f"zeus-cons-{agent_id[:8]}"
+            try:
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", tmux_name],
+                    capture_output=True, timeout=5,
+                )
+            except Exception:
+                pass
+
+            # Clean up ephemeral marker
+            marker = os.path.join(ephemeral_dir, agent_id)
+            try:
+                os.unlink(marker)
+            except OSError:
+                pass
+
+            # Remove the bus message
+            try:
+                fpath.unlink()
+            except OSError:
+                pass
+
+            self.notify(
+                f"Consolidation complete: {agent_id[:8]}",
+                severity="information",
+            )
 
     def action_consolidation(self) -> None:
         """Ctrl+Alt+M: open memory consolidation dialog."""
