@@ -531,14 +531,32 @@ export default function (pi: ExtensionAPI) {
   }
 
   // ── /memory command ───────────────────────────────────────────────────
-  pi.registerCommand("memory", {
-    description: "Memory system control — /memory verbose on|off|status",
-    async handler(args: string, _ctx) {
-      const parts = args.trim().toLowerCase().split(/\s+/);
-      const sub = parts[0] || "status";
 
+  /** Helper: run a raw sqlite3 query against memory.db and return stdout. */
+  async function memoryQuery(sql: string): Promise<string> {
+    const dbPath = path.join(getStateDir(), "memory.db");
+    if (!fs.existsSync(dbPath)) return "";
+    const r = await pi.exec("sqlite3", [dbPath, sql], { timeout: 5000 });
+    return r.code === 0 ? (r.stdout || "").trim() : "";
+  }
+
+  /** Format a memory row for display. */
+  function fmtMemory(ns: string, key: string, content: string, tags: string): string {
+    const tagStr = tags ? ` [${tags}]` : "";
+    const preview = content.length > 120 ? content.slice(0, 120) + "…" : content;
+    return `  ${ns}/${key}${tagStr}\n    ${preview.replace(/\n/g, "\n    ")}`;
+  }
+
+  pi.registerCommand("memory", {
+    description: "Memory system — /memory help for all subcommands",
+    async handler(args: string, _ctx) {
+      // Preserve case for namespace/key args, lowercase only the subcommand
+      const rawParts = args.trim().split(/\s+/);
+      const sub = (rawParts[0] || "help").toLowerCase();
+
+      // ── verbose ──────────────────────────────────────────────────
       if (sub === "verbose") {
-        const val = parts[1];
+        const val = (rawParts[1] || "").toLowerCase();
         if (val === "on" || val === "true" || val === "1") {
           memoryConfig.verbose = true;
           saveMemoryConfig(memoryConfig);
@@ -550,55 +568,198 @@ export default function (pi: ExtensionAPI) {
         } else {
           pi.sendMessage({
             customType: "zeus_memory_log",
-            content: `🧠 Memory verbose logging is currently: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
+            content: `🧠 Verbose logging: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
             display: true,
           });
         }
         return;
       }
 
+      // ── status ───────────────────────────────────────────────────
       if (sub === "status") {
         const dbPath = path.join(getStateDir(), "memory.db");
         const exists = fs.existsSync(dbPath);
         let count = "?";
+        let namespaces = "";
         if (exists) {
-          try {
-            const r = await pi.exec("sqlite3", [dbPath, "SELECT COUNT(*) FROM memories WHERE archived = 0;"], { timeout: 3000 });
-            if (r.code === 0) count = (r.stdout || "").trim();
-          } catch { /* */ }
+          count = await memoryQuery("SELECT COUNT(*) FROM memories WHERE archived = 0;") || "0";
+          namespaces = await memoryQuery(
+            "SELECT namespace || ' (' || COUNT(*) || ')' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
+          );
         }
         pi.sendMessage({
           customType: "zeus_memory_log",
           content: [
-            `🧠 Memory system status:`,
-            `  DB: ${dbPath} (${exists ? "exists" : "not created yet"})`,
-            `  Memories: ${count}`,
+            `🧠 Memory status:`,
+            `  DB: ${dbPath} (${exists ? "exists" : "not created"})`,
+            `  Total: ${count} active memories`,
             `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
-            `  Config: ${MEMORY_CONFIG_PATH}`,
-          ].join("\n"),
+            namespaces ? `  Namespaces:\n    ${namespaces.split("\n").join("\n    ")}` : "",
+          ].filter(Boolean).join("\n"),
           display: true,
         });
         return;
       }
 
-      const helpText = [
-        "🧠 /memory commands:",
-        "  /memory status          — DB path, memory count, verbose state",
-        "  /memory verbose on|off  — toggle injection/warm-path logging",
-        "",
-        "🧠 Memory tools (use as normal tool calls):",
-        "  zeus_memory_save     — store a memory (global, project:<name>, new:<name>)",
-        "  zeus_memory_recall   — exact lookup by namespace + key",
-        "  zeus_memory_search   — full-text search across memories",
-        "  zeus_memory_list     — browse a namespace (default: current project)",
-        "  zeus_memory_delete   — permanently remove a memory",
-        "  zeus_memory_list_topics   — linked topics + pending count",
-        "  zeus_memory_rename_project — rename a project namespace",
-      ].join("\n");
+      // ── list [namespace] ─────────────────────────────────────────
+      if (sub === "list" || sub === "ls") {
+        const ns = rawParts[1] || "";
+        let sql: string;
+        if (ns) {
+          sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' ORDER BY key;`;
+        } else {
+          sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 ORDER BY namespace, key;`;
+        }
+        const raw = await memoryQuery(sql);
+        if (!raw) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: ns ? `🧠 No memories in namespace '${ns}'.` : "🧠 No memories found.", display: true });
+          return;
+        }
+        const lines = raw.split("\n");
+        const entries: string[] = [];
+        for (const line of lines) {
+          const [rns, rkey, ...rest] = line.split("|");
+          const content = rest.slice(0, -1).join("|");
+          const tags = rest[rest.length - 1] || "";
+          if (rns && rkey) entries.push(fmtMemory(rns, rkey, content, tags));
+        }
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 Memories${ns ? ` in ${ns}` : ""}:\n${entries.join("\n\n")}`,
+          display: true,
+        });
+        return;
+      }
 
+      // ── get <namespace> <key> ────────────────────────────────────
+      if (sub === "get" || sub === "recall") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        if (!ns || !key) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory get <namespace> <key>", display: true });
+          return;
+        }
+        const raw = await memoryQuery(
+          `SELECT content, tags, updated_at FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        if (!raw) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
+          return;
+        }
+        const [content, tags, updated] = [raw.substring(0, raw.lastIndexOf("|")), "", ""];
+        // Parse pipe-separated: content may contain pipes, so use a proper split
+        const lastPipe2 = raw.lastIndexOf("|");
+        const lastPipe1 = raw.lastIndexOf("|", lastPipe2 - 1);
+        const c = raw.substring(0, lastPipe1);
+        const t = raw.substring(lastPipe1 + 1, lastPipe2);
+        const u = raw.substring(lastPipe2 + 1);
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 ${ns}/${key}${t ? ` [${t}]` : ""}${u ? ` (updated: ${u})` : ""}\n\n${c}`,
+          display: true,
+        });
+        return;
+      }
+
+      // ── search <query> ───────────────────────────────────────────
+      if (sub === "search" || sub === "find") {
+        const query = rawParts.slice(1).join(" ");
+        if (!query) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory search <query>", display: true });
+          return;
+        }
+        const escaped = query.replace(/'/g, "''");
+        const raw = await memoryQuery(
+          `SELECT m.namespace, m.key, m.content, m.tags FROM memories m JOIN memories_fts f ON m.id = f.rowid WHERE m.archived = 0 AND f.memories_fts MATCH '${escaped}' ORDER BY rank LIMIT 20;`
+        );
+        if (!raw) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No results for '${query}'.`, display: true });
+          return;
+        }
+        const lines = raw.split("\n");
+        const entries: string[] = [];
+        for (const line of lines) {
+          const [rns, rkey, ...rest] = line.split("|");
+          const content = rest.slice(0, -1).join("|");
+          const tags = rest[rest.length - 1] || "";
+          if (rns && rkey) entries.push(fmtMemory(rns, rkey, content, tags));
+        }
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 Search '${query}' (${entries.length} results):\n${entries.join("\n\n")}`,
+          display: true,
+        });
+        return;
+      }
+
+      // ── delete <namespace> <key> ─────────────────────────────────
+      if (sub === "delete" || sub === "rm") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        if (!ns || !key) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory delete <namespace> <key>", display: true });
+          return;
+        }
+        const check = await memoryQuery(
+          `SELECT id FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        if (!check) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
+          return;
+        }
+        await memoryQuery(
+          `DELETE FROM memories WHERE namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Deleted: ${ns}/${key}`, display: true });
+        return;
+      }
+
+      // ── topics ───────────────────────────────────────────────────
+      if (sub === "topics") {
+        const topics = await memoryQuery(
+          "SELECT REPLACE(namespace, 'topic:', '') || ' (' || COUNT(*) || ' memories)' FROM memories WHERE archived = 0 AND namespace LIKE 'topic:%' GROUP BY namespace ORDER BY namespace;"
+        );
+        const pending = await memoryQuery(
+          "SELECT REPLACE(namespace, 'new:', '') || ' (' || COUNT(*) || ' pending)' FROM memories WHERE archived = 0 AND namespace LIKE 'new:%' GROUP BY namespace ORDER BY namespace;"
+        );
+        const lines: string[] = ["🧠 Topics:"];
+        if (topics) lines.push("  Promoted:\n    " + topics.split("\n").join("\n    "));
+        else lines.push("  (no promoted topics)");
+        if (pending) lines.push("  Staging (new:*):\n    " + pending.split("\n").join("\n    "));
+        pi.sendMessage({ customType: "zeus_memory_log", content: lines.join("\n"), display: true });
+        return;
+      }
+
+      // ── namespaces ───────────────────────────────────────────────
+      if (sub === "namespaces" || sub === "ns") {
+        const raw = await memoryQuery(
+          "SELECT namespace || ': ' || COUNT(*) || ' memories' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
+        );
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: raw ? `🧠 Namespaces:\n  ${raw.split("\n").join("\n  ")}` : "🧠 No memories.",
+          display: true,
+        });
+        return;
+      }
+
+      // ── help ─────────────────────────────────────────────────────
       pi.sendMessage({
         customType: "zeus_memory_log",
-        content: helpText,
+        content: [
+          "🧠 /memory commands:",
+          "",
+          "  /memory status              — DB stats, namespace counts, verbose state",
+          "  /memory list [namespace]    — list all memories (or filter by namespace)",
+          "  /memory get <ns> <key>      — show full content of a memory",
+          "  /memory search <query>      — full-text search across all memories",
+          "  /memory delete <ns> <key>   — permanently remove a memory",
+          "  /memory namespaces          — list all namespaces with counts",
+          "  /memory topics              — list topics and pending staging entries",
+          "  /memory verbose on|off      — toggle injection/warm-path logging",
+          "",
+          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get",
+        ].join("\n"),
         display: true,
       });
     },
