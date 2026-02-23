@@ -1291,9 +1291,6 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
                 value=f"{self.agent.name}-sub",
                 id="subagent-name",
             )
-            with Horizontal(id="subagent-buttons"):
-                yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("🧬 Create", variant="primary", id="fork-btn")
 
     def _selected_mode(self) -> str:
         """Return 'clone' or 'workdir'."""
@@ -1302,12 +1299,6 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
         if idx == 1:
             return "workdir"
         return "clone"
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "fork-btn":
-            self._create()
-        else:
-            self.dismiss()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self._create()

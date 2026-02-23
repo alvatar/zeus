@@ -665,7 +665,7 @@ SubAgentScreen {{
 #subagent-dialog {{
     width: 60;
     height: auto;
-    max-height: 24;
+    max-height: 20;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
@@ -694,8 +694,6 @@ SubAgentScreen {{
     color: #cccccc;
     margin: 1 0;
 }}
-
-{_button_row_css("subagent-buttons", row_margin="1 0 0 0")}
 """
 
 RENAME_CSS = """
