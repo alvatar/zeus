@@ -482,6 +482,120 @@ export default function (pi: ExtensionAPI) {
   subscribe("session_tree");
   subscribe("turn_end");
 
+  // ── Memory helpers ────────────────────────────────────────────────────
+  const MEMORY_DB = path.join(getStateDir(), "memory.db");
+
+  /** Run a sqlite3 command and return stdout. Lazily initialises the DB. */
+  async function sqliteExec(sql: string, signal?: AbortSignal): Promise<string> {
+    // Ensure parent dir exists
+    const dir = path.dirname(MEMORY_DB);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+
+    const result = await pi.exec(
+      "sqlite3",
+      [MEMORY_DB, ".mode json", ".headers on", sql],
+      { signal, timeout: 10000 },
+    );
+    if (result.code !== 0) {
+      throw new Error(`sqlite3 error: ${result.stderr || result.stdout}`);
+    }
+    return (result.stdout || "").trim();
+  }
+
+  /** Initialise memory DB schema if needed. */
+  async function ensureMemorySchema(signal?: AbortSignal): Promise<void> {
+    await sqliteExec(`
+      CREATE TABLE IF NOT EXISTS memories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        namespace TEXT NOT NULL,
+        key TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata TEXT DEFAULT '{}',
+        tags TEXT DEFAULT '',
+        source_agent TEXT DEFAULT '',
+        source_project TEXT DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        accessed_at TEXT,
+        access_count INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        UNIQUE(namespace, key)
+      );
+      CREATE TABLE IF NOT EXISTS topic_links (
+        project TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(project, topic)
+      );
+      CREATE INDEX IF NOT EXISTS idx_memories_ns ON memories(namespace);
+      CREATE INDEX IF NOT EXISTS idx_memories_ns_archived ON memories(namespace, archived);
+      CREATE INDEX IF NOT EXISTS idx_memories_source_project ON memories(source_project);
+      CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+        namespace, key, content, tags,
+        content=memories, content_rowid=id
+      );
+      CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, namespace, key, content, tags)
+        VALUES (new.id, new.namespace, new.key, new.content, new.tags);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, namespace, key, content, tags)
+        VALUES ('delete', old.id, old.namespace, old.key, old.content, old.tags);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memories_fts(memories_fts, rowid, namespace, key, content, tags)
+        VALUES ('delete', old.id, old.namespace, old.key, old.content, old.tags);
+        INSERT INTO memories_fts(rowid, namespace, key, content, tags)
+        VALUES (new.id, new.namespace, new.key, new.content, new.tags);
+      END;
+    `, signal);
+  }
+
+  let schemaEnsured = false;
+  async function withSchema(signal?: AbortSignal): Promise<void> {
+    if (!schemaEnsured) {
+      await ensureMemorySchema(signal);
+      schemaEnsured = true;
+    }
+  }
+
+  /** Escape a string for safe use in SQL single-quoted literals. */
+  function sqlEscape(s: string): string {
+    return s.replace(/'/g, "''");
+  }
+
+  /** Resolve the current project name from git repo root. */
+  async function resolveProjectName(signal?: AbortSignal): Promise<string> {
+    try {
+      const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { signal, timeout: 5000 });
+      if (result.code !== 0) return "";
+      const root = (result.stdout || "").trim();
+      const home = process.env.HOME || "";
+      const codePrefix = path.join(home, "code") + path.sep;
+      let name: string;
+      if (root.startsWith(codePrefix)) {
+        name = root.slice(codePrefix.length);
+      } else {
+        name = path.basename(root);
+      }
+      return name.replace(/\//g, "-");
+    } catch {
+      return "";
+    }
+  }
+
+  /** Validate namespace for agent writes. */
+  function validateNamespace(ns: string): string | null {
+    const trimmed = ns.trim();
+    if (/^(global|project:[a-zA-Z0-9_-]+|new:[a-zA-Z0-9_-]+)$/.test(trimmed)) {
+      return trimmed;
+    }
+    if (/^topic:[a-zA-Z0-9_-]+$/.test(trimmed)) {
+      return null; // topic: is read-only for regular agents
+    }
+    return null;
+  }
+
   // ── zeus_tmux tool ──────────────────────────────────────────────────
   // Creates a tmux session with automatic Zeus ownership stamping.
   // Agents should use this instead of raw `tmux new-session` commands.
@@ -557,6 +671,364 @@ export default function (pi: ExtensionAPI) {
           details: { error: String(err) },
         };
       }
+    },
+  });
+
+  // ── zeus_memory_save ────────────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_save",
+    label: "Save memory",
+    description:
+      "Store a persistent memory. Namespace must be 'global', 'project:<name>', or 'new:<name>'. Use 'new:<name>' for specialized knowledge beyond the current project.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace: 'global', 'project:<name>', or 'new:<name>'" }),
+      key: Type.String({ description: "Descriptive key (e.g. 'error-handling-convention')" }),
+      content: Type.String({ description: "Memory content — concise, actionable" }),
+      tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      const ns = validateNamespace(params.namespace);
+      if (!ns) {
+        const trimmed = params.namespace.trim();
+        if (/^topic:/.test(trimmed)) {
+          return {
+            content: [{ type: "text", text: `Cannot write directly to '${trimmed}'. Write to 'new:${trimmed.slice(6)}' instead.` }],
+          };
+        }
+        return {
+          content: [{ type: "text", text: `Invalid namespace '${params.namespace}'. Must be global, project:<name>, or new:<name>.` }],
+        };
+      }
+
+      await withSchema(signal);
+      const agentId = getAgentId();
+      const project = await resolveProjectName(signal);
+      const key = sqlEscape(params.key.trim());
+      const content = sqlEscape(params.content);
+      const tags = sqlEscape((params.tags || "").trim());
+
+      await sqliteExec(`
+        INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
+        VALUES ('${sqlEscape(ns)}', '${key}', '${content}', '${tags}', '${sqlEscape(agentId)}', '${sqlEscape(project)}')
+        ON CONFLICT(namespace, key) DO UPDATE SET
+          content = excluded.content,
+          tags = excluded.tags,
+          source_agent = excluded.source_agent,
+          source_project = excluded.source_project,
+          updated_at = datetime('now');
+      `, signal);
+
+      // Auto-create topic_links for new:* saves
+      if (ns.startsWith("new:") && project) {
+        const topicName = sqlEscape(ns.slice(4));
+        try {
+          await sqliteExec(`
+            INSERT OR IGNORE INTO topic_links (project, topic) VALUES ('${sqlEscape(project)}', '${topicName}');
+          `, signal);
+        } catch { /* best effort */ }
+      }
+
+      return {
+        content: [{ type: "text", text: `Saved memory '${params.key.trim()}' in ${ns}.` }],
+        details: { namespace: ns, key: params.key.trim() },
+      };
+    },
+  });
+
+  // ── zeus_memory_recall ──────────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_recall",
+    label: "Recall memory",
+    description: "Retrieve a specific memory by exact namespace and key.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace to look up" }),
+      key: Type.String({ description: "Exact key" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const ns = sqlEscape(params.namespace.trim());
+      const key = sqlEscape(params.key.trim());
+      const raw = await sqliteExec(`
+        UPDATE memories SET access_count = access_count + 1, accessed_at = datetime('now')
+        WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
+        SELECT namespace, key, content, tags, source_agent, source_project, created_at, updated_at, access_count
+        FROM memories WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
+      `, signal);
+
+      if (!raw || raw === "[]") {
+        return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
+      }
+
+      try {
+        const rows = JSON.parse(raw);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
+        }
+        const m = rows[0];
+        return {
+          content: [{ type: "text", text: `[${m.namespace}] ${m.key}\n${m.content}\nTags: ${m.tags || "(none)"}\nCreated: ${m.created_at} | Updated: ${m.updated_at}` }],
+          details: m,
+        };
+      } catch {
+        return { content: [{ type: "text", text: raw }] };
+      }
+    },
+  });
+
+  // ── zeus_memory_search ──────────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_search",
+    label: "Search memories",
+    description:
+      "Full-text search across memories. If namespace is omitted, searches global + current project + linked topics.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Search query" }),
+      namespace: Type.Optional(Type.String({ description: "Restrict to a specific namespace" })),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const limit = params.limit || 10;
+      const query = sqlEscape(params.query.trim());
+
+      if (!query) {
+        return { content: [{ type: "text", text: "Empty search query." }] };
+      }
+
+      let nsFilter = "";
+      if (params.namespace) {
+        nsFilter = `AND m.namespace = '${sqlEscape(params.namespace.trim())}'`;
+      } else {
+        // Search global + project + linked topics
+        const project = await resolveProjectName(signal);
+        const namespaces = ["'global'"];
+        if (project) {
+          namespaces.push(`'project:${sqlEscape(project)}'`);
+          // Get linked topics
+          try {
+            const linkRaw = await sqliteExec(
+              `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}';`,
+              signal,
+            );
+            if (linkRaw && linkRaw !== "[]") {
+              const links = JSON.parse(linkRaw);
+              for (const link of links) {
+                if (link.topic) namespaces.push(`'topic:${sqlEscape(link.topic)}'`);
+              }
+            }
+          } catch { /* best effort */ }
+        }
+        nsFilter = `AND m.namespace IN (${namespaces.join(",")})`;
+      }
+
+      try {
+        const raw = await sqliteExec(`
+          SELECT m.namespace, m.key, SUBSTR(m.content, 1, 300) AS content, m.tags
+          FROM memories_fts f
+          JOIN memories m ON m.id = f.rowid
+          WHERE memories_fts MATCH '${query}'
+            ${nsFilter}
+            AND m.archived = 0
+          ORDER BY bm25(memories_fts)
+          LIMIT ${limit};
+        `, signal);
+
+        if (!raw || raw === "[]") {
+          return { content: [{ type: "text", text: `No results for '${params.query.trim()}'.` }] };
+        }
+
+        const rows = JSON.parse(raw);
+        const lines = rows.map((r: any) => `- [${r.namespace}] ${r.key}: ${r.content}`);
+        return {
+          content: [{ type: "text", text: `Found ${rows.length} result(s):\n${lines.join("\n")}` }],
+          details: { results: rows },
+        };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Search error: ${err?.message || String(err)}` }] };
+      }
+    },
+  });
+
+  // ── zeus_memory_list ────────────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_list",
+    label: "List memories",
+    description:
+      "Browse memories in a namespace. If namespace is omitted, lists the current project.",
+    parameters: Type.Object({
+      namespace: Type.Optional(Type.String({ description: "Namespace to list (default: current project)" })),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 50)" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const limit = params.limit || 50;
+      let ns: string;
+      if (params.namespace) {
+        ns = params.namespace.trim();
+      } else {
+        const project = await resolveProjectName(signal);
+        ns = project ? `project:${project}` : "global";
+      }
+
+      const raw = await sqliteExec(`
+        SELECT namespace, key, SUBSTR(content, 1, 200) AS content_preview, tags,
+               source_project, created_at, updated_at, access_count
+        FROM memories
+        WHERE namespace = '${sqlEscape(ns)}' AND archived = 0
+        ORDER BY updated_at DESC
+        LIMIT ${limit};
+      `, signal);
+
+      if (!raw || raw === "[]") {
+        return { content: [{ type: "text", text: `No memories in '${ns}'.` }] };
+      }
+
+      const rows = JSON.parse(raw);
+      const lines = rows.map((r: any) => `- ${r.key}: ${r.content_preview}${r.tags ? ` [${r.tags}]` : ""}`);
+      return {
+        content: [{ type: "text", text: `${rows.length} memor${rows.length === 1 ? "y" : "ies"} in '${ns}':\n${lines.join("\n")}` }],
+        details: { namespace: ns, count: rows.length, results: rows },
+      };
+    },
+  });
+
+  // ── zeus_memory_delete ──────────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_delete",
+    label: "Delete memory",
+    description: "Permanently remove a memory by namespace and key.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace" }),
+      key: Type.String({ description: "Key to delete" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const ns = sqlEscape(params.namespace.trim());
+      const key = sqlEscape(params.key.trim());
+      const raw = await sqliteExec(`
+        DELETE FROM memories WHERE namespace = '${ns}' AND key = '${key}';
+        SELECT changes() AS deleted;
+      `, signal);
+
+      let deleted = 0;
+      try {
+        const rows = JSON.parse(raw);
+        deleted = rows?.[0]?.deleted || 0;
+      } catch {}
+
+      if (deleted > 0) {
+        return { content: [{ type: "text", text: `Deleted '${params.key.trim()}' from ${params.namespace.trim()}.` }] };
+      }
+      return { content: [{ type: "text", text: `No memory '${params.key.trim()}' found in ${params.namespace.trim()}.` }] };
+    },
+  });
+
+  // ── zeus_memory_list_topics ─────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_list_topics",
+    label: "List topics",
+    description:
+      "Show topics linked to the current project and count of pending new:* memories.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      await withSchema(signal);
+      const project = await resolveProjectName(signal);
+      if (!project) {
+        return { content: [{ type: "text", text: "Not in a git repository — cannot determine project." }] };
+      }
+
+      const linkRaw = await sqliteExec(
+        `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
+        signal,
+      );
+      const pendingRaw = await sqliteExec(
+        `SELECT COUNT(*) AS cnt FROM memories WHERE namespace LIKE 'new:%' AND source_project = '${sqlEscape(project)}' AND archived = 0;`,
+        signal,
+      );
+
+      let topics: string[] = [];
+      let pending = 0;
+      try {
+        const links = JSON.parse(linkRaw || "[]");
+        topics = links.map((r: any) => r.topic);
+      } catch {}
+      try {
+        const p = JSON.parse(pendingRaw || "[]");
+        pending = p?.[0]?.cnt || 0;
+      } catch {}
+
+      const topicList = topics.length > 0 ? topics.join(", ") : "(none)";
+      return {
+        content: [{ type: "text", text: `Project: ${project}\nLinked topics: ${topicList}\nPending new topics: ${pending}` }],
+        details: { project, linked_topics: topics, pending_new_count: pending },
+      };
+    },
+  });
+
+  // ── zeus_memory_rename_project ──────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_memory_rename_project",
+    label: "Rename project",
+    description: "Rename a project namespace and update all references (memories, topic_links, source_project).",
+    parameters: Type.Object({
+      old_name: Type.String({ description: "Current project name (without 'project:' prefix)" }),
+      new_name: Type.String({ description: "New project name (without 'project:' prefix)" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const oldName = sqlEscape(params.old_name.trim());
+      const newName = sqlEscape(params.new_name.trim());
+
+      if (!oldName || !newName) {
+        return { content: [{ type: "text", text: "Both old_name and new_name are required." }] };
+      }
+
+      await sqliteExec(`
+        UPDATE memories SET namespace = 'project:${newName}' WHERE namespace = 'project:${oldName}';
+        UPDATE memories SET source_project = '${newName}' WHERE source_project = '${oldName}';
+        UPDATE topic_links SET project = '${newName}' WHERE project = '${oldName}';
+      `, signal);
+
+      return {
+        content: [{ type: "text", text: `Renamed project '${params.old_name.trim()}' to '${params.new_name.trim()}'.` }],
+        details: { old_name: params.old_name.trim(), new_name: params.new_name.trim() },
+      };
+    },
+  });
+
+  // ── zeus_consolidation_done ─────────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_consolidation_done",
+    label: "Consolidation done",
+    description:
+      "Signal that memory consolidation is complete. Only used by ephemeral consolidation agents.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      const agentId = getAgentId();
+      if (!agentId) {
+        return { content: [{ type: "text", text: "No ZEUS_AGENT_ID — cannot signal completion." }] };
+      }
+
+      // Send consolidation_done message through agent bus
+      const busInboxDir = path.join(getBusDir(), "inbox", "zeus", "new");
+      try {
+        fs.mkdirSync(busInboxDir, { recursive: true });
+      } catch {}
+
+      const msgId = `consolidation-done-${agentId}-${Date.now()}`;
+      const payload = {
+        id: msgId,
+        type: "consolidation_done",
+        agent_id: agentId,
+        timestamp: new Date().toISOString(),
+      };
+
+      writeJsonAtomic(path.join(busInboxDir, `${msgId}.json`), payload);
+
+      return {
+        content: [{ type: "text", text: "Consolidation complete. Signaled Zeus for cleanup." }],
+        details: { agent_id: agentId, message_id: msgId },
+      };
     },
   });
 }
