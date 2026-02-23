@@ -5382,13 +5382,16 @@ class ZeusApp(App):
                 f"at `{wt_path}`. Merge with `zeus_worktree_merge` when done."
             )
 
-        from ..message_queue import enqueue_message
-        enqueue_message(
-            target_agent=name,
+        envelope = OutboundEnvelope.new(
+            source_name="zeus-dashboard",
+            target_kind="agent",
+            target_ref=agent_id,
             target_agent_id=agent_id,
-            payload=prompt_text,
-            source="zeus-dashboard",
+            target_name=name,
+            delivery_mode="follow-up",
+            message=prompt_text,
         )
+        enqueue_envelope(envelope)
         _wt_log(f"queued workdir prompt for {name} ({agent_id})")
 
     def action_rename(self) -> None:
