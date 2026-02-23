@@ -55,6 +55,7 @@ from ..kitty import (
     resolve_agent_session_path,
     resolve_agent_session_path_with_source,
     spawn_subagent, load_names, save_names, kitty_cmd,
+    generate_agent_id,
 )
 from ..sessions import read_session_text, read_session_user_text
 from ..message_queue import (
@@ -5588,12 +5589,10 @@ class ZeusApp(App):
                     # Still running — show warning
                     self.push_screen(
                         NoticeScreen(
+                            f"Consolidation agent '{tmux_name}' has been running "
+                            f"for {timeout_s // 60} minutes. It may be stuck.\n\n"
+                            f"You can kill it with: tmux kill-session -t {tmux_name}",
                             title="Consolidation Timeout",
-                            body=(
-                                f"Consolidation agent '{tmux_name}' has been running "
-                                f"for {timeout_s // 60} minutes. It may be stuck.\n\n"
-                                f"You can kill it with: tmux kill-session -t {tmux_name}"
-                            ),
                         )
                     )
             except Exception:
