@@ -208,14 +208,13 @@ def test_consolidation_blocking_runs_in_thread(
     assert agent_id
     assert tmux_name.startswith("zeus-cons-")
 
-    # Verify the tmux command uses bash -lc with @file, not pipe or $(cat)
+    # Verify the tmux command uses Stygian pattern: exec pi --session + @file
     new_session_cmd = captured_cmds[0]
     shell_cmd = new_session_cmd[-1]
-    assert "bash -lc" in shell_cmd, f"Must use bash -lc, got: {shell_cmd}"
-    assert "| pi" not in shell_cmd, f"Must not pipe stdin: {shell_cmd}"
-    assert "$(cat" not in shell_cmd, f"Must not use $(cat) — breaks on long prompts: {shell_cmd}"
+    assert "exec pi --session" in shell_cmd, f"Must use exec pi --session, got: {shell_cmd}"
     assert "@" in shell_cmd, f"Must use @file syntax: {shell_cmd}"
-    assert "pi" in shell_cmd
+    assert "| pi" not in shell_cmd, f"Must not pipe stdin: {shell_cmd}"
+    assert "ZEUS_AGENT_ID=" in shell_cmd, f"Must have inline env vars: {shell_cmd}"
 
 
 def test_consolidation_with_model_spec(
@@ -253,6 +252,7 @@ def test_consolidation_with_model_spec(
     assert "--model" in shell_cmd
     assert "anthropic/claude-opus-4-6" in shell_cmd
     assert "@" in shell_cmd, f"Must use @file syntax: {shell_cmd}"
+    assert "exec pi --session" in shell_cmd
 
 
 # ── Merge cleanup purges queue ────────────────────────────────────────

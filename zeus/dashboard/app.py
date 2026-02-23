@@ -5876,13 +5876,13 @@ class ZeusApp(App):
             result = await asyncio.to_thread(self._do_spawn_consolidation_blocking, params)
             _cons_log(f"blocking returned: {result!r}")
             if result:
-                agent_id, tmux_name = result
-                _cons_log(f"starting timeout + notify for {tmux_name}")
+                agent_id, session_name = result
+                _cons_log(f"starting timeout + notify for {session_name}")
                 try:
-                    self._start_consolidation_timeout(agent_id, tmux_name, timeout_s=1800)
+                    self._start_consolidation_timeout(agent_id, session_name, timeout_s=1800)
                 except Exception as te:
                     _cons_log(f"timeout start error: {te}")
-                self.notify(f"Consolidation agent started: {tmux_name}", severity="information")
+                self.notify(f"Consolidation agent started: {session_name}", severity="information")
                 _cons_log("done")
         except Exception as exc:
             import traceback
@@ -5890,8 +5890,10 @@ class ZeusApp(App):
             self.notify_force(f"Failed to start consolidation: {exc}", timeout=5)
 
     def _do_spawn_consolidation_blocking(self, params: dict) -> tuple[str, str]:
-        """Blocking: launch an ephemeral Pi agent. Returns (agent_id, tmux_name)."""
+        """Blocking: launch ephemeral Pi agent as Stygian Hippeus. Returns (agent_id, session_name)."""
         from ..memory import resolve_project_name
+        from ..sessions import make_new_session_path
+        from ..stygian_hippeus import STYGIAN_TMUX_BACKEND_TAG
 
         cons_type = params.get("type", "project")
         model_spec = params.get("model_spec", "")
@@ -5916,7 +5918,7 @@ class ZeusApp(App):
         if not prompt_text:
             raise RuntimeError(f"Consolidation prompt not found: {prompt_src}")
 
-        # Write prompt to temp file for Pi --prompt
+        # Write prompt to temp file
         import tempfile
         prompt_file = tempfile.NamedTemporaryFile(
             mode="w", suffix=".md", prefix="zeus-cons-", delete=False
@@ -5930,40 +5932,47 @@ class ZeusApp(App):
         with open(os.path.join(ephemeral_dir, agent_id), "w") as f:
             f.write(agent_name)
 
-        # Build pi command
-        pi_bin = os.environ.get("ZEUS_DIRECT_PI_BIN") or shutil.which("pi") or "pi"
-        cmd_parts = [pi_bin]
-        if model_spec:
-            cmd_parts.extend(["--model", model_spec])
-        cmd_parts.extend(["--prompt", f"$(cat {shlex.quote(prompt_file.name)})"])
+        # Launch as Stygian Hippeus (same pattern as launch_stygian_hippeus)
+        cwd = os.getcwd()
+        session_path = make_new_session_path(cwd)
+        session_name = f"zeus-cons-{agent_id[:8]}"
 
-        # Wrap in tmux session with Zeus agent env
-        tmux_name = f"zeus-cons-{agent_id[:8]}"
-        env_args = [
-            "new-session", "-d", "-s", tmux_name,
-            "-e", f"ZEUS_AGENT_ID={agent_id}",
-            "-e", f"ZEUS_AGENT_NAME={agent_name}",
-            "-e", f"ZEUS_ROLE=hoplite",
+        clean_model = (model_spec or "").strip()
+        start_command = (
+            f"ZEUS_AGENT_NAME={shlex.quote(agent_name)} "
+            f"ZEUS_AGENT_ID={shlex.quote(agent_id)} "
+            "ZEUS_ROLE=hoplite "
+            f"ZEUS_SESSION_PATH={shlex.quote(session_path)} "
+            f"exec pi --session {shlex.quote(session_path)}"
+            f" @{shlex.quote(prompt_file.name)}"
+        )
+        if clean_model:
+            start_command += f" --model {shlex.quote(clean_model)}"
+
+        subprocess.run(
+            ["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, start_command],
+            check=True, timeout=10,
+        )
+
+        # Stamp tmux options (same as Stygian Hippeus — makes it visible in dashboard)
+        option_values = [
+            ("@zeus_backend", STYGIAN_TMUX_BACKEND_TAG),
+            ("@zeus_agent", agent_id),
+            ("@zeus_role", "hoplite"),
+            ("@zeus_name", agent_name),
+            ("@zeus_session_path", session_path),
+            ("@zeus_owner", agent_id),
         ]
-        # Launch pi with @file syntax (positional arg with $(cat) breaks on long prompts)
-        pi_cmd = f"{pi_bin} @{shlex.quote(prompt_file.name)}"
-        if model_spec:
-            pi_cmd = f"{pi_bin} --model {shlex.quote(model_spec)} @{shlex.quote(prompt_file.name)}"
-        shell_cmd = f"bash -lc {shlex.quote(pi_cmd)}"
-        env_args.append(shell_cmd)
+        for option, value in option_values:
+            try:
+                subprocess.run(
+                    ["tmux", "set-option", "-t", session_name, option, value],
+                    check=False, timeout=3,
+                )
+            except Exception:
+                pass
 
-        subprocess.run(["tmux", *env_args], check=True, timeout=10)
-
-        # Stamp ownership
-        try:
-            subprocess.run(
-                ["tmux", "set-option", "-t", tmux_name, "@zeus_owner", agent_id],
-                check=False, timeout=5,
-            )
-        except Exception:
-            pass
-
-        return agent_id, tmux_name
+        return agent_id, session_name
 
     def _start_consolidation_timeout(
         self, agent_id: str, tmux_name: str, timeout_s: int = 1800
