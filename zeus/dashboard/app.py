@@ -5800,10 +5800,26 @@ class ZeusApp(App):
                 except Exception as exc:
                     _wt_log(f"merge-done cleanup error: {exc}")
 
+            # Remove any pending queue messages for this agent
+            self._purge_queue_for_agent(agent_id)
+
             self.notify(
                 f"🌿 Merged & cleaned: {agent_name or agent_id[:8]}",
                 severity="information",
             )
+
+    def _purge_queue_for_agent(self, agent_id: str) -> None:
+        """Remove all pending queue messages targeting the given agent_id."""
+        try:
+            for env_path in list_new_envelopes():
+                env = load_envelope(env_path)
+                if env and env.target_agent_id == agent_id:
+                    try:
+                        env_path.unlink()
+                    except OSError:
+                        pass
+        except Exception:
+            pass
 
     def _find_agent_by_id(self, agent_id: str) -> AgentWindow | None:
         """Find an agent by its agent_id."""
