@@ -1,10 +1,11 @@
-"""Tests for zeus.worktree — git worktree helpers."""
+"""Tests for zeus.worktree — git worktree helpers + dashboard spawn integration."""
 
 from __future__ import annotations
 
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -172,3 +173,108 @@ def test_merge_conflict_detected(git_repo: str) -> None:
     )
     lines = [l for l in r.stdout.strip().splitlines() if not l.endswith(".gitignore")]
     assert lines == []
+
+
+# ── Dashboard spawn integration ──────────────────────────────────────
+
+
+def test_send_workdir_prompt_enqueues(git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_send_workdir_prompt must call enqueue_envelope with a valid OutboundEnvelope."""
+    from zeus.dashboard.app import ZeusApp
+
+    # Redirect queue dir so we don't pollute real state
+    q_dir = tmp_path / "queue" / "new"
+    q_dir.mkdir(parents=True)
+    monkeypatch.setenv("ZEUS_STATE_DIR", str(tmp_path))
+    from zeus.message_queue import _new_dir
+    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", MagicMock())
+
+    # Provide a prompt template
+    zeus_home = str(tmp_path / "zeus")
+    os.makedirs(zeus_home, exist_ok=True)
+    (Path(zeus_home) / "workdir-agent.md").write_text(
+        "Agent <agent_name> on branch <branch_name> in <worktree_path> (repo <repo_root>, parent <parent_branch>)"
+    )
+    monkeypatch.setenv("ZEUS_HOME", zeus_home)
+
+    app = ZeusApp.__new__(ZeusApp)
+    app._send_workdir_prompt(
+        agent_id="abc123",
+        name="test-wt",
+        parent_branch="main",
+        branch="zeus/test-wt",
+        wt_path="/tmp/wt",
+        repo_root="/tmp/repo",
+    )
+
+    from zeus.dashboard.app import enqueue_envelope as mock_enqueue
+    assert mock_enqueue.called
+    envelope = mock_enqueue.call_args[0][0]
+    assert envelope.target_agent_id == "abc123"
+    assert envelope.target_name == "test-wt"
+    assert "test-wt" in envelope.message
+    assert "zeus/test-wt" in envelope.message
+    assert "/tmp/wt" in envelope.message
+    assert "<agent_name>" not in envelope.message  # placeholders replaced
+
+
+def test_spawn_workdir_blocking_creates_worktree_and_launches(
+    git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_spawn_workdir_blocking must create worktree and call Popen with kitty."""
+    from zeus.dashboard.app import ZeusApp
+
+    zeus_home = str(tmp_path / "zeus")
+    os.makedirs(zeus_home, exist_ok=True)
+    (Path(zeus_home) / "workdir-agent.md").write_text("prompt for <agent_name>")
+    monkeypatch.setenv("ZEUS_HOME", zeus_home)
+
+    # Mock Popen so we don't actually launch kitty — but let subprocess.run through
+    mock_proc = MagicMock()
+    mock_proc.pid = 12345
+    real_popen = subprocess.Popen
+    mock_popen = MagicMock(return_value=mock_proc)
+
+    def selective_popen(cmd, **kwargs):
+        if cmd and cmd[0] == "kitty":
+            return mock_popen(cmd, **kwargs)
+        return real_popen(cmd, **kwargs)
+
+    monkeypatch.setattr("subprocess.Popen", selective_popen)
+
+    # Mock enqueue_envelope
+    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", MagicMock())
+
+    agent = MagicMock()
+    agent.cwd = git_repo
+    agent.agent_id = "parent-id-123"
+    agent.workspace = ""
+
+    app = ZeusApp.__new__(ZeusApp)
+    result = app._spawn_workdir_blocking(agent, "test-agent")
+
+    assert result is True
+
+    # Worktree was created
+    wt = worktree_path(git_repo, "test-agent")
+    assert os.path.isdir(wt)
+    assert get_current_branch(wt) == "zeus/test-agent"
+
+    # Kitty was called with correct cwd
+    assert mock_popen.called
+    call_args = mock_popen.call_args
+    cmd = call_args[0][0]  # positional arg 0
+    assert cmd[0] == "kitty"
+    assert "--directory" in cmd
+    dir_idx = cmd.index("--directory")
+    assert cmd[dir_idx + 1] == wt
+
+    # Env vars set
+    env = call_args[1]["env"]
+    assert env["ZEUS_AGENT_NAME"] == "test-agent"
+    assert env["ZEUS_ROLE"] == "hippeus"
+    assert env["ZEUS_PARENT_BRANCH"] == "main"
+    assert env["ZEUS_PARENT_ID"] == "parent-id-123"
+
+    # Cleanup
+    remove_worktree(git_repo, "test-agent")
