@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Box, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -507,6 +508,16 @@ export default function (pi: ExtensionAPI) {
 
   let memoryConfig = loadMemoryConfig();
 
+  // ── Memory message renderer ───────────────────────────────────────────
+  pi.registerMessageRenderer("zeus_memory_log", (message, _options, theme) => {
+    const content = typeof message.content === "string"
+      ? message.content
+      : message.content.map((c) => ("text" in c ? c.text : "")).join("");
+    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+    box.addChild(new Text(theme.fg("dim", content), 0, 0));
+    return box;
+  });
+
   /** Log a memory event as a visible custom message (when verbose). */
   function memoryLog(label: string, detail: string): void {
     if (!memoryConfig.verbose) return;
@@ -514,7 +525,7 @@ export default function (pi: ExtensionAPI) {
       pi.sendMessage({
         customType: "zeus_memory_log",
         content: `🧠 [memory:${label}] ${detail}`,
-        display: "dimmed",
+        display: true,
       });
     } catch { /* best effort */ }
   }
@@ -531,15 +542,16 @@ export default function (pi: ExtensionAPI) {
         if (val === "on" || val === "true" || val === "1") {
           memoryConfig.verbose = true;
           saveMemoryConfig(memoryConfig);
-          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: ON" });
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: ON", display: true });
         } else if (val === "off" || val === "false" || val === "0") {
           memoryConfig.verbose = false;
           saveMemoryConfig(memoryConfig);
-          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: OFF" });
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: OFF", display: true });
         } else {
           pi.sendMessage({
             customType: "zeus_memory_log",
             content: `🧠 Memory verbose logging is currently: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
+            display: true,
           });
         }
         return;
@@ -564,6 +576,7 @@ export default function (pi: ExtensionAPI) {
             `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
             `  Config: ${MEMORY_CONFIG_PATH}`,
           ].join("\n"),
+          display: true,
         });
         return;
       }
@@ -571,6 +584,7 @@ export default function (pi: ExtensionAPI) {
       pi.sendMessage({
         customType: "zeus_memory_log",
         content: "🧠 Usage: /memory verbose on|off | /memory status",
+        display: true,
       });
     },
   });
