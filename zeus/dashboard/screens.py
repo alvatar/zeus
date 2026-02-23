@@ -1275,9 +1275,16 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="subagent-dialog"):
             yield Label(
-                f"🧬 Fork sub-Hippeus from [bold]{self.agent.name}[/bold]"
+                f"🧬 Sub-Hippeus from [bold]{self.agent.name}[/bold]"
             )
             yield Label(f"CWD: {self.agent.cwd}", classes="dim-label")
+            yield Label("Mode:")
+            yield RadioSet(
+                RadioButton("Clone Hippeus", value=True, id="subagent-mode-clone"),
+                RadioButton("Workdir Hippeus", id="subagent-mode-workdir"),
+                id="subagent-mode",
+                compact=False,
+            )
             yield Label("Name:")
             yield Input(
                 placeholder=f"e.g. {self.agent.name}-sub",
@@ -1286,21 +1293,34 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
             )
             with Horizontal(id="subagent-buttons"):
                 yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("🧬 Fork", variant="primary", id="fork-btn")
+                yield Button("🧬 Create", variant="primary", id="fork-btn")
+
+    def _selected_mode(self) -> str:
+        """Return 'clone' or 'workdir'."""
+        radio = self.query_one("#subagent-mode", RadioSet)
+        idx = radio.pressed_index
+        if idx == 1:
+            return "workdir"
+        return "clone"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "fork-btn":
-            self._fork()
+            self._create()
         else:
             self.dismiss()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        self._fork()
+        self._create()
 
-    def _fork(self) -> None:
+    def _create(self) -> None:
         name: str = self.query_one("#subagent-name", Input).value.strip()
         if not name:
             self.query_one("#subagent-name", Input).focus()
+            return
+        mode = self._selected_mode()
+        if mode == "workdir":
+            self.dismiss()
+            self.notify("Workdir Hippeus: not yet implemented", severity="warning")
             return
         self.dismiss()
         self.zeus.do_spawn_subagent(self.agent, name)

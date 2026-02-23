@@ -665,7 +665,7 @@ SubAgentScreen {{
 #subagent-dialog {{
     width: 60;
     height: auto;
-    max-height: 12;
+    max-height: 18;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
@@ -683,6 +683,11 @@ SubAgentScreen {{
 
 #subagent-dialog Input {{
     margin: 0 0 1 0;
+}}
+
+#subagent-mode {{
+    margin: 0 0 1 0;
+    height: auto;
 }}
 
 {_button_row_css("subagent-buttons", row_margin="1 0 0 0")}
