@@ -4,6 +4,10 @@ import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// Command handlers registered by Zeus extension, keyed by command name.
+// Used by bus delivery to dispatch /commands that arrive via messages.
+const zeusCommandHandlers = new Map<string, (args: string, ctx: any) => Promise<void>>();
+
 interface SessionSyncPayload {
   agentId: string;
   sessionPath: string;
@@ -303,7 +307,7 @@ function moveBackToNew(processingFile: string, newFile: string): void {
   }
 }
 
-function processClaimedFile(
+async function processClaimedFile(
   pi: ExtensionAPI,
   agentId: string,
   filePath: string,
@@ -333,8 +337,26 @@ function processClaimedFile(
   }
 
   try {
+    const msg = payload.message;
     const deliverAs = payload.deliver_as === "steer" ? "steer" : "followUp";
-    pi.sendUserMessage(payload.message, { deliverAs });
+
+    // Pi's sendUserMessage skips /command handling (expandPromptTemplates: false).
+    // Intercept Zeus /commands here and dispatch directly to our registered handlers.
+    if (typeof msg === "string" && msg.trimStart().startsWith("/") && zeusCommandHandlers) {
+      const trimmed = msg.trimStart().slice(1); // strip leading /
+      const spaceIdx = trimmed.indexOf(" ");
+      const cmdName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+      const cmdArgs = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1);
+      const handler = zeusCommandHandlers.get(cmdName.toLowerCase());
+      if (handler) {
+        await handler(cmdArgs, {} as any);
+      } else {
+        // Not a Zeus command — deliver as normal message (might be a Pi built-in or unknown)
+        pi.sendUserMessage(msg, { deliverAs });
+      }
+    } else {
+      pi.sendUserMessage(msg, { deliverAs });
+    }
   } catch {
     const retryPath = path.join(getAgentInboxNewDir(agentId), fileNameForRetry);
     moveBackToNew(filePath, retryPath);
@@ -357,7 +379,7 @@ function processClaimedFile(
   removeFile(filePath);
 }
 
-function processAgentInbox(pi: ExtensionAPI): void {
+async function processAgentInbox(pi: ExtensionAPI): Promise<void> {
   const agentId = getAgentId();
   if (!agentId) return;
 
@@ -380,7 +402,7 @@ function processAgentInbox(pi: ExtensionAPI): void {
 
     for (const fileName of processingFiles) {
       const claimedPath = path.join(inboxProcessing, fileName);
-      processClaimedFile(pi, agentId, claimedPath, fileName);
+      await processClaimedFile(pi, agentId, claimedPath, fileName);
     }
 
     const newFiles = fs
@@ -396,7 +418,7 @@ function processAgentInbox(pi: ExtensionAPI): void {
       } catch {
         continue;
       }
-      processClaimedFile(pi, agentId, claimedPath, fileName);
+      await processClaimedFile(pi, agentId, claimedPath, fileName);
     }
   } catch {
     // Inbox processing is best-effort.
@@ -556,9 +578,7 @@ export default function (pi: ExtensionAPI) {
     return `  ${ns}/${key}${tagStr}\n    ${preview.replace(/\n/g, "\n    ")}`;
   }
 
-  pi.registerCommand("memory", {
-    description: "Memory system — /memory help for all subcommands",
-    async handler(args: string, _ctx) {
+  const memoryCommandHandler = async (args: string, _ctx: any) => {
       // Preserve case for namespace/key args, lowercase only the subcommand
       const rawParts = args.trim().split(/\s+/);
       const sub = (rawParts[0] || "help").toLowerCase();
@@ -805,8 +825,13 @@ export default function (pi: ExtensionAPI) {
         ].join("\n"),
         display: true,
       });
-    },
+  };
+
+  pi.registerCommand("memory", {
+    description: "Memory system — /memory help for all subcommands",
+    handler: memoryCommandHandler,
   });
+  zeusCommandHandlers.set("memory", memoryCommandHandler);
 
   // ── Memory injection (before_agent_start) ─────────────────────────────
   // Appends relevant memories to the system prompt each turn.
