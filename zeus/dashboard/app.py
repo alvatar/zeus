@@ -1962,7 +1962,8 @@ class ZeusApp(App):
                 bottom_plain += f" {' '.join(subs_plain)}"
 
             card_w = max(len(bottom_plain), 8)
-            top_line = f"[{pc}]{'▄' * card_w}[/]"
+            # Leading space aligns band with name text below
+            top_line = f" [{pc}]{'▄' * (card_w - 1)}[/]"
             bottom_line = f" {inner}"
             cards.append((top_line, bottom_line, card_w))
 
