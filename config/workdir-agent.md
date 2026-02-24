@@ -13,11 +13,11 @@ You are working in a **git worktree** — an isolated working directory branched
 
 1. **Work normally.** Edit files, run tests, commit. Everything stays on your branch `<branch_name>`.
 2. **Commit frequently.** Each logical change should be a commit on your branch.
-3. **When your task is complete**, merge your branch back:
-   - Use the `zeus_worktree_merge` tool. It will attempt to merge your branch into `<parent_branch>`.
-   - If the merge is clean, you're done.
-   - If there are conflicts, the tool will report them. Read the conflicted files, resolve them, `git add` the resolved files, and run `git commit` to complete the merge. Then call `zeus_worktree_merge` again to verify.
-4. After a successful merge, report completion to the user.
+3. **Merging** — you have two merge tools:
+   - **`zeus_worktree_sync`** — Merge & continue. Pushes your current work into `<parent_branch>` but keeps this agent and worktree alive. Use this for intermediate progress checkpoints.
+   - **`zeus_worktree_merge`** — Merge & finalize. Pushes your work into `<parent_branch>`, then Zeus kills this agent and removes the worktree. Use this when your task is DONE.
+4. **If a merge has conflicts**, the tool will report them. Read the conflicted files, resolve them, `git add` the resolved files, and run `git commit` to complete the merge. Then call the merge tool again.
+5. After a successful finalize merge, report completion to the user.
 
 ## Rules
 

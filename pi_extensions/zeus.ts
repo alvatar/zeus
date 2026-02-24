@@ -1455,90 +1455,86 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ── zeus_worktree_merge ─────────────────────────────────────────────
-  pi.registerTool({
-    name: "zeus_worktree_merge",
-    label: "Merge worktree",
-    description:
-      "Merge the current worktree branch back into the parent branch. " +
-      "Only works from within a git worktree created by Zeus. " +
-      "Returns merge result or conflict details.",
-    parameters: Type.Object({}),
-    async execute(_toolCallId, _params, signal) {
-      // Detect worktree: git rev-parse --git-common-dir differs from --git-dir
-      const gitDirResult = await pi.exec("git", ["rev-parse", "--git-dir"], { signal, timeout: 5000 });
-      const gitCommonResult = await pi.exec("git", ["rev-parse", "--git-common-dir"], { signal, timeout: 5000 });
+  // ── Worktree merge helpers ──────────────────────────────────────────
 
-      if (gitDirResult.code !== 0 || gitCommonResult.code !== 0) {
-        return { content: [{ type: "text", text: "Not in a git repository." }] };
-      }
+  /** Shared merge logic for both sync and finalize. */
+  async function doWorktreeMerge(signal: AbortSignal | undefined, finalize: boolean): Promise<{
+    content: { type: string; text: string }[];
+    details?: Record<string, string>;
+  }> {
+    // Detect worktree: git rev-parse --git-common-dir differs from --git-dir
+    const gitDirResult = await pi.exec("git", ["rev-parse", "--git-dir"], { signal, timeout: 5000 });
+    const gitCommonResult = await pi.exec("git", ["rev-parse", "--git-common-dir"], { signal, timeout: 5000 });
 
-      const gitDir = (gitDirResult.stdout || "").trim();
-      const gitCommon = (gitCommonResult.stdout || "").trim();
+    if (gitDirResult.code !== 0 || gitCommonResult.code !== 0) {
+      return { content: [{ type: "text", text: "Not in a git repository." }] };
+    }
 
-      // In a worktree, --git-dir points to .git/worktrees/<name>, --git-common-dir points to .git
-      if (gitDir === gitCommon || gitDir === ".git") {
-        return { content: [{ type: "text", text: "Not in a git worktree. This tool only works from a Zeus workdir agent." }] };
-      }
+    const gitDir = (gitDirResult.stdout || "").trim();
+    const gitCommon = (gitCommonResult.stdout || "").trim();
 
-      // Get current branch
-      const branchResult = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { signal, timeout: 5000 });
-      if (branchResult.code !== 0) {
-        return { content: [{ type: "text", text: "Cannot determine current branch." }] };
-      }
-      const currentBranch = (branchResult.stdout || "").trim();
+    if (gitDir === gitCommon || gitDir === ".git") {
+      return { content: [{ type: "text", text: "Not in a git worktree. This tool only works from a Zeus workdir agent." }] };
+    }
 
-      if (!currentBranch.startsWith("zeus/")) {
-        return { content: [{ type: "text", text: `Current branch '${currentBranch}' is not a Zeus worktree branch (expected zeus/* prefix).` }] };
-      }
+    // Get current branch
+    const branchResult = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { signal, timeout: 5000 });
+    if (branchResult.code !== 0) {
+      return { content: [{ type: "text", text: "Cannot determine current branch." }] };
+    }
+    const currentBranch = (branchResult.stdout || "").trim();
 
-      // Find the main repo root (parent of .git/worktrees)
-      const commonDir = path.resolve(gitCommon);
-      const repoRoot = path.dirname(commonDir);  // .git -> repo root
+    if (!currentBranch.startsWith("zeus/")) {
+      return { content: [{ type: "text", text: `Current branch '${currentBranch}' is not a Zeus worktree branch (expected zeus/* prefix).` }] };
+    }
 
-      // Determine parent branch: read the ZEUS_PARENT_BRANCH env or default to main/master
-      let parentBranch = process.env.ZEUS_PARENT_BRANCH || "";
-      if (!parentBranch) {
-        // Try to detect main branch
-        for (const candidate of ["main", "master"]) {
-          const check = await pi.exec("git", ["rev-parse", "--verify", candidate], { signal, timeout: 5000, cwd: repoRoot });
-          if (check.code === 0) {
-            parentBranch = candidate;
-            break;
-          }
+    // Find the main repo root (parent of .git/worktrees)
+    const commonDir = path.resolve(gitCommon);
+    const repoRoot = path.dirname(commonDir);
+
+    // Determine parent branch
+    let parentBranch = process.env.ZEUS_PARENT_BRANCH || "";
+    if (!parentBranch) {
+      for (const candidate of ["main", "master"]) {
+        const check = await pi.exec("git", ["rev-parse", "--verify", candidate], { signal, timeout: 5000, cwd: repoRoot });
+        if (check.code === 0) {
+          parentBranch = candidate;
+          break;
         }
       }
-      if (!parentBranch) {
-        return { content: [{ type: "text", text: "Cannot determine parent branch. Set ZEUS_PARENT_BRANCH env var." }] };
-      }
+    }
+    if (!parentBranch) {
+      return { content: [{ type: "text", text: "Cannot determine parent branch. Set ZEUS_PARENT_BRANCH env var." }] };
+    }
 
-      // Check for uncommitted changes
-      const statusResult = await pi.exec("git", ["status", "--porcelain"], { signal, timeout: 5000 });
-      const uncommitted = (statusResult.stdout || "").trim();
-      if (uncommitted) {
-        return { content: [{ type: "text", text: `Uncommitted changes in worktree. Commit or stash before merging:\n${uncommitted}` }] };
-      }
+    // Check for uncommitted changes
+    const statusResult = await pi.exec("git", ["status", "--porcelain"], { signal, timeout: 5000 });
+    const uncommitted = (statusResult.stdout || "").trim();
+    if (uncommitted) {
+      return { content: [{ type: "text", text: `Uncommitted changes in worktree. Commit or stash before merging:\n${uncommitted}` }] };
+    }
 
-      // Perform merge from the main repo directory
-      const mergeResult = await pi.exec("git", [
-        "-C", repoRoot,
-        "merge", "--no-ff", currentBranch,
-        "-m", `Merge ${currentBranch} into ${parentBranch}`,
-      ], { signal, timeout: 60000 });
+    // Perform merge from the main repo directory
+    const mergeResult = await pi.exec("git", [
+      "-C", repoRoot,
+      "merge", "--no-ff", currentBranch,
+      "-m", `Merge ${currentBranch} into ${parentBranch}`,
+    ], { signal, timeout: 60000 });
 
-      if (mergeResult.code === 0) {
-        const output = (mergeResult.stdout || "").trim();
-        memoryLog("worktree-merge", `Merged ${currentBranch} into ${parentBranch} successfully`);
+    if (mergeResult.code === 0) {
+      const output = (mergeResult.stdout || "").trim();
+      const mode = finalize ? "merge+finalize" : "merge+continue";
+      memoryLog("worktree-merge", `${mode}: ${currentBranch} → ${parentBranch}`);
 
-        // Signal Zeus dashboard for cleanup (same pattern as consolidation_done)
+      if (finalize) {
+        // Signal Zeus dashboard for cleanup
         const agentId = process.env.ZEUS_AGENT_ID || "";
         const agentName = process.env.ZEUS_AGENT_NAME || "";
         if (agentId) {
           const busDir = path.join(getStateDir(), "agent-bus", "inbox", "zeus", "new");
           try {
-            const fs = await import("fs");
             fs.mkdirSync(busDir, { recursive: true });
-            const signal_payload = JSON.stringify({
+            const signalPayload = JSON.stringify({
               type: "worktree_merge_done",
               agent_id: agentId,
               agent_name: agentName,
@@ -1547,39 +1543,72 @@ export default function (pi: ExtensionAPI) {
               repo_root: repoRoot,
             });
             const sigFile = path.join(busDir, `worktree-done-${agentId.slice(0, 8)}-${Date.now()}.json`);
-            fs.writeFileSync(sigFile, signal_payload);
-          } catch (e) {
+            fs.writeFileSync(sigFile, signalPayload);
+          } catch {
             // Best-effort signal; merge already succeeded
           }
         }
-
         return {
-          content: [{ type: "text", text: `Merge successful: ${currentBranch} → ${parentBranch}\n${output}\n\nZeus will clean up the worktree.` }],
-          details: { branch: currentBranch, target: parentBranch, status: "merged" },
+          content: [{ type: "text", text: `Merge & finalize: ${currentBranch} → ${parentBranch}\n${output}\n\nZeus will clean up the worktree and terminate this agent.` }],
+          details: { branch: currentBranch, target: parentBranch, status: "finalized" },
         };
       }
 
-      // Merge failed — get conflict info
-      const conflictResult = await pi.exec("git", [
-        "-C", repoRoot,
-        "diff", "--name-only", "--diff-filter=U",
-      ], { signal, timeout: 10000 });
-      const conflicts = (conflictResult.stdout || "").trim();
-
-      // Abort the failed merge to leave repo clean
-      await pi.exec("git", ["-C", repoRoot, "merge", "--abort"], { signal, timeout: 10000 });
-
-      const errOutput = ((mergeResult.stdout || "") + "\n" + (mergeResult.stderr || "")).trim();
-      let msg = `Merge conflicts detected when merging ${currentBranch} into ${parentBranch}.\n\n${errOutput}`;
-      if (conflicts) {
-        msg += `\n\nConflicted files:\n${conflicts}`;
-      }
-      msg += "\n\nResolve conflicts in the conflicted files, git add them, commit, then try again.";
-
+      // Continue mode: merge succeeded, agent keeps working
       return {
-        content: [{ type: "text", text: msg }],
-        details: { branch: currentBranch, target: parentBranch, status: "conflicts", files: conflicts },
+        content: [{ type: "text", text: `Merge & continue: ${currentBranch} → ${parentBranch}\n${output}\n\nWorktree stays active. Continue working.` }],
+        details: { branch: currentBranch, target: parentBranch, status: "synced" },
       };
+    }
+
+    // Merge failed — get conflict info
+    const conflictResult = await pi.exec("git", [
+      "-C", repoRoot,
+      "diff", "--name-only", "--diff-filter=U",
+    ], { signal, timeout: 10000 });
+    const conflicts = (conflictResult.stdout || "").trim();
+
+    // Abort the failed merge to leave repo clean
+    await pi.exec("git", ["-C", repoRoot, "merge", "--abort"], { signal, timeout: 10000 });
+
+    const errOutput = ((mergeResult.stdout || "") + "\n" + (mergeResult.stderr || "")).trim();
+    let msg = `Merge conflicts detected when merging ${currentBranch} into ${parentBranch}.\n\n${errOutput}`;
+    if (conflicts) {
+      msg += `\n\nConflicted files:\n${conflicts}`;
+    }
+    msg += "\n\nResolve conflicts in the conflicted files, git add them, commit, then try again.";
+
+    return {
+      content: [{ type: "text", text: msg }],
+      details: { branch: currentBranch, target: parentBranch, status: "conflicts", files: conflicts },
+    };
+  }
+
+  // ── zeus_worktree_merge (finalize) ────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_worktree_merge",
+    label: "Merge & finalize",
+    description:
+      "Merge the current worktree branch back into the parent branch and finalize. " +
+      "After a successful merge, Zeus kills this agent and removes the worktree. " +
+      "Use this when your work is DONE. Only works from a Zeus workdir agent.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      return doWorktreeMerge(signal, true);
+    },
+  });
+
+  // ── zeus_worktree_sync (continue) ─────────────────────────────────────
+  pi.registerTool({
+    name: "zeus_worktree_sync",
+    label: "Merge & continue",
+    description:
+      "Merge the current worktree branch into the parent branch but keep working. " +
+      "The worktree and agent stay alive after the merge. " +
+      "Use this to push intermediate progress without finishing. Only works from a Zeus workdir agent.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      return doWorktreeMerge(signal, false);
     },
   });
 }

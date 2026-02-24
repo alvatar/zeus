@@ -73,7 +73,7 @@ Agent Memory
 - Content: concise and actionable. State the rule directly, no preamble.
 
 Git worktrees
-- If you are working in a git worktree (branch prefix `zeus/`), use `zeus_worktree_merge` to merge your branch back when done.
+- If you are working in a git worktree (branch prefix `zeus/`), use `zeus_worktree_sync` to merge intermediate progress, or `zeus_worktree_merge` to merge and finalize (kills agent, removes worktree).
 - Commit all changes before merging. The tool will report conflicts if any — resolve them, then retry.
 
 Tmux sessions and observability
