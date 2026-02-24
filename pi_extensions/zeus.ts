@@ -742,6 +742,35 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // ── rename <old_ns> <new_ns> ─────────────────────────────────
+      if (sub === "rename" || sub === "mv") {
+        const oldNs = rawParts[1];
+        const newNs = rawParts[2];
+        if (!oldNs || !newNs) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory rename <old_namespace> <new_namespace>\nExample: /memory rename project:old-name project:new-name", display: true });
+          return;
+        }
+        try {
+          await ensureMemorySchema();
+          const count = await memoryQueryRaw(
+            `SELECT COUNT(*) FROM memories WHERE namespace = '${sqlEscape(oldNs)}';`
+          );
+          if (!count || count === "0") {
+            pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No memories found in namespace '${oldNs}'.`, display: true });
+            return;
+          }
+          await sqliteExec(`
+            UPDATE memories SET namespace = '${sqlEscape(newNs)}' WHERE namespace = '${sqlEscape(oldNs)}';
+            UPDATE memories SET source_project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE source_project = '${sqlEscape(oldNs.replace("project:", ""))}';
+            UPDATE topic_links SET project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE project = '${sqlEscape(oldNs.replace("project:", ""))}';
+          `);
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Renamed: ${oldNs} → ${newNs} (${count} memories)`, display: true });
+        } catch (e: any) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error: ${e.message || e}`, display: true });
+        }
+        return;
+      }
+
       // ── namespaces ───────────────────────────────────────────────
       if (sub === "namespaces" || sub === "ns") {
         const raw = await memoryQueryRaw(
@@ -767,11 +796,12 @@ export default function (pi: ExtensionAPI) {
           "  /memory save <ns> <key> <content...> — save or update a memory",
           "  /memory search <query>               — full-text search across all memories",
           "  /memory delete <ns> <key>            — permanently remove a memory",
+          "  /memory rename <old_ns> <new_ns>     — rename a namespace (e.g. after moving a project folder)",
           "  /memory namespaces                   — list all namespaces with counts",
           "  /memory topics                       — list topics and pending staging entries",
           "  /memory verbose on|off               — toggle injection/warm-path logging",
           "",
-          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save",
+          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save, mv=rename",
         ].join("\n"),
         display: true,
       });
