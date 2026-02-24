@@ -1584,9 +1584,29 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      // Continue mode: merge succeeded, agent keeps working
+      // Continue mode: push succeeded, now pull parent → worktree
+      const pullResult = await pi.exec("git", [
+        "merge", parentBranch,
+        "-m", `Merge ${parentBranch} into ${currentBranch}`,
+      ], { signal, timeout: 60000 });
+
+      if (pullResult.code !== 0) {
+        // Pull had conflicts — abort and report
+        const pullConflicts = await pi.exec("git", ["diff", "--name-only", "--diff-filter=U"], { signal, timeout: 10000 });
+        await pi.exec("git", ["merge", "--abort"], { signal, timeout: 10000 });
+        const conflictFiles = (pullConflicts.stdout || "").trim();
+        let pullMsg = `Pushed ${currentBranch} → ${parentBranch} OK, but pulling ${parentBranch} → ${currentBranch} has conflicts.`;
+        if (conflictFiles) pullMsg += `\n\nConflicted files:\n${conflictFiles}`;
+        pullMsg += "\n\nResolve conflicts, commit, then try again.";
+        return {
+          content: [{ type: "text", text: pullMsg }],
+          details: { branch: currentBranch, target: parentBranch, status: "pull_conflicts", files: conflictFiles },
+        };
+      }
+
+      const pullOutput = (pullResult.stdout || "").trim();
       return {
-        content: [{ type: "text", text: `Merge & continue: ${currentBranch} → ${parentBranch}\n${output}\n\nWorktree stays active. Continue working.` }],
+        content: [{ type: "text", text: `Merge & continue:\n  ${currentBranch} → ${parentBranch}: OK\n  ${parentBranch} → ${currentBranch}: OK\n${output}\n${pullOutput}\n\nWorktree is in sync. Continue working.` }],
         details: { branch: currentBranch, target: parentBranch, status: "synced" },
       };
     }
