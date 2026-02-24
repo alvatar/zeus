@@ -719,6 +719,29 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // ── save <namespace> <key> <content...> ────────────────────
+      if (sub === "save" || sub === "set") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        const content = rawParts.slice(3).join(" ");
+        if (!ns || !key || !content) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory save <namespace> <key> <content...>", display: true });
+          return;
+        }
+        try {
+          await ensureMemorySchema();
+          await sqliteExec(
+            `INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
+             VALUES ('${sqlEscape(ns)}', '${sqlEscape(key)}', '${sqlEscape(content)}', '', '${sqlEscape(getAgentId())}', '${sqlEscape(await resolveProjectName())}')
+             ON CONFLICT(namespace, key) DO UPDATE SET content = excluded.content, updated_at = datetime('now');`
+          );
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Saved: ${ns}/${key}`, display: true });
+        } catch (e: any) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error saving: ${e.message || e}`, display: true });
+        }
+        return;
+      }
+
       // ── namespaces ───────────────────────────────────────────────
       if (sub === "namespaces" || sub === "ns") {
         const raw = await memoryQueryRaw(
@@ -738,16 +761,17 @@ export default function (pi: ExtensionAPI) {
         content: [
           "🧠 /memory commands:",
           "",
-          "  /memory status              — DB stats, namespace counts, verbose state",
-          "  /memory list [namespace]    — list all memories (or filter by namespace)",
-          "  /memory get <ns> <key>      — show full content of a memory",
-          "  /memory search <query>      — full-text search across all memories",
-          "  /memory delete <ns> <key>   — permanently remove a memory",
-          "  /memory namespaces          — list all namespaces with counts",
-          "  /memory topics              — list topics and pending staging entries",
-          "  /memory verbose on|off      — toggle injection/warm-path logging",
+          "  /memory status                       — DB stats, namespace counts, verbose state",
+          "  /memory list [namespace]             — list all memories (or filter by namespace)",
+          "  /memory get <ns> <key>               — show full content of a memory",
+          "  /memory save <ns> <key> <content...> — save or update a memory",
+          "  /memory search <query>               — full-text search across all memories",
+          "  /memory delete <ns> <key>            — permanently remove a memory",
+          "  /memory namespaces                   — list all namespaces with counts",
+          "  /memory topics                       — list topics and pending staging entries",
+          "  /memory verbose on|off               — toggle injection/warm-path logging",
           "",
-          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get",
+          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save",
         ].join("\n"),
         display: true,
       });
