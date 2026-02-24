@@ -5409,7 +5409,7 @@ class ZeusApp(App):
         else:
             prompt_text = (
                 f"You are working in git worktree branch `{branch}` "
-                f"at `{wt_path}`. Merge with `zeus_worktree_merge` when done."
+                f"at `{wt_path}`. Use `zeus_worktree_merge_and_finalize` when done, or `zeus_worktree_merge_and_continue` for intermediate merges."
             )
         return prompt_text
 

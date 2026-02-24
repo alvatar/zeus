@@ -1584,9 +1584,9 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  // ── zeus_worktree_merge (finalize) ────────────────────────────────────
+  // ── zeus_worktree_merge_and_finalize (finalize) ────────────────────────────────────
   pi.registerTool({
-    name: "zeus_worktree_merge",
+    name: "zeus_worktree_merge_and_finalize",
     label: "Merge & finalize",
     description:
       "Merge the current worktree branch back into the parent branch and finalize. " +
@@ -1598,9 +1598,9 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ── zeus_worktree_sync (continue) ─────────────────────────────────────
+  // ── zeus_worktree_merge_and_continue (continue) ─────────────────────────────────────
   pi.registerTool({
-    name: "zeus_worktree_sync",
+    name: "zeus_worktree_merge_and_continue",
     label: "Merge & continue",
     description:
       "Merge the current worktree branch into the parent branch but keep working. " +
