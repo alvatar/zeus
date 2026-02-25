@@ -217,6 +217,79 @@ def test_drain_message_queue_unresolved_notice_emits_once_for_same_reason(
     assert "Queue delayed:" in notices[0]
 
 
+def test_drain_message_queue_quarantines_dead_agent_target(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    _advance_clock(monkeypatch)
+
+    app = ZeusApp()
+    app.agents = []
+    app._message_receipts = {}
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
+
+    env = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="agent",
+        target_ref="dead-agent-id",
+        target_agent_id="dead-agent-id",
+        message="wake-up",
+    )
+    mq.enqueue_envelope(env)
+
+    app._drain_message_queue()
+
+    assert mq.list_new_envelopes() == []
+    assert mq.list_inflight_envelopes() == []
+    quarantine_files = sorted((tmp_path / "queue" / "quarantine").glob("*.json"))
+    assert len(quarantine_files) == 1
+
+    payload = json.loads(quarantine_files[0].read_text())
+    assert payload.get("id") == env.id
+    quarantine = payload.get("quarantine")
+    assert isinstance(quarantine, dict)
+    assert str(quarantine.get("reason", "")).startswith("agent target not active:")
+    assert notices
+    assert "Queue quarantined (24h):" in notices[-1]
+
+
+def test_drain_message_queue_purges_expired_quarantine_entries(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    _advance_clock(monkeypatch, start=50_000.0)
+
+    app = ZeusApp()
+    app.agents = []
+    app._message_receipts = {}
+
+    quarantine_dir = tmp_path / "queue" / "quarantine"
+    quarantine_dir.mkdir(parents=True, exist_ok=True)
+    stale = quarantine_dir / "stale.json"
+    stale.write_text(
+        json.dumps(
+            {
+                "id": "stale-msg",
+                "message": "payload",
+                "quarantine": {
+                    "reason": "agent target not active: dead-agent",
+                    "quarantined_at": 1.0,
+                    "purge_after": 2.0,
+                },
+            }
+        )
+    )
+
+    app._drain_message_queue()
+
+    assert not stale.exists()
+
+
 def test_drain_message_queue_drops_stale_unresolved_envelope(
     monkeypatch,
     tmp_path: Path,

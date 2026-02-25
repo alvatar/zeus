@@ -68,7 +68,9 @@ from ..message_queue import (
     ensure_queue_dirs,
     list_new_envelopes,
     load_envelope,
+    purge_quarantine,
     queue_new_dir,
+    quarantine_envelope,
     reclaim_stale_inflight,
     requeue_envelope,
 )
@@ -672,6 +674,7 @@ class ZeusApp(App):
     _message_receipts_ttl_s: float = 24 * 3600.0
     _message_receipts: dict[str, dict[str, float]] = {}
     _queue_capability_retry_s: float = 2.0
+    _queue_quarantine_ttl_s: float = 24 * 3600.0
     _queue_unresolved_drop_age_s: float = 24 * 3600.0
     _queue_unresolved_notice_at: dict[str, float] = {}
     _queue_unresolved_notice_reason: dict[str, str] = {}
@@ -3064,6 +3067,53 @@ class ZeusApp(App):
         self._queue_unresolved_notice_reason[envelope_id] = detail
         self.notify(f"Queue delayed: {detail}", timeout=4)
 
+    def _queue_failure_should_quarantine(
+        self,
+        envelope: OutboundEnvelope,
+        reason: str | None,
+    ) -> bool:
+        """Return True when unresolved queue failures are terminal enough to quarantine."""
+        if not reason:
+            return False
+
+        detail = reason.strip().lower()
+        kind = (envelope.target_kind or "").strip().lower()
+
+        if kind == "agent" and detail.startswith("agent target not active:"):
+            return True
+        if detail.startswith("unsupported queue target kind:"):
+            return True
+        if detail.startswith("agent target id is empty"):
+            return True
+
+        return False
+
+    def _quarantine_envelope(
+        self,
+        inflight_path: Path,
+        envelope: OutboundEnvelope,
+        *,
+        reason: str,
+    ) -> bool:
+        now_ts = time.time()
+        quarantined = quarantine_envelope(
+            inflight_path,
+            envelope,
+            now=now_ts,
+            reason=reason,
+            quarantine_ttl_s=self._queue_quarantine_ttl_s,
+        )
+        if quarantined is None:
+            return False
+
+        self._queue_unresolved_notice_at.pop(envelope.id, None)
+        self._queue_unresolved_notice_reason.pop(envelope.id, None)
+        self.notify(
+            f"Queue quarantined (24h): {reason}",
+            timeout=4,
+        )
+        return True
+
     def _get_agent_by_id(self, agent_id: str) -> AgentWindow | None:
         clean = agent_id.strip()
         if not clean:
@@ -3275,6 +3325,10 @@ class ZeusApp(App):
         receipts_changed = False
         try:
             now = time.time()
+            purge_quarantine(
+                now=now,
+                default_ttl_s=self._queue_quarantine_ttl_s,
+            )
             reclaim_stale_inflight(self._message_queue_inflight_lease_s, now=now)
             receipts_changed |= prune_message_receipts(
                 self._message_receipts,
@@ -3307,6 +3361,21 @@ class ZeusApp(App):
                         ack_envelope(inflight)
                         continue
 
+                    if self._queue_failure_should_quarantine(claimed, pre_error):
+                        quarantined = self._quarantine_envelope(
+                            inflight,
+                            claimed,
+                            reason=pre_error or "target unresolved",
+                        )
+                        if not quarantined:
+                            requeue_envelope(
+                                inflight,
+                                claimed,
+                                now=time.time(),
+                                delay_seconds=self._queue_retry_delay_s(claimed.attempts),
+                            )
+                        continue
+
                     now_ts = time.time()
                     if self._is_unresolved_queue_stale(claimed, now=now_ts):
                         ack_envelope(inflight)
@@ -3337,6 +3406,21 @@ class ZeusApp(App):
                 targets, resolve_error = self._resolve_queue_targets(claimed)
                 if not targets:
                     self._notify_queue_unresolved(claimed, resolve_error)
+
+                    if self._queue_failure_should_quarantine(claimed, resolve_error):
+                        quarantined = self._quarantine_envelope(
+                            inflight,
+                            claimed,
+                            reason=resolve_error or "target unresolved",
+                        )
+                        if not quarantined:
+                            requeue_envelope(
+                                inflight,
+                                claimed,
+                                now=time.time(),
+                                delay_seconds=self._queue_retry_delay_s(claimed.attempts),
+                            )
+                        continue
 
                     now_ts = time.time()
                     if self._is_unresolved_queue_stale(claimed, now=now_ts):

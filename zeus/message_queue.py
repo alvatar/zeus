@@ -204,9 +204,14 @@ def _inflight_dir() -> Path:
     return MESSAGE_QUEUE_DIR / "inflight"
 
 
+def _quarantine_dir() -> Path:
+    return MESSAGE_QUEUE_DIR / "quarantine"
+
+
 def ensure_queue_dirs() -> None:
     _new_dir().mkdir(parents=True, exist_ok=True)
     _inflight_dir().mkdir(parents=True, exist_ok=True)
+    _quarantine_dir().mkdir(parents=True, exist_ok=True)
 
 
 def queue_new_dir() -> Path:
@@ -282,6 +287,84 @@ def ack_envelope(inflight_path: Path) -> None:
         inflight_path.unlink()
     except OSError:
         pass
+
+
+def quarantine_envelope(
+    source_path: Path,
+    envelope: OutboundEnvelope,
+    *,
+    now: float,
+    reason: str,
+    quarantine_ttl_s: float,
+) -> Path | None:
+    """Move envelope to quarantine with reason and purge deadline metadata."""
+    ensure_queue_dirs()
+
+    payload = envelope.to_dict()
+    payload["quarantine"] = {
+        "reason": reason,
+        "quarantined_at": now,
+        "purge_after": now + max(0.0, quarantine_ttl_s),
+    }
+
+    target = _quarantine_dir() / source_path.name
+    if target.exists():
+        target = _quarantine_dir() / f"{int(now * 1000):013d}-{source_path.name}"
+
+    try:
+        _atomic_write_json(target, payload)
+        source_path.unlink(missing_ok=True)
+    except OSError:
+        return None
+
+    return target
+
+
+def purge_quarantine(
+    *,
+    now: float,
+    default_ttl_s: float,
+) -> int:
+    """Purge expired quarantined envelopes.
+
+    Uses per-file ``quarantine.purge_after`` when present; otherwise falls back to
+    file mtime + ``default_ttl_s``.
+    """
+    ensure_queue_dirs()
+    purged = 0
+
+    for path in _quarantine_dir().iterdir():
+        if not path.is_file() or path.suffix != ".json":
+            continue
+
+        purge_after: float | None = None
+        try:
+            raw = json.loads(path.read_text())
+            if isinstance(raw, dict):
+                quarantine = raw.get("quarantine")
+                if isinstance(quarantine, dict):
+                    value = quarantine.get("purge_after")
+                    if isinstance(value, (int, float)):
+                        purge_after = float(value)
+        except (OSError, json.JSONDecodeError):
+            purge_after = None
+
+        if purge_after is None:
+            try:
+                purge_after = path.stat().st_mtime + max(0.0, default_ttl_s)
+            except OSError:
+                continue
+
+        if now < purge_after:
+            continue
+
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        purged += 1
+
+    return purged
 
 
 def requeue_envelope(

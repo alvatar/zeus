@@ -162,7 +162,10 @@ class _ZeusScreenMixin:
 
     def _dismiss_safe(self, result: object | None = None) -> None:
         try:
-            self.dismiss(result)  # type: ignore[attr-defined]
+            if result is None:
+                self.dismiss()  # type: ignore[attr-defined]
+            else:
+                self.dismiss(result)  # type: ignore[attr-defined]
         except InvalidStateError:
             # Duplicate queued completion callbacks can dismiss the same modal twice.
             return
@@ -2004,14 +2007,6 @@ class SaveSnapshotScreen(_ZeusScreenMixin, ModalScreen):
         self.query_one("#snapshot-save-cancel", Button).label = "Saving…"
         self.query_one("#snapshot-save-cancel", Button).disabled = True
 
-    def _dismiss_safe(self) -> None:
-        try:
-            self.dismiss()
-        except InvalidStateError:
-            # Textual can deliver a queued dismiss action after the screen was
-            # already dismissed; ignore duplicate completion races.
-            return
-
     def action_dismiss(self) -> None:
         if self._saving:
             self.zeus.notify("Snapshot save in progress…", timeout=2)
@@ -2103,15 +2098,6 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
         if value is Select.BLANK:
             return None
         return str(value)
-
-    def _dismiss_safe(self) -> None:
-        try:
-            self.dismiss()
-        except InvalidStateError:
-            return
-
-    def action_dismiss(self) -> None:
-        self._dismiss_safe()
 
     def _enter_restoring_state(self) -> None:
         self._restoring = True
