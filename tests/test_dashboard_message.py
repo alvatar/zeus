@@ -1,5 +1,6 @@
 """Tests for table-triggered Hippeus message dialog helpers."""
 
+from asyncio import InvalidStateError
 import inspect
 from types import SimpleNamespace
 
@@ -1343,6 +1344,80 @@ def test_app_ctrl_w_routes_to_preset_message_modal_when_open(monkeypatch) -> Non
     app.action_queue_interact()
 
     assert called == [True]
+
+
+def test_agent_message_screen_action_send_ignores_invalid_state(monkeypatch) -> None:
+    screen = AgentMessageScreen(_agent("alpha", 1))
+
+    sent: list[tuple[str, str]] = []
+
+    class _ZeusStub:
+        def do_send_agent_message(self, agent: AgentWindow, text: str) -> bool:
+            sent.append((agent.name, text))
+            return True
+
+    monkeypatch.setattr(AgentMessageScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: SimpleNamespace(text="hello"))
+    monkeypatch.setattr(
+        screen,
+        "dismiss",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InvalidStateError("invalid state")),
+    )
+
+    screen.action_send()
+
+    assert sent == [("alpha", "hello")]
+
+
+def test_agent_tasks_screen_action_save_ignores_invalid_state(monkeypatch) -> None:
+    from zeus.dashboard.screens import AgentTasksScreen
+
+    screen = AgentTasksScreen(_agent("alpha", 1), task_text="")
+
+    saved: list[tuple[str, str]] = []
+
+    class _ZeusStub:
+        def do_save_agent_tasks(self, agent: AgentWindow, text: str) -> None:
+            saved.append((agent.name, text))
+
+    monkeypatch.setattr(type(screen), "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: SimpleNamespace(text="- [ ] task"))
+    monkeypatch.setattr(
+        screen,
+        "dismiss",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InvalidStateError("invalid state")),
+    )
+
+    screen.action_save()
+
+    assert saved == [("alpha", "- [ ] task")]
+
+
+def test_preset_message_screen_action_send_ignores_invalid_state(monkeypatch) -> None:
+    screen = PresetMessageScreen(
+        _agent("alpha", 1),
+        templates=[("Self-review", "Review your output against your own claims again")],
+    )
+
+    sent: list[tuple[str, str]] = []
+
+    class _ZeusStub:
+        def do_send_agent_message(self, agent: AgentWindow, text: str) -> bool:
+            sent.append((agent.name, text))
+            return True
+
+    monkeypatch.setattr(PresetMessageScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "_selected_template_title", lambda: "Self-review")
+    monkeypatch.setattr(screen, "query_one", lambda _selector, _cls=None: SimpleNamespace(text="review now"))
+    monkeypatch.setattr(
+        screen,
+        "dismiss",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InvalidStateError("invalid state")),
+    )
+
+    screen.action_send()
+
+    assert sent == [("alpha", "review now")]
 
 
 # ── Message preset buttons ──────────────────────────────────────────

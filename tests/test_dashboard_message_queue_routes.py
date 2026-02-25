@@ -165,7 +165,7 @@ def test_drain_message_queue_hoplite_without_agent_id_is_blocked_with_notice(
     app._message_receipts = {}
 
     notices: list[str] = []
-    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
 
     envelope = mq.OutboundEnvelope.new(
         source_name="polemarch",
@@ -180,7 +180,7 @@ def test_drain_message_queue_hoplite_without_agent_id_is_blocked_with_notice(
     app._drain_message_queue()
 
     assert notices
-    assert "Queue blocked:" in notices[-1]
+    assert "Queue delayed:" in notices[-1]
     assert "missing @zeus_agent id" in notices[-1]
     assert len(mq.list_new_envelopes()) == 1
     assert mq.list_inflight_envelopes() == []
@@ -198,7 +198,7 @@ def test_drain_message_queue_unresolved_notice_emits_once_for_same_reason(
     app._message_receipts = {}
 
     notices: list[str] = []
-    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
 
     envelope = mq.OutboundEnvelope.new(
         source_name="source",
@@ -214,7 +214,7 @@ def test_drain_message_queue_unresolved_notice_emits_once_for_same_reason(
     app._drain_message_queue()
 
     assert len(notices) == 1
-    assert "Queue blocked:" in notices[0]
+    assert "Queue delayed:" in notices[0]
 
 
 def test_drain_message_queue_drops_stale_unresolved_envelope(
@@ -229,7 +229,7 @@ def test_drain_message_queue_drops_stale_unresolved_envelope(
     app._message_receipts = {}
 
     notices: list[str] = []
-    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
 
     envelope = mq.OutboundEnvelope.new(
         source_name="source",
@@ -246,7 +246,7 @@ def test_drain_message_queue_drops_stale_unresolved_envelope(
     app._drain_message_queue()
 
     assert notices
-    assert "Queue blocked:" in notices[-1]
+    assert "Queue delayed:" in notices[-1]
     assert mq.list_new_envelopes() == []
     assert mq.list_inflight_envelopes() == []
 
@@ -264,7 +264,7 @@ def test_drain_message_queue_blocks_when_capability_missing(
     app._message_receipts = {}
 
     notices: list[str] = []
-    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
 
     env = mq.OutboundEnvelope.new(
         source_name="source",
@@ -279,7 +279,7 @@ def test_drain_message_queue_blocks_when_capability_missing(
     app._drain_message_queue()
 
     assert notices
-    assert "Queue blocked:" in notices[-1]
+    assert "Queue delayed:" in notices[-1]
     assert "missing capability heartbeat" in notices[-1]
     assert len(mq.list_new_envelopes()) == 1
     assert mq.list_inflight_envelopes() == []

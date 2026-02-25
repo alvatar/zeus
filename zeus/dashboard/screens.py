@@ -160,6 +160,13 @@ class _ZeusScreenMixin:
     def zeus(self) -> ZeusApp:
         return self.app  # type: ignore[return-value, attr-defined]
 
+    def _dismiss_safe(self, result: object | None = None) -> None:
+        try:
+            self.dismiss(result)  # type: ignore[attr-defined]
+        except InvalidStateError:
+            # Duplicate queued completion callbacks can dismiss the same modal twice.
+            return
+
 
 class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
     CSS = NEW_AGENT_CSS
@@ -670,7 +677,7 @@ class AgentTasksScreen(_ZeusScreenMixin, ModalScreen):
 
     def _save(self) -> None:
         task_text = self.query_one("#agent-tasks-input", ZeusTextArea).text
-        self.dismiss()
+        self._dismiss_safe()
         self.zeus.do_save_agent_tasks(self.agent, task_text)
 
     def _clear_done_tasks(self) -> None:
@@ -799,27 +806,27 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
     def action_send(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_send_agent_message(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_queue(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_queue_agent_message(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_add_task(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_add_agent_message_task(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_add_task_first(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
         if self.zeus.do_prepend_agent_message_task(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_cancel(self) -> None:
         draft = self.query_one("#agent-message-input", ZeusTextArea).text
         self.zeus.do_save_agent_message_draft(self.agent, draft)
-        self.dismiss()
+        self._dismiss_safe()
 
     def _expanded_output_underlay(self) -> ExpandedOutputScreen | None:
         stack = list(self.app.screen_stack)
@@ -943,17 +950,17 @@ class PresetMessageScreen(_ZeusScreenMixin, ModalScreen):
         text = self.query_one("#preset-message-input", ZeusTextArea).text
         self._message_by_title[title] = text
         if self.zeus.do_send_agent_message(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_queue(self) -> None:
         title = self._selected_template_title()
         text = self.query_one("#preset-message-input", ZeusTextArea).text
         self._message_by_title[title] = text
         if self.zeus.do_queue_agent_message(self.agent, text):
-            self.dismiss()
+            self._dismiss_safe()
 
     def action_cancel(self) -> None:
-        self.dismiss()
+        self._dismiss_safe()
 
 
 class LastSentMessageScreen(_ZeusScreenMixin, ModalScreen):

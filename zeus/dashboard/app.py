@@ -3062,7 +3062,7 @@ class ZeusApp(App):
 
         self._queue_unresolved_notice_at[envelope_id] = now
         self._queue_unresolved_notice_reason[envelope_id] = detail
-        self.notify_force(f"Queue blocked: {detail}", timeout=4)
+        self.notify(f"Queue delayed: {detail}", timeout=4)
 
     def _get_agent_by_id(self, agent_id: str) -> AgentWindow | None:
         clean = agent_id.strip()
