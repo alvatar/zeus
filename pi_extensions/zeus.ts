@@ -507,6 +507,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   let memoryConfig = loadMemoryConfig();
+  let memoryInjectionEnabled = true;
 
   // ── Memory message renderer ───────────────────────────────────────────
   pi.registerMessageRenderer("zeus_memory_log", (message, _options, theme) => {
@@ -584,6 +585,27 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // ── injection toggle (current agent only) ────────────────────
+      if (sub === "enable") {
+        memoryInjectionEnabled = true;
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: "🧠 Memory injection: ON (current agent)",
+          display: true,
+        });
+        return;
+      }
+
+      if (sub === "disable") {
+        memoryInjectionEnabled = false;
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: "🧠 Memory injection: OFF (current agent)",
+          display: true,
+        });
+        return;
+      }
+
       // ── status ───────────────────────────────────────────────────
       if (sub === "status") {
         const dbPath = path.join(getStateDir(), "memory.db");
@@ -603,6 +625,7 @@ export default function (pi: ExtensionAPI) {
             `  DB: ${dbPath} (${exists ? "exists" : "not created"})`,
             `  Total: ${count} active memories`,
             `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
+            `  Injection (this agent): ${memoryInjectionEnabled ? "ON" : "OFF"}`,
             namespaces ? `  Namespaces:\n    ${namespaces.split("\n").join("\n    ")}` : "",
           ].filter(Boolean).join("\n"),
           display: true,
@@ -799,7 +822,9 @@ export default function (pi: ExtensionAPI) {
           "  /memory rename <old_ns> <new_ns>     — rename a namespace (e.g. after moving a project folder)",
           "  /memory namespaces                   — list all namespaces with counts",
           "  /memory topics                       — list topics and pending staging entries",
-          "  /memory verbose on|off               — toggle injection/warm-path logging",
+          "  /memory enable                       — enable memory injection for this agent",
+          "  /memory disable                      — disable memory injection for this agent",
+          "  /memory verbose on|off               — toggle verbose memory logging",
           "",
           "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save, mv=rename",
         ].join("\n"),
@@ -819,6 +844,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, _ctx) => {
     try {
+      if (!memoryInjectionEnabled) return;
+
       const dbPath = path.join(getStateDir(), "memory.db");
       if (!fs.existsSync(dbPath)) return;
 
