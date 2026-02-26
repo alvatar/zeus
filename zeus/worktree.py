@@ -466,8 +466,6 @@ def build_worktree_review(
                 # Keep light-mode review output legible and avoid reverse-style
                 # warning boxes masking content.
                 delta_cmd.extend([
-                    "--syntax-theme",
-                    "GitHub",
                     "--map-styles",
                     "dim => normal",
                     "--zero-style",
