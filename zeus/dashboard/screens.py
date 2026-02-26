@@ -224,8 +224,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 id="agent-dir",
             )
             yield OptionList(id="agent-dir-suggestions", classes="hidden", compact=True)
-            with Horizontal(id="new-agent-buttons"):
-                yield Button("Create", variant="primary", id="launch-btn")
 
     def _initial_model_select_value(self) -> str:
         preferred = self._preferred_model_spec.strip()
@@ -535,11 +533,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.query_one("#agent-dir", Input).focus()
         elif event.input.id == "agent-dir":
             self._launch()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "launch-btn":
-            self._launch()
-            event.stop()
 
     def _selected_role(self) -> str:
         role_set = self.query_one("#invoke-role", RadioSet)
