@@ -584,6 +584,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 source_agent,
                 name,
                 dismiss_screen=self,
+                source_directory=directory,
             )
             return
 

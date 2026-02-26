@@ -14,6 +14,7 @@ from zeus.worktree import (
     create_worktree,
     get_current_branch,
     get_repo_root,
+    get_worktree_repo_root,
     remove_worktree,
     worktree_base_dir,
     worktree_branch,
@@ -60,6 +61,21 @@ def test_get_repo_root(git_repo: str) -> None:
 
 def test_get_repo_root_not_a_repo(tmp_path: Path) -> None:
     assert get_repo_root(str(tmp_path)) == ""
+
+
+def test_get_worktree_repo_root_for_main_checkout(git_repo: str) -> None:
+    assert get_worktree_repo_root(git_repo) == git_repo
+
+
+def test_get_worktree_repo_root_from_linked_worktree(git_repo: str) -> None:
+    ok, msg = create_worktree(git_repo, "common-root-test", base_branch="main")
+    assert ok, msg
+    wt = worktree_path(git_repo, "common-root-test")
+
+    assert get_repo_root(wt) == wt
+    assert get_worktree_repo_root(wt) == git_repo
+
+    remove_worktree(git_repo, "common-root-test")
 
 
 def test_get_current_branch(git_repo: str) -> None:
@@ -418,6 +434,71 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
 
     # Cleanup
     remove_worktree(git_repo, "test-agent")
+
+
+def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
+    git_repo: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zeus.dashboard.app import ZeusApp
+    import zeus.dashboard.app as app_mod
+
+    app = ZeusApp.__new__(ZeusApp)
+    parent = MagicMock()
+    parent.name = "parent"
+    parent.cwd = str(tmp_path / "not-used")
+    parent.agent_id = "parent-1"
+
+    source_dir = Path(git_repo) / "nested" / "dir"
+    source_dir.mkdir(parents=True)
+
+    spawn_calls: list[tuple[object, str, str | None]] = []
+    notices: list[str] = []
+
+    monkeypatch.setattr(app, "_is_agent_name_taken", lambda _name: False)
+    monkeypatch.setattr(
+        app,
+        "_do_spawn_workdir",
+        lambda agent, name, *, repo_root=None: spawn_calls.append((agent, name, repo_root)),
+    )
+    monkeypatch.setattr(app_mod.asyncio, "ensure_future", lambda _task: None)
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    app.do_spawn_workdir_agent(parent, "from-dialog", source_directory=str(source_dir))
+
+    assert notices == []
+    assert spawn_calls == [(parent, "from-dialog", git_repo)]
+
+
+def test_do_spawn_workdir_agent_rejects_non_git_source_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zeus.dashboard.app import ZeusApp
+    import zeus.dashboard.app as app_mod
+
+    app = ZeusApp.__new__(ZeusApp)
+    parent = MagicMock()
+    parent.name = "parent"
+    parent.cwd = str(tmp_path / "also-not-used")
+    parent.agent_id = "parent-1"
+
+    bad_dir = tmp_path / "not-a-repo"
+    bad_dir.mkdir(parents=True)
+
+    notices: list[str] = []
+    scheduled: list[bool] = []
+
+    monkeypatch.setattr(app, "_is_agent_name_taken", lambda _name: False)
+    monkeypatch.setattr(app, "_do_spawn_workdir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app_mod.asyncio, "ensure_future", lambda _task: scheduled.append(True))
+    monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
+
+    app.do_spawn_workdir_agent(parent, "bad", source_directory=str(bad_dir))
+
+    assert notices == [f"Not a git repo: {bad_dir}"]
+    assert scheduled == []
 
 
 def test_check_worktree_merge_done_cleans_up(

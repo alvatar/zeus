@@ -1,6 +1,7 @@
 """Tests ensuring dialog textareas use ZeusTextArea behavior parity."""
 
 import inspect
+import os
 import re
 from types import SimpleNamespace
 
@@ -873,7 +874,7 @@ def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
 
     monkeypatch.setattr(screen, "query_one", _query_one)
 
-    workdir_calls: list[tuple[object, str, object]] = []
+    workdir_calls: list[tuple[object, str, object, str | None]] = []
     saved_models: list[str] = []
 
     class _ZeusStub:
@@ -886,8 +887,14 @@ def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
         def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
             saved_models.append(model_spec)
 
-        def do_spawn_workdir_agent(self, agent, name: str, dismiss_screen=None) -> bool:  # noqa: ANN001
-            workdir_calls.append((agent, name, dismiss_screen))
+        def do_spawn_workdir_agent(
+            self,
+            agent,
+            name: str,
+            dismiss_screen=None,
+            source_directory: str | None = None,
+        ) -> bool:  # noqa: ANN001
+            workdir_calls.append((agent, name, dismiss_screen, source_directory))
             return True
 
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
@@ -906,6 +913,7 @@ def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
     assert workdir_calls[0][0] is source_agent
     assert workdir_calls[0][1] == "wt-alpha"
     assert workdir_calls[0][2] is screen
+    assert workdir_calls[0][3] == os.path.expanduser("~/code")
 
 
 def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:

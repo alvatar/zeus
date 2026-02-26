@@ -28,7 +28,7 @@ def worktree_branch(agent_name: str) -> str:
 
 
 def get_repo_root(cwd: str) -> str:
-    """Return the git repo root for a directory, or empty string."""
+    """Return the checkout root for a directory, or empty string."""
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -37,6 +37,30 @@ def get_repo_root(cwd: str) -> str:
         return r.stdout.strip() if r.returncode == 0 else ""
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return ""
+
+
+def get_worktree_repo_root(cwd: str) -> str:
+    """Return the canonical/common repository root for a directory.
+
+    For normal checkouts this is identical to ``get_repo_root``.
+    For linked worktrees this resolves to the main repository root (the
+    parent of ``.git`` common-dir), so new Zeus worktrees are created as
+    siblings under the main ``.worktrees`` directory instead of nesting.
+    """
+    ok, common = _run_git_capture(cwd, ["rev-parse", "--git-common-dir"], timeout=5)
+    if not ok or not common:
+        return ""
+
+    common_dir = common
+    if not os.path.isabs(common_dir):
+        common_dir = os.path.abspath(os.path.join(cwd, common_dir))
+    common_dir = os.path.normpath(common_dir)
+
+    if os.path.basename(common_dir) == ".git":
+        return os.path.dirname(common_dir)
+
+    # Fallback for unusual layouts.
+    return get_repo_root(cwd)
 
 
 def get_current_branch(cwd: str) -> str:

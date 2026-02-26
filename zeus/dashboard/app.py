@@ -4384,11 +4384,14 @@ class ZeusApp(App):
     def _cleanup_worktree_if_needed(self, agent: AgentWindow) -> None:
         """Remove worktree + branch if this was a workdir agent."""
         try:
-            from ..worktree import get_repo_root, remove_worktree, worktree_path
+            from ..worktree import (
+                get_worktree_repo_root,
+                remove_worktree,
+                worktree_path,
+            )
             # Check if a worktree exists for this agent name
             cwd = agent.cwd or ""
-            # The worktree cwd is inside .worktrees/<name>, so repo root is two levels up
-            repo_root = get_repo_root(cwd)
+            repo_root = get_worktree_repo_root(cwd)
             if not repo_root:
                 return
             wt = worktree_path(repo_root, agent.name)
@@ -5485,10 +5488,16 @@ class ZeusApp(App):
         agent: AgentWindow,
         name: str,
         dismiss_screen: ModalScreen | None = None,
+        source_directory: str | None = None,
     ) -> None:
         """Create a git worktree and launch a workdir agent in it."""
         clean_name = name.strip()
-        _wt_log(f"do_spawn_workdir_agent called: name={clean_name!r} agent={agent.name!r} cwd={agent.cwd!r} agent_id={agent.agent_id!r}")
+        source_cwd = (source_directory or "").strip() or (agent.cwd or "")
+        _wt_log(
+            "do_spawn_workdir_agent called: "
+            f"name={clean_name!r} agent={agent.name!r} cwd={agent.cwd!r} "
+            f"source_cwd={source_cwd!r} agent_id={agent.agent_id!r}"
+        )
 
         if self._is_agent_name_taken(clean_name):
             _wt_log(f"name taken: {clean_name}")
@@ -5507,14 +5516,13 @@ class ZeusApp(App):
             )
             return
 
-        from ..worktree import get_repo_root, worktree_path
-        cwd = agent.cwd or ""
-        repo_root = get_repo_root(cwd)
+        from ..worktree import get_worktree_repo_root, worktree_path
+        repo_root = get_worktree_repo_root(source_cwd)
         _wt_log(f"repo_root={repo_root!r}")
         if not repo_root:
             if dismiss_screen:
                 dismiss_screen.dismiss()
-            self.notify_force(f"Not a git repo: {cwd}", timeout=3)
+            self.notify_force(f"Not a git repo: {source_cwd}", timeout=3)
             return
 
         wt_path = worktree_path(repo_root, clean_name)
@@ -5544,7 +5552,9 @@ class ZeusApp(App):
         if dismiss_screen:
             dismiss_screen.dismiss()
         import asyncio
-        asyncio.ensure_future(self._do_spawn_workdir(agent, clean_name))
+        asyncio.ensure_future(
+            self._do_spawn_workdir(agent, clean_name, repo_root=repo_root)
+        )
 
     def _replace_existing_worktree(
         self, agent: AgentWindow, name: str, repo_root: str,
@@ -5559,13 +5569,27 @@ class ZeusApp(App):
             return
         import asyncio
         _wt_log(f"replace: removed, spawning {name}")
-        asyncio.ensure_future(self._do_spawn_workdir(agent, name))
+        asyncio.ensure_future(self._do_spawn_workdir(agent, name, repo_root=repo_root))
 
-    async def _do_spawn_workdir(self, agent: AgentWindow, name: str) -> None:
+    async def _do_spawn_workdir(
+        self,
+        agent: AgentWindow,
+        name: str,
+        *,
+        repo_root: str | None = None,
+    ) -> None:
         import asyncio
-        _wt_log(f"starting for {name}, agent={agent.name}, cwd={agent.cwd}")
+        _wt_log(
+            f"starting for {name}, agent={agent.name}, cwd={agent.cwd}, "
+            f"repo_root={repo_root!r}"
+        )
         try:
-            result = await asyncio.to_thread(self._spawn_workdir_blocking, agent, name)
+            result = await asyncio.to_thread(
+                self._spawn_workdir_blocking,
+                agent,
+                name,
+                repo_root=repo_root,
+            )
             if result:
                 _wt_log(f"success: {name}")
                 self.notify(f"🌿 Workdir agent: {name}", timeout=3)
@@ -5578,15 +5602,24 @@ class ZeusApp(App):
             _wt_log(f"error: {exc}\n{traceback.format_exc()}")
             self.notify_force(f"Workdir error: {exc}", timeout=4)
 
-    def _spawn_workdir_blocking(self, agent: AgentWindow, name: str) -> bool:
+    def _spawn_workdir_blocking(
+        self,
+        agent: AgentWindow,
+        name: str,
+        *,
+        repo_root: str | None = None,
+    ) -> bool:
         """Blocking: create worktree + launch agent in kitty (same as NewAgentScreen)."""
         from ..sessions import make_new_session_path
         from ..worktree import (
-            create_worktree, get_current_branch, get_repo_root, worktree_branch,
+            create_worktree,
+            get_current_branch,
+            get_worktree_repo_root,
+            worktree_branch,
         )
 
         cwd = agent.cwd or ""
-        repo_root = get_repo_root(cwd)
+        repo_root = (repo_root or "").strip() or get_worktree_repo_root(cwd)
         if not repo_root:
             raise RuntimeError(f"Not a git repo: {cwd}")
 
