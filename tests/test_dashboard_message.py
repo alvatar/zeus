@@ -425,6 +425,32 @@ def test_action_expand_output_requires_selected_agent(monkeypatch) -> None:
     assert notices[-1] == "Select a Hippeus row to expand output"
 
 
+def test_action_review_worktree_starts_review_for_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1)
+
+    started: list[AgentWindow] = []
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+    monkeypatch.setattr(app, "_start_worktree_review", lambda value: started.append(value))
+
+    app.action_review_worktree()
+
+    assert started == [agent]
+
+
+def test_action_review_worktree_requires_selected_agent(monkeypatch) -> None:
+    app = _new_app()
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: None)
+
+    app.action_review_worktree()
+
+    assert notices[-1] == "Select a Hippeus row to review"
+
+
 def test_should_ignore_table_action_allows_expanded_output_modal(monkeypatch) -> None:
     app = _new_app()
     expanded = ExpandedOutputScreen(_agent("alpha", 1))
@@ -479,6 +505,72 @@ def test_expanded_output_empty_state_has_no_leading_margin(monkeypatch) -> None:
     screen._apply_output("\n\n")
 
     assert stream.writes == ["[alpha] (no output)"]
+
+
+def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+    refreshed: list[AgentWindow] = []
+
+    class _ZeusStub:
+        def do_refresh_worktree_review(self, value: AgentWindow) -> None:
+            refreshed.append(value)
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.action_refresh()
+
+    assert refreshed == [agent]
+
+
+def test_expanded_output_review_mode_apply_starts_at_top(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1), worktree_review_mode=True)
+    stream = _DummyRichLog()
+    stream.scroll_y = 8.0
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return _DummyFlash()
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    screen.apply_worktree_review_output("line 1\nline 2\n")
+
+    assert stream.scroll_y == 0.0
+    assert stream.writes
+
+
+def test_expanded_output_review_mode_disables_message_and_go_ahead(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+    pushed: list[object] = []
+    dismissed: list[bool] = []
+    go_calls: list[bool] = []
+
+    class _ZeusStub:
+        def _message_draft_for_agent(self, _agent: AgentWindow) -> str:
+            return "draft"
+
+        def push_screen(self, modal: object) -> None:
+            pushed.append(modal)
+
+        def action_go_ahead(self) -> None:
+            go_calls.append(True)
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    screen.action_message()
+    screen.action_go_ahead()
+
+    assert pushed == []
+    assert dismissed == []
+    assert go_calls == []
 
 
 def test_expanded_output_scroll_shows_transient_flash_indicator(monkeypatch) -> None:

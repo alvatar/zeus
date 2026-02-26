@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
-from pathlib import Path
 
 
 _WORKTREE_DIR = ".worktrees"
@@ -228,3 +229,239 @@ def merge_worktree_branch(
         except Exception:
             pass
         return False, f"Merge error: {exc}"
+
+
+def _run_git_capture(
+    cwd: str,
+    args: list[str],
+    *,
+    timeout: int = 15,
+) -> tuple[bool, str]:
+    """Run a git command and return (ok, stdout_or_error)."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        return False, str(exc)
+
+    if result.returncode != 0:
+        err = (result.stderr or result.stdout or "").strip()
+        if err:
+            return False, err
+        return False, f"git {' '.join(args)} failed (exit {result.returncode})"
+
+    return True, (result.stdout or "").strip()
+
+
+def _normalize_branch_name(raw: str) -> str:
+    candidate = raw.strip().strip("\"'")
+    if candidate.startswith("refs/heads/"):
+        candidate = candidate.removeprefix("refs/heads/")
+    if candidate.startswith("origin/"):
+        candidate = candidate.removeprefix("origin/")
+    return candidate.strip()
+
+
+def _branch_exists(cwd: str, branch: str) -> bool:
+    if not branch:
+        return False
+    ok, _ = _run_git_capture(
+        cwd,
+        ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+        timeout=5,
+    )
+    return ok
+
+
+def _infer_review_base_branch(cwd: str, branch: str) -> str:
+    """Best-effort base branch detection for worktree review."""
+    ok, reflog = _run_git_capture(
+        cwd,
+        ["reflog", "show", "--format=%gs", "-n", "30", branch],
+        timeout=10,
+    )
+    if ok and reflog:
+        for line in reflog.splitlines():
+            match = re.match(r"^branch: Created from (.+)$", line.strip())
+            if not match:
+                continue
+            candidate = _normalize_branch_name(match.group(1))
+            if not candidate or candidate in {"HEAD", branch}:
+                continue
+            if _branch_exists(cwd, candidate):
+                return candidate
+
+    ok, upstream = _run_git_capture(
+        cwd,
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        timeout=5,
+    )
+    if ok and upstream:
+        candidate = _normalize_branch_name(upstream)
+        if candidate and candidate != branch and _branch_exists(cwd, candidate):
+            return candidate
+
+    for fallback in ("main", "master"):
+        if fallback != branch and _branch_exists(cwd, fallback):
+            return fallback
+
+    return ""
+
+
+def build_worktree_review(
+    cwd: str,
+    *,
+    base_branch: str = "",
+    use_delta: bool = True,
+) -> tuple[bool, str]:
+    """Build a single continuous review view for a worktree branch.
+
+    Review semantics:
+    - Commit list: base..branch
+    - Diff: base...branch (merge-base style / PR-style)
+    - Uncommitted changes are intentionally excluded from the diff.
+    """
+    repo_root = get_repo_root(cwd)
+    if not repo_root:
+        return False, "Not a git repository."
+
+    ok, git_dir = _run_git_capture(cwd, ["rev-parse", "--git-dir"], timeout=5)
+    if not ok:
+        return False, f"Cannot determine git dir: {git_dir}"
+
+    ok, git_common = _run_git_capture(cwd, ["rev-parse", "--git-common-dir"], timeout=5)
+    if not ok:
+        return False, f"Cannot determine git common dir: {git_common}"
+
+    if git_dir == git_common or git_dir == ".git":
+        return False, "Selected target is not a git worktree checkout."
+
+    branch = get_current_branch(cwd)
+    if not branch or branch == "HEAD":
+        return False, "Cannot determine current branch for worktree review."
+
+    resolved_base = _normalize_branch_name(base_branch) if base_branch else ""
+    if resolved_base and not _branch_exists(cwd, resolved_base):
+        return False, f"Base branch '{resolved_base}' does not exist in this repository."
+    if not resolved_base:
+        resolved_base = _infer_review_base_branch(cwd, branch)
+    if not resolved_base:
+        return False, "Cannot infer a base branch (expected main/master or branch creation metadata)."
+    if resolved_base == branch:
+        return False, "Base branch resolves to current branch; cannot build review."
+
+    ok, merge_base = _run_git_capture(cwd, ["merge-base", resolved_base, branch], timeout=10)
+    if not ok:
+        return False, f"Cannot compute merge-base for {resolved_base} and {branch}: {merge_base}"
+
+    ok, head = _run_git_capture(cwd, ["rev-parse", "HEAD"], timeout=5)
+    if not ok:
+        return False, f"Cannot resolve HEAD: {head}"
+
+    ok, status = _run_git_capture(cwd, ["status", "--porcelain"], timeout=10)
+    if not ok:
+        return False, f"Cannot read git status: {status}"
+    dirty = bool(status.strip())
+
+    ok, commits = _run_git_capture(
+        cwd,
+        ["--no-pager", "log", "--graph", "--decorate", "--oneline", f"{resolved_base}..{branch}"],
+        timeout=20,
+    )
+    if not ok:
+        return False, f"Cannot build commit summary: {commits}"
+    if not commits.strip():
+        commits = "(no commits ahead of base)"
+
+    ok, diff_stat = _run_git_capture(
+        cwd,
+        ["--no-pager", "diff", "--stat", "--summary", f"{resolved_base}...{branch}"],
+        timeout=20,
+    )
+    if not ok:
+        return False, f"Cannot build diff stat: {diff_stat}"
+    if not diff_stat.strip():
+        diff_stat = "(no file-level changes)"
+
+    ok, name_status = _run_git_capture(
+        cwd,
+        ["--no-pager", "diff", "--name-status", f"{resolved_base}...{branch}"],
+        timeout=20,
+    )
+    if not ok:
+        return False, f"Cannot build name-status summary: {name_status}"
+    if not name_status.strip():
+        name_status = "(no changed paths)"
+
+    ok, full_diff = _run_git_capture(
+        cwd,
+        [
+            "--no-pager",
+            "diff",
+            "--find-renames",
+            "--find-copies-harder",
+            "--submodule=diff",
+            f"{resolved_base}...{branch}",
+        ],
+        timeout=120,
+    )
+    if not ok:
+        return False, f"Cannot build full diff: {full_diff}"
+    if not full_diff.strip():
+        full_diff = "(no diff between merge-base and branch head)"
+
+    header_lines = [
+        "=== WORKTREE REVIEW ===",
+        f"repo: {repo_root}",
+        f"worktree: {cwd}",
+        f"base: {resolved_base}",
+        f"branch: {branch}",
+        f"merge-base: {merge_base}",
+        f"head: {head}",
+        f"ranges: commits={resolved_base}..{branch} diff={resolved_base}...{branch}",
+    ]
+    if dirty:
+        header_lines.append(
+            "warning: worktree has uncommitted changes; they are excluded from this review"
+        )
+
+    plain = (
+        "\n".join(header_lines)
+        + "\n\n=== COMMITS (base..branch) ===\n"
+        + commits
+        + "\n\n=== FILE SUMMARY (base...branch) ===\n"
+        + diff_stat
+        + "\n\n=== PATH STATUS (base...branch) ===\n"
+        + name_status
+        + "\n\n=== FULL DIFF (base...branch) ===\n"
+        + full_diff
+        + "\n"
+    )
+
+    if use_delta and shutil.which("delta"):
+        try:
+            delta_result = subprocess.run(
+                ["delta", "--paging=never"],
+                input=plain,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=cwd,
+            )
+            if delta_result.returncode == 0 and (delta_result.stdout or "").strip():
+                return True, delta_result.stdout
+
+            detail = (delta_result.stderr or delta_result.stdout or "").strip()
+            fallback = plain
+            if detail:
+                fallback += f"\n[delta warning] {detail}\n"
+            return True, fallback
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            return True, plain + f"\n[delta warning] {exc}\n"
+
+    return True, plain

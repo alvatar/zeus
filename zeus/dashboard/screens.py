@@ -1062,21 +1062,68 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
     ]
     _SCROLL_FLASH_DURATION_S = 0.35
 
-    def __init__(self, agent: AgentWindow) -> None:
+    def __init__(
+        self,
+        agent: AgentWindow,
+        *,
+        worktree_review_mode: bool = False,
+    ) -> None:
         super().__init__()
         self.agent = agent
+        self.worktree_review_mode = bool(worktree_review_mode)
         self._scroll_flash_timer: Timer | None = None
+        self._worktree_review_request_id: str = ""
+        self._pending_worktree_review_content: str = (
+            f"[{self.agent.name}] Generating worktree review…"
+            if self.worktree_review_mode
+            else ""
+        )
+
+    @property
+    def worktree_review_request_id(self) -> str:
+        return self._worktree_review_request_id
+
+    def set_worktree_review_request_id(self, request_id: str) -> None:
+        self._worktree_review_request_id = request_id.strip()
+
+    def is_worktree_review_for(self, agent: AgentWindow) -> bool:
+        if not self.worktree_review_mode:
+            return False
+        mine = (self.agent.agent_id or "").strip()
+        other = (agent.agent_id or "").strip()
+        if mine and other:
+            return mine == other
+        return self.agent.name == agent.name and self.agent.cwd == agent.cwd
+
+    def queue_worktree_review_loading(self) -> None:
+        self.apply_worktree_review_output(
+            f"[{self.agent.name}] Generating worktree review…"
+        )
+
+    def apply_worktree_review_output(self, content: str) -> None:
+        self._pending_worktree_review_content = content
+        self._apply_worktree_review_output_internal(content)
 
     def compose(self) -> ComposeResult:
+        title = (
+            f"Worktree review [bold]{self.agent.name}[/bold]"
+            if self.worktree_review_mode
+            else f"Expanded output [bold]{self.agent.name}[/bold]"
+        )
+        hint = (
+            "(F5 refresh | Esc close)"
+            if self.worktree_review_mode
+            else "(Enter message | G go ahead | F5 refresh | Esc close)"
+        )
         with Vertical(id="expanded-output-dialog"):
             with Horizontal(id="expanded-output-title-row"):
                 yield Label(
-                    f"Expanded output [bold]{self.agent.name}[/bold]",
+                    title,
                     id="expanded-output-title",
                 )
                 yield Label("", id="expanded-output-title-spacer")
                 yield Label(
-                    "(Enter message | G go ahead | F5 refresh | Esc close)",
+                    hint,
                     id="expanded-output-hint",
                 )
             yield RichLog(
@@ -1096,6 +1143,11 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         stream.can_focus = True
         stream.focus()
         self._hide_scroll_flash()
+        if self.worktree_review_mode:
+            self._apply_worktree_review_output_internal(
+                self._pending_worktree_review_content,
+            )
+            return
         self._fetch_output()
 
     def on_unmount(self) -> None:
@@ -1125,6 +1177,20 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         raw = kitty_ansi_to_standard(content)
         stream.write(Text.from_ansi(raw))
         stream.scroll_end(animate=False)
+
+    def _apply_worktree_review_output_internal(self, content: str) -> None:
+        if not self.is_attached:
+            return
+        stream = self.query_one("#expanded-output-stream", RichLog)
+        stream.clear()
+        self._hide_scroll_flash()
+        clean = content or ""
+        if not clean.strip():
+            stream.write(f"[{self.agent.name}] (no review output)")
+            return
+        raw = kitty_ansi_to_standard(clean)
+        stream.write(Text.from_ansi(raw))
+        stream.scroll_home(animate=False)
 
     def _hide_scroll_flash(self) -> None:
         self._scroll_flash_timer = None
@@ -1199,9 +1265,14 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         return True
 
     def action_refresh(self) -> None:
+        if self.worktree_review_mode:
+            self.zeus.do_refresh_worktree_review(self.agent)
+            return
         self._fetch_output()
 
     def action_message(self) -> None:
+        if self.worktree_review_mode:
+            return
         self.zeus.push_screen(
             AgentMessageScreen(
                 self.agent,
@@ -1211,6 +1282,8 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         )
 
     def action_go_ahead(self) -> None:
+        if self.worktree_review_mode:
+            return
         self.dismiss()
         self.zeus.action_go_ahead()
 
@@ -2152,6 +2225,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Hippeis Management ───"),
     ("q", "Stop Hippeus"),
     ("e", "Expand output for selected Hippeus"),
+    ("v", "Review selected worktree (delta, PR-style)"),
     ("r", "Rename Hippeus / tmux"),
     ("Ctrl+r", "Save snapshot"),
     ("Ctrl+Alt+r", "Restore snapshot"),

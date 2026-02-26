@@ -120,6 +120,7 @@ from ..snapshots import (
     restore_snapshot,
     save_snapshot_from_dashboard,
 )
+from ..worktree import build_worktree_review
 
 from .css import APP_CSS
 from .stream import (
@@ -553,6 +554,7 @@ class ZeusApp(App):
         Binding("ctrl+g", "preset_message", "Preset message", show=False, priority=True),
         Binding("t", "agent_tasks", "Tasks"),
         Binding("e", "expand_output", "Expand output", show=False),
+        Binding("v", "review_worktree", "Review worktree", show=False, priority=True),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
         Binding("d", "toggle_dependency", "Dependency", show=False),
@@ -4593,6 +4595,66 @@ class ZeusApp(App):
             self.notify("Select a Hippeus row to expand output", timeout=2)
             return
         self.push_screen(ExpandedOutputScreen(agent))
+
+    def action_review_worktree(self) -> None:
+        if self._should_ignore_table_action():
+            return
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to review", timeout=2)
+            return
+        self._start_worktree_review(agent)
+
+    def do_refresh_worktree_review(self, agent: AgentWindow) -> None:
+        self._start_worktree_review(agent)
+
+    def _start_worktree_review(self, agent: AgentWindow) -> None:
+        live = self._get_agent_by_key(self._agent_key(agent))
+        target = live if live is not None else agent
+        request_id = f"worktree-review-{time.time_ns()}"
+        expanded = self._ensure_worktree_review_screen(target, request_id)
+        expanded.queue_worktree_review_loading()
+        self._build_worktree_review_async(target, request_id)
+
+    def _ensure_worktree_review_screen(
+        self,
+        agent: AgentWindow,
+        request_id: str,
+    ) -> ExpandedOutputScreen:
+        current = self.screen
+        if isinstance(current, ExpandedOutputScreen) and current.is_worktree_review_for(agent):
+            current.set_worktree_review_request_id(request_id)
+            return current
+
+        screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+        screen.set_worktree_review_request_id(request_id)
+        self.push_screen(screen)
+        return screen
+
+    @work(thread=True, exclusive=True, group="worktree_review")
+    def _build_worktree_review_async(self, agent: AgentWindow, request_id: str) -> None:
+        ok, output = build_worktree_review(agent.cwd)
+        self.call_from_thread(self._apply_worktree_review_output, request_id, ok, output)
+
+    def _apply_worktree_review_output(
+        self,
+        request_id: str,
+        ok: bool,
+        output: str,
+    ) -> None:
+        target: ExpandedOutputScreen | None = None
+        for screen in reversed(self.screen_stack):
+            if isinstance(screen, ExpandedOutputScreen) and screen.worktree_review_request_id == request_id:
+                target = screen
+                break
+
+        if target is None:
+            return
+
+        target.apply_worktree_review_output(output)
+        if not ok:
+            first = next((line for line in output.splitlines() if line.strip()), "Worktree review failed")
+            self.notify_force(first, timeout=4)
 
     def action_agent_message(self) -> None:
         if self._should_ignore_table_action():

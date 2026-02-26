@@ -10,13 +10,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from zeus.worktree import (
+    build_worktree_review,
     create_worktree,
     get_current_branch,
     get_repo_root,
     remove_worktree,
+    worktree_base_dir,
     worktree_branch,
     worktree_path,
-    worktree_base_dir,
 )
 
 
@@ -173,6 +174,49 @@ def test_merge_conflict_detected(git_repo: str) -> None:
     )
     lines = [l for l in r.stdout.strip().splitlines() if not l.endswith(".gitignore")]
     assert lines == []
+
+
+def test_build_worktree_review_uses_pr_style_ranges(git_repo: str) -> None:
+    create_worktree(git_repo, "review-test", base_branch="main")
+    wt = worktree_path(git_repo, "review-test")
+
+    readme = Path(wt) / "README.md"
+    readme.write_text("review change\n")
+    subprocess.run(["git", "add", "README.md"], cwd=wt, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "review commit"], cwd=wt, capture_output=True, check=True)
+
+    ok, out = build_worktree_review(wt, use_delta=False)
+
+    assert ok, out
+    assert "=== WORKTREE REVIEW ===" in out
+    assert "=== COMMITS (base..branch) ===" in out
+    assert "=== FULL DIFF (base...branch) ===" in out
+    assert "ranges: commits=main..zeus/review-test diff=main...zeus/review-test" in out
+    assert "+review change" in out
+
+    remove_worktree(git_repo, "review-test")
+
+
+def test_build_worktree_review_excludes_uncommitted_changes(git_repo: str) -> None:
+    create_worktree(git_repo, "dirty-review", base_branch="main")
+    wt = worktree_path(git_repo, "dirty-review")
+
+    dirty = Path(wt) / "README.md"
+    dirty.write_text("dirty uncommitted change\n")
+
+    ok, out = build_worktree_review(wt, use_delta=False)
+
+    assert ok, out
+    assert "warning: worktree has uncommitted changes" in out
+    assert "dirty uncommitted change" not in out
+
+    remove_worktree(git_repo, "dirty-review")
+
+
+def test_build_worktree_review_requires_worktree_checkout(git_repo: str) -> None:
+    ok, out = build_worktree_review(git_repo, use_delta=False)
+    assert not ok
+    assert "not a git worktree" in out.lower()
 
 
 # ── Dashboard spawn integration ──────────────────────────────────────
