@@ -647,6 +647,32 @@ def test_new_agent_on_key_routes_alt_backspace_to_path_segment_delete(monkeypatc
     assert event.stopped is True
 
 
+def test_new_agent_on_key_routes_enter_to_launch(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    directory_input = _InputStub("~/code")
+    options = _OptionListStub(hidden=False)
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir":
+            return directory_input
+        if selector == "#agent-dir-suggestions":
+            return options
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(NewAgentScreen, "focused", property(lambda _self: directory_input))
+
+    launches: list[bool] = []
+    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
+
+    event = _KeyEventStub("enter")
+    screen.on_key(event)
+
+    assert launches == [True]
+    assert event.prevented is True
+    assert event.stopped is True
+
+
 def test_rename_dialog_has_no_buttons_and_keeps_keyboard_flow() -> None:
     source = _compose_source(RenameScreen)
     assert "rename-buttons" not in source

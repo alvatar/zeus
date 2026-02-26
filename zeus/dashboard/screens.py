@@ -490,6 +490,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             "down",
             "tab",
             "alt+backspace",
+            "enter",
         }:
             return
 
@@ -498,6 +499,12 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         options = self.query_one("#agent-dir-suggestions", OptionList)
+        if event.key == "enter":
+            self._launch()
+            event.prevent_default()
+            event.stop()
+            return
+
         if event.key == "tab":
             handled = self._cycle_dir_suggestion(forward=True)
             if handled:
