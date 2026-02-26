@@ -1702,18 +1702,34 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
         Binding("n", "dismiss", "No", show=False),
     ]
 
-    def __init__(self, sess: TmuxSession) -> None:
+    def __init__(
+        self,
+        sess: TmuxSession,
+        *,
+        force_kill_session: bool = False,
+    ) -> None:
         super().__init__()
         self.sess = sess
+        self.force_kill_session = force_kill_session
+
+    def _confirm_kill(self) -> None:
+        if self.force_kill_session:
+            self.zeus.do_kill_tmux_session(self.sess)
+            return
+        self.zeus.do_kill_tmux(self.sess)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-kill-dialog"):
-            yield Label(
-                f"Detach and close window for "
-                f"[bold]{self.sess.name}[/bold]?"
-            )
+            if self.force_kill_session:
+                yield Label(f"Kill tmux session [bold]{self.sess.name}[/bold]?")
+            else:
+                yield Label(
+                    f"Detach and close window for "
+                    f"[bold]{self.sess.name}[/bold]?"
+                )
             with Horizontal(id="confirm-kill-buttons"):
-                yield Button("Yes, close", variant="error", id="yes-btn")
+                yes_label = "Yes, kill" if self.force_kill_session else "Yes, close"
+                yield Button(yes_label, variant="error", id="yes-btn")
                 yield Button("No", variant="default", id="no-btn")
 
     def on_mount(self) -> None:
@@ -1721,12 +1737,12 @@ class ConfirmKillTmuxScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "yes-btn":
-            self.zeus.do_kill_tmux(self.sess)
+            self._confirm_kill()
         self.dismiss()
         event.stop()
 
     def action_confirm(self) -> None:
-        self.zeus.do_kill_tmux(self.sess)
+        self._confirm_kill()
         self.dismiss()
 
 

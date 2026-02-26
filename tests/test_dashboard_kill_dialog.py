@@ -80,6 +80,33 @@ def test_confirm_kill_tmux_no_button_does_not_kill(monkeypatch) -> None:
     assert event.stopped is True
 
 
+def test_confirm_kill_tmux_force_yes_kills_session_process(monkeypatch) -> None:
+    screen = ConfirmKillTmuxScreen(_tmux(), force_kill_session=True)
+
+    detached: list[str] = []
+    killed: list[str] = []
+
+    class _ZeusStub:
+        def do_kill_tmux(self, sess: TmuxSession) -> None:
+            detached.append(sess.name)
+
+        def do_kill_tmux_session(self, sess: TmuxSession) -> None:
+            killed.append(sess.name)
+
+    monkeypatch.setattr(ConfirmKillTmuxScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    event = _Pressed("yes-btn")
+    screen.on_button_pressed(event)  # type: ignore[arg-type]
+
+    assert detached == []
+    assert killed == ["sess"]
+    assert dismissed == [True]
+    assert event.stopped is True
+
+
 def test_confirm_kill_workdir_yes_uses_checkbox_state_for_cleanup(monkeypatch) -> None:
     agent = _agent()
     agent.cwd = "/tmp/project/.worktrees/agent"
@@ -155,6 +182,22 @@ def test_action_kill_tmux_session_requires_tmux_selection(monkeypatch) -> None:
     app.action_kill_tmux_session()
 
     assert notices[-1] == "Select a tmux row to kill session"
+
+
+def test_action_kill_tmux_session_opens_confirmation_dialog(monkeypatch) -> None:
+    app = ZeusApp()
+    sess = _tmux()
+    pushed: list[object] = []
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_tmux", lambda: sess)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_kill_tmux_session()
+
+    assert len(pushed) == 1
+    assert isinstance(pushed[0], ConfirmKillTmuxScreen)
+    assert pushed[0].force_kill_session is True
 
 
 def test_do_kill_tmux_session_runs_kill_session(monkeypatch) -> None:

@@ -4367,14 +4367,14 @@ class ZeusApp(App):
             self.push_screen(ConfirmKillTmuxScreen(tmux))
 
     def action_kill_tmux_session(self) -> None:
-        """Ctrl+K: hard-kill selected tmux session process."""
+        """Ctrl+Alt+K: confirm hard-kill for selected tmux session process."""
         if self._should_ignore_table_action():
             return
         tmux = self._get_selected_tmux()
         if not tmux:
             self.notify("Select a tmux row to kill session", timeout=2)
             return
-        self.do_kill_tmux_session(tmux)
+        self.push_screen(ConfirmKillTmuxScreen(tmux, force_kill_session=True))
 
     def do_kill_agent(
         self,
