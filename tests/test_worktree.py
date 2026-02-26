@@ -266,6 +266,10 @@ def test_build_worktree_review_passes_light_mode_to_delta(
     assert out.rstrip().endswith("=== END OF REVIEW ===")
     assert delta_calls
     assert "--light" in delta_calls[0]
+    assert "--map-styles" in delta_calls[0]
+    assert "dim => normal" in delta_calls[0]
+    assert "--zero-style" in delta_calls[0]
+    assert "normal #111111" in delta_calls[0]
 
     remove_worktree(git_repo, "review-light")
 

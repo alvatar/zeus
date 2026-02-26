@@ -461,6 +461,14 @@ def build_worktree_review(
 
             delta_cmd = ["delta", "--paging=never"]
             delta_cmd.append("--light" if theme_mode == "light" else "--dark")
+            if theme_mode == "light":
+                # Keep light-mode review output legible in the TUI.
+                delta_cmd.extend([
+                    "--map-styles",
+                    "dim => normal",
+                    "--zero-style",
+                    "normal #111111",
+                ])
 
             width = int(delta_width or 0)
             if width > 0:
