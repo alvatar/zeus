@@ -460,22 +460,6 @@ def build_worktree_review(
             # For now, light review mode reuses the same delta rendering as dark
             # mode; only the surrounding TUI background changes.
             delta_cmd = ["delta", "--paging=never", "--side-by-side", "--dark"]
-            # Neutralize divider colors so review separators are gray instead of
-            # terminal-theme-dependent purple/blue accents.
-            delta_cmd.extend([
-                "--file-style",
-                "bold #5a5a5a",
-                "--hunk-header-style",
-                "bold #5a5a5a",
-                "--file-decoration-style",
-                "#4a4a4a",
-                "--hunk-header-decoration-style",
-                "#4a4a4a",
-                "--line-numbers-left-style",
-                "#5a5a5a",
-                "--line-numbers-right-style",
-                "#5a5a5a",
-            ])
 
             width = int(delta_width or 0)
             if width > 0:
