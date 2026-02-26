@@ -4160,7 +4160,7 @@ class ZeusApp(App):
             parts.append("⌁")
 
         if self._is_workdir_agent(agent):
-            parts.append("⑂")
+            parts.append("⎇")
 
         return (" ".join(parts) + " ") if parts else ""
 
