@@ -456,9 +456,10 @@ def build_worktree_review(
 
     if use_delta and shutil.which("delta"):
         try:
+            theme_mode = (delta_theme_mode or "dark").strip().lower()
             # Keep split layout deterministic regardless of user/global config.
-            # For now, light review mode reuses the same delta rendering as dark
-            # mode; only the surrounding TUI background changes.
+            # Light mode keeps the same split renderer as dark mode; only style
+            # accents are adjusted for readability on a light background.
             delta_cmd = ["delta", "--paging=never", "--side-by-side", "--dark"]
             # Neutralize divider lines/bars to gray.
             delta_cmd.extend([
@@ -471,6 +472,13 @@ def build_worktree_review(
                 "--line-numbers-right-style",
                 "#5a5a5a",
             ])
+            if theme_mode == "light":
+                delta_cmd.extend([
+                    "--map-styles",
+                    "dim => normal",
+                    "--zero-style",
+                    "normal #1a1a1a",
+                ])
 
             width = int(delta_width or 0)
             if width > 0:

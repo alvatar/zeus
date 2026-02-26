@@ -636,11 +636,22 @@ ExpandedOutputScreen.review-light #expanded-output-dialog {
 
 ExpandedOutputScreen.review-light #expanded-output-title-row {
     background: #c9c9c9;
+    color: #1a1a1a;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-title {
+    color: #121212;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-hint,
+ExpandedOutputScreen.review-light #expanded-output-footer {
+    color: #2a2a2a;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-stream {
     border-top: solid #b0b0b0;
     background: #e0e0e0;
+    color: #1a1a1a;
 }
 """
 
