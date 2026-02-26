@@ -627,35 +627,35 @@ ExpandedOutputScreen {
 }
 
 ExpandedOutputScreen.review-light {
-    background: #cfcfcfd8;
+    background: #bdbdbdd8;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-dialog {
-    background: #e2e2e2;
+    background: #d0d0d0;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-title-row {
-    background: #c6c6c6;
-    color: #161616;
+    background: #b4b4b4;
+    color: #0a0a0a;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-title {
-    color: #111111;
+    color: #050505;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-hint,
 ExpandedOutputScreen.review-light #expanded-output-footer {
-    color: #2a2a2a;
+    color: #1a1a1a;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-stream {
-    border-top: solid #a8a8a8;
-    background: #e2e2e2;
-    color: #111111;
+    border-top: solid #9a9a9a;
+    background: #d0d0d0;
+    color: #050505;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-scroll-flash {
-    color: #303030;
+    color: #222222;
 }
 """
 
