@@ -1055,7 +1055,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
     CSS = EXPANDED_OUTPUT_CSS
     BINDINGS = [
         Binding("escape", "dismiss", "Close", show=False),
-        Binding("e", "dismiss", "Close", show=False),
+        Binding("space", "dismiss", "Close", show=False),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("g", "go_ahead", "Go ahead", show=False),
         Binding("enter", "message", "Message", show=False),
@@ -1111,7 +1111,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             if self.worktree_review_mode
             else f"Expanded output [bold]{self.agent.name}[/bold]"
         )
-        hint = "(Enter message | G go ahead | F5 refresh | Esc close)"
+        hint = "(Enter message | G go ahead | F5 refresh | Space/Esc close)"
         with Vertical(id="expanded-output-dialog"):
             with Horizontal(id="expanded-output-title-row"):
                 yield Label(
@@ -2247,7 +2247,7 @@ class RestoreSnapshotScreen(_ZeusScreenMixin, ModalScreen):
 _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Hippeis Management ───"),
     ("q", "Stop Hippeus"),
-    ("e", "Expand output for selected Hippeus"),
+    ("Space", "Toggle expanded output for selected Hippeus"),
     ("v", "Review selected worktree (delta, PR-style)"),
     ("r", "Rename Hippeus / tmux"),
     ("Ctrl+r", "Save snapshot"),

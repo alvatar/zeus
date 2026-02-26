@@ -553,7 +553,7 @@ class ZeusApp(App):
         Binding("g", "go_ahead", "Go ahead"),
         Binding("ctrl+g", "preset_message", "Preset message", show=False, priority=True),
         Binding("t", "agent_tasks", "Tasks"),
-        Binding("e", "expand_output", "Expand output", show=False),
+        Binding("space", "expand_output", "Expand output", show=False, key_display="Space"),
         Binding("v", "review_worktree", "Review worktree", show=False, priority=True),
         Binding("ctrl+t", "clear_done_tasks", "Clear done tasks", show=False, priority=True),
         Binding("ctrl+k", "kill_tmux_session", "Kill tmux", show=False),
