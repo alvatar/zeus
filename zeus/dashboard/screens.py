@@ -1128,7 +1128,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 )
             yield RichLog(
                 id="expanded-output-stream",
-                wrap=True,
+                wrap=not self.worktree_review_mode,
                 markup=False,
                 auto_scroll=False,
             )
@@ -1264,9 +1264,22 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         self._show_scroll_flash()
         return True
 
+    def current_worktree_review_width(self) -> int | None:
+        if not self.worktree_review_mode:
+            return None
+        try:
+            stream = self.query_one("#expanded-output-stream", RichLog)
+        except Exception:
+            return None
+        width = int(getattr(getattr(stream, "size", None), "width", 0) or 0)
+        return width if width > 0 else None
+
     def action_refresh(self) -> None:
         if self.worktree_review_mode:
-            self.zeus.do_refresh_worktree_review(self.agent)
+            self.zeus.do_refresh_worktree_review(
+                self.agent,
+                self.current_worktree_review_width(),
+            )
             return
         self._fetch_output()
 

@@ -4605,16 +4605,37 @@ class ZeusApp(App):
             return
         self._start_worktree_review(agent)
 
-    def do_refresh_worktree_review(self, agent: AgentWindow) -> None:
-        self._start_worktree_review(agent)
+    def do_refresh_worktree_review(
+        self,
+        agent: AgentWindow,
+        preferred_width: int | None = None,
+    ) -> None:
+        self._start_worktree_review(agent, preferred_width)
 
-    def _start_worktree_review(self, agent: AgentWindow) -> None:
+    def _resolve_worktree_review_width(self, preferred_width: int | None) -> int | None:
+        width = int(preferred_width or 0)
+        if width <= 0:
+            width = int(getattr(getattr(self, "size", None), "width", 0) or 0)
+        if width <= 0:
+            return None
+        # Account for dialog chrome/padding so delta content fits the viewport.
+        return max(80, width - 4)
+
+    def _start_worktree_review(
+        self,
+        agent: AgentWindow,
+        preferred_width: int | None = None,
+    ) -> None:
         live = self._get_agent_by_key(self._agent_key(agent))
         target = live if live is not None else agent
         request_id = f"worktree-review-{time.time_ns()}"
         expanded = self._ensure_worktree_review_screen(target, request_id)
         expanded.queue_worktree_review_loading()
-        self._build_worktree_review_async(target, request_id)
+        screen_width = expanded.current_worktree_review_width()
+        delta_width = self._resolve_worktree_review_width(
+            screen_width if screen_width is not None else preferred_width,
+        )
+        self._build_worktree_review_async(target, request_id, delta_width)
 
     def _ensure_worktree_review_screen(
         self,
@@ -4632,8 +4653,16 @@ class ZeusApp(App):
         return screen
 
     @work(thread=True, exclusive=True, group="worktree_review")
-    def _build_worktree_review_async(self, agent: AgentWindow, request_id: str) -> None:
-        ok, output = build_worktree_review(agent.cwd)
+    def _build_worktree_review_async(
+        self,
+        agent: AgentWindow,
+        request_id: str,
+        delta_width: int | None,
+    ) -> None:
+        ok, output = build_worktree_review(
+            agent.cwd,
+            delta_width=delta_width,
+        )
         self.call_from_thread(self._apply_worktree_review_output, request_id, ok, output)
 
     def _apply_worktree_review_output(

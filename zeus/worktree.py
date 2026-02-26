@@ -318,6 +318,7 @@ def build_worktree_review(
     *,
     base_branch: str = "",
     use_delta: bool = True,
+    delta_width: int | None = None,
 ) -> tuple[bool, str]:
     """Build a single continuous review view for a worktree branch.
 
@@ -325,6 +326,7 @@ def build_worktree_review(
     - Commit list: base..branch
     - Diff: base...branch (merge-base style / PR-style)
     - Uncommitted changes are intentionally excluded from the diff.
+    - Delta width can be forced via ``delta_width`` to match UI viewport.
     """
     repo_root = get_repo_root(cwd)
     if not repo_root:
@@ -445,8 +447,13 @@ def build_worktree_review(
 
     if use_delta and shutil.which("delta"):
         try:
+            delta_cmd = ["delta", "--paging=never"]
+            width = int(delta_width or 0)
+            if width > 0:
+                delta_cmd.append(f"--width={max(40, width)}")
+
             delta_result = subprocess.run(
-                ["delta", "--paging=never"],
+                delta_cmd,
                 input=plain,
                 capture_output=True,
                 text=True,

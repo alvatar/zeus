@@ -197,6 +197,40 @@ def test_build_worktree_review_uses_pr_style_ranges(git_repo: str) -> None:
     remove_worktree(git_repo, "review-test")
 
 
+def test_build_worktree_review_passes_delta_width_to_delta(
+    git_repo: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_worktree(git_repo, "review-width", base_branch="main")
+    wt = worktree_path(git_repo, "review-width")
+
+    payload = Path(wt) / "README.md"
+    payload.write_text("review width\n")
+    subprocess.run(["git", "add", "README.md"], cwd=wt, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "review width"], cwd=wt, capture_output=True, check=True)
+
+    real_run = subprocess.run
+    delta_calls: list[list[str]] = []
+
+    def _run(cmd, *args, **kwargs):  # noqa: ANN001
+        if isinstance(cmd, list) and cmd and cmd[0] == "delta":
+            delta_calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="delta-rendered", stderr="")
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr("zeus.worktree.shutil.which", lambda tool: "/usr/bin/delta" if tool == "delta" else None)
+    monkeypatch.setattr("zeus.worktree.subprocess.run", _run)
+
+    ok, out = build_worktree_review(wt, delta_width=157)
+
+    assert ok
+    assert out == "delta-rendered"
+    assert delta_calls
+    assert "--width=157" in delta_calls[0]
+
+    remove_worktree(git_repo, "review-width")
+
+
 def test_build_worktree_review_excludes_uncommitted_changes(git_repo: str) -> None:
     create_worktree(git_repo, "dirty-review", base_branch="main")
     wt = worktree_path(git_repo, "dirty-review")

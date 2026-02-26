@@ -83,7 +83,7 @@ class _DummyRichLog:
         self.focused = False
         self.scroll_y = 0.0
         self.max_scroll_y = 0.0
-        self.size = SimpleNamespace(height=10)
+        self.size = SimpleNamespace(width=120, height=10)
         self.region = SimpleNamespace(y=1)
 
     def clear(self) -> None:
@@ -510,17 +510,30 @@ def test_expanded_output_empty_state_has_no_leading_margin(monkeypatch) -> None:
 def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> None:
     agent = _agent("alpha", 1)
     screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
-    refreshed: list[AgentWindow] = []
+    refreshed: list[tuple[AgentWindow, int | None]] = []
+    stream = _DummyRichLog()
+    stream.size = SimpleNamespace(width=156, height=10)
 
     class _ZeusStub:
-        def do_refresh_worktree_review(self, value: AgentWindow) -> None:
-            refreshed.append(value)
+        def do_refresh_worktree_review(
+            self,
+            value: AgentWindow,
+            preferred_width: int | None = None,
+        ) -> None:
+            refreshed.append((value, preferred_width))
 
     monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
 
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
     screen.action_refresh()
 
-    assert refreshed == [agent]
+    assert refreshed == [(agent, 156)]
 
 
 def test_expanded_output_review_mode_apply_starts_at_top(monkeypatch) -> None:
