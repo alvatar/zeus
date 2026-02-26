@@ -129,14 +129,35 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "OptionList(" in source
     assert "agent-dir-suggestions" in source
     assert "_list_available_model_specs()" not in source
-    assert "new-agent-buttons" not in source
-    assert "launch-btn" not in source
+    assert "new-agent-buttons" in source
+    assert "launch-btn" in source
     assert "cancel-btn" not in source
 
     submit_source = inspect.getsource(NewAgentScreen.on_input_submitted)
     assert "event.input.id == \"agent-dir\"" in submit_source
     assert "self._apply_highlighted_dir_suggestion" not in submit_source
     assert "self._launch()" in submit_source
+
+
+def test_invoke_dialog_launch_button_triggers_launch(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    launches: list[bool] = []
+
+    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
+
+    class _Evt:
+        def __init__(self) -> None:
+            self.button = SimpleNamespace(id="launch-btn")
+            self.stopped = False
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    event = _Evt()
+    screen.on_button_pressed(event)  # type: ignore[arg-type]
+
+    assert launches == [True]
+    assert event.stopped is True
 
 
 def test_parse_available_models_table_extracts_provider_model_pairs() -> None:

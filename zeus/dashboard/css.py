@@ -263,7 +263,7 @@ NewAgentScreen {{
 #new-agent-dialog {{
     width: 116;
     height: auto;
-    max-height: 38;
+    max-height: 42;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
@@ -306,6 +306,17 @@ NewAgentScreen {{
 #invoke-role RadioButton {{
     color: #cccccc;
     margin: 1 0;
+}}
+
+#new-agent-buttons {{
+    width: 100%;
+    height: 3;
+    align: right middle;
+    margin: 1 0 0 0;
+}}
+
+#new-agent-buttons Button {{
+    margin: 0 0 0 1;
 }}
 """
 
