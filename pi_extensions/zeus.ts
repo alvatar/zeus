@@ -1580,8 +1580,6 @@ export default function (pi: ExtensionAPI) {
 
     if (mergeResult.code === 0) {
       const output = (mergeResult.stdout || "").trim();
-      const mode = finalize ? "merge+finalize" : "merge+continue";
-      memoryLog("worktree-merge", `${mode}: ${currentBranch} → ${parentBranch}`);
 
       if (finalize) {
         // Signal Zeus dashboard for cleanup
