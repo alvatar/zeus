@@ -1631,7 +1631,7 @@ class ZeusApp(App):
                 f"↑{a.tokens_in} ↓{a.tokens_out}" if a.tokens_in else "—"
             )
             task_cell: str | Text = (
-                Text("■", style="bold #ffaf00")
+                Text("■", style="bold #00d7d7")
                 if self._has_task_for_agent(a)
                 else Text("□", style="#555555")
             )
