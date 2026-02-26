@@ -295,6 +295,36 @@ def test_merge_done_purges_queue(
     mock_purge.assert_called_once_with("dead-agent-id")
 
 
+def test_discard_done_purges_queue(
+    git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Discard signal must purge pending queue messages for the agent."""
+    from zeus.dashboard.app import ZeusApp
+
+    create_worktree(git_repo, "purge-discard-test", base_branch="main")
+
+    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir.mkdir(parents=True)
+    (bus_dir / "signal-discard.json").write_text(json.dumps({
+        "type": "worktree_discard_done",
+        "agent_id": "discard-agent-id",
+        "agent_name": "purge-discard-test",
+        "repo_root": git_repo,
+    }))
+
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+
+    mock_purge = MagicMock()
+    app = ZeusApp.__new__(ZeusApp)
+    app._agent_windows = []
+    app.notify = MagicMock()
+    app._purge_queue_for_agent = mock_purge
+
+    app._check_worktree_merge_done()
+
+    mock_purge.assert_called_once_with("discard-agent-id")
+
+
 # ── Confirm-replace dismiss result ───────────────────────────────────
 
 

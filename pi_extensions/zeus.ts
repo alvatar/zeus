@@ -1659,6 +1659,70 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
+  /** Discard worktree branch and request Zeus cleanup (no merge). */
+  async function doWorktreeDiscard(signal: AbortSignal | undefined): Promise<{
+    content: { type: string; text: string }[];
+    details?: Record<string, string>;
+  }> {
+    const gitDirResult = await pi.exec("git", ["rev-parse", "--git-dir"], { signal, timeout: 5000 });
+    const gitCommonResult = await pi.exec("git", ["rev-parse", "--git-common-dir"], { signal, timeout: 5000 });
+
+    if (gitDirResult.code !== 0 || gitCommonResult.code !== 0) {
+      return { content: [{ type: "text", text: "Not in a git repository." }] };
+    }
+
+    const gitDir = (gitDirResult.stdout || "").trim();
+    const gitCommon = (gitCommonResult.stdout || "").trim();
+
+    if (gitDir === gitCommon || gitDir === ".git") {
+      return { content: [{ type: "text", text: "Not in a git worktree. This tool only works from a Zeus workdir agent." }] };
+    }
+
+    const branchResult = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { signal, timeout: 5000 });
+    if (branchResult.code !== 0) {
+      return { content: [{ type: "text", text: "Cannot determine current branch." }] };
+    }
+    const currentBranch = (branchResult.stdout || "").trim();
+
+    if (!currentBranch.startsWith("zeus/")) {
+      return { content: [{ type: "text", text: `Current branch '${currentBranch}' is not a Zeus worktree branch (expected zeus/* prefix).` }] };
+    }
+
+    const commonDir = path.resolve(gitCommon);
+    const repoRoot = path.dirname(commonDir);
+
+    const agentId = process.env.ZEUS_AGENT_ID || "";
+    const agentName = process.env.ZEUS_AGENT_NAME || "";
+    if (!agentId) {
+      return { content: [{ type: "text", text: "No ZEUS_AGENT_ID — cannot request discard cleanup." }] };
+    }
+
+    try {
+      const busDir = path.join(getStateDir(), "agent-bus", "inbox", "zeus", "new");
+      fs.mkdirSync(busDir, { recursive: true });
+      const signalPayload = JSON.stringify({
+        type: "worktree_discard_done",
+        agent_id: agentId,
+        agent_name: agentName,
+        branch: currentBranch,
+        repo_root: repoRoot,
+      });
+      const sigFile = path.join(busDir, `worktree-discard-${agentId.slice(0, 8)}-${Date.now()}.json`);
+      fs.writeFileSync(sigFile, signalPayload);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: "text", text: `Failed to signal discard cleanup: ${reason}` }],
+        details: { branch: currentBranch, status: "discard_signal_failed" },
+      };
+    }
+
+    return {
+      content: [{ type: "text", text: `Discard requested for ${currentBranch}. Zeus will remove this worktree branch and terminate this agent (no merge).` }],
+      details: { branch: currentBranch, status: "discard_requested" },
+    };
+  }
+
   // ── zeus_worktree_merge_and_finalize (finalize) ────────────────────────────────────
   pi.registerTool({
     name: "zeus_worktree_merge_and_finalize",
@@ -1684,6 +1748,20 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal) {
       return doWorktreeMerge(signal, false);
+    },
+  });
+
+  // ── zeus_worktree_discard (discard without merge) ───────────────────────────────────
+  pi.registerTool({
+    name: "zeus_worktree_discard",
+    label: "Discard worktree",
+    description:
+      "Discard the current Zeus worktree branch without merging. " +
+      "Zeus removes the worktree and branch and terminates this agent. " +
+      "Use this when Oracle requests abandoning this workdir branch.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      return doWorktreeDiscard(signal);
     },
   });
 }

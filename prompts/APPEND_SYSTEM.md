@@ -72,6 +72,6 @@ Zeus Memory
 
 Zeus Git Worktrees
 - Zeus worktrees are initiated exclusively by the Oracle. There might be other tools that give you the ability to work with worktrees autonomously.
-- When you are working in a git worktree (branch prefix `zeus/`), use `zeus_worktree_merge_and_continue` to merge intermediate progress, or `zeus_worktree_merge_and_finalize` to merge and finalize (kills agent, removes worktree), when the Oracle requests.
+- When you are working in a git worktree (branch prefix `zeus/`), use `zeus_worktree_merge_and_continue` to merge intermediate progress, `zeus_worktree_merge_and_finalize` to merge and finalize (kills agent, removes worktree), or `zeus_worktree_discard` to abandon the worktree branch without merging, when the Oracle requests.
 - Commit all changes before merging. The tool will report conflicts if any — resolve them, then retry.
 

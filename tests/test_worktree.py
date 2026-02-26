@@ -570,3 +570,39 @@ def test_check_worktree_merge_done_cleans_up(
     assert app.notify.called
     call_args = app.notify.call_args
     assert "done-agent" in str(call_args)
+
+
+def test_check_worktree_discard_done_cleans_up(
+    git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_check_worktree_merge_done must remove worktree on discard signal too."""
+    import json
+    from zeus.dashboard.app import ZeusApp
+
+    create_worktree(git_repo, "discard-agent", base_branch="main")
+    wt = worktree_path(git_repo, "discard-agent")
+    assert os.path.isdir(wt)
+
+    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir.mkdir(parents=True)
+    signal_file = bus_dir / "worktree-discard-test.json"
+    signal_file.write_text(json.dumps({
+        "type": "worktree_discard_done",
+        "agent_id": "def456",
+        "agent_name": "discard-agent",
+        "repo_root": git_repo,
+    }))
+
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+
+    app = ZeusApp.__new__(ZeusApp)
+    app._agent_windows = []
+    app.notify = MagicMock()
+
+    app._check_worktree_merge_done()
+
+    assert not signal_file.exists()
+    assert not os.path.isdir(wt)
+    assert app.notify.called
+    call_args = app.notify.call_args
+    assert "Discarded & cleaned" in str(call_args)

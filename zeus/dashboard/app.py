@@ -4402,12 +4402,26 @@ class ZeusApp(App):
         self.notify(f"Killed: {agent.name}", timeout=2)
         self.poll_and_update()
 
+    def _remove_worktree_branch(
+        self,
+        repo_root: str,
+        agent_name: str,
+        *,
+        source: str,
+    ) -> None:
+        try:
+            from ..worktree import remove_worktree
+
+            ok, msg = remove_worktree(repo_root, agent_name)
+            _wt_log(f"{source} cleanup: {agent_name} ok={ok} msg={msg}")
+        except Exception as exc:
+            _wt_log(f"{source} cleanup error: {exc}")
+
     def _cleanup_worktree_if_needed(self, agent: AgentWindow) -> None:
         """Remove worktree + branch if this was a workdir agent."""
         try:
             from ..worktree import (
                 get_worktree_repo_root,
-                remove_worktree,
                 worktree_path,
             )
             # Check if a worktree exists for this agent name
@@ -4417,10 +4431,11 @@ class ZeusApp(App):
                 return
             wt = worktree_path(repo_root, agent.name)
             if os.path.isdir(wt):
-                ok, msg = remove_worktree(repo_root, agent.name)
-                if not ok:
-                    import sys
-                    print(f"[worktree-cleanup] {msg}", file=sys.stderr)
+                self._remove_worktree_branch(
+                    repo_root,
+                    agent.name,
+                    source="kill-discard",
+                )
         except Exception:
             pass
 
@@ -5738,7 +5753,9 @@ class ZeusApp(App):
         else:
             prompt_text = (
                 f"You are working in git worktree branch `{branch}` "
-                f"at `{wt_path}`. Use `zeus_worktree_merge_and_finalize` when done, or `zeus_worktree_merge_and_continue` for intermediate merges."
+                f"at `{wt_path}`. Use `zeus_worktree_merge_and_finalize` when done, "
+                f"`zeus_worktree_merge_and_continue` for intermediate merges, "
+                f"or `zeus_worktree_discard` to discard without merging."
             )
         return prompt_text
 
@@ -6101,7 +6118,7 @@ class ZeusApp(App):
             )
 
     def _check_worktree_merge_done(self) -> None:
-        """Scan Zeus bus inbox for worktree_merge_done signals; clean up worktree + kill agent."""
+        """Scan Zeus bus inbox for worktree finalize/discard signals; clean up worktree + kill agent."""
         from ..config import AGENT_BUS_INBOX_DIR
 
         zeus_inbox = AGENT_BUS_INBOX_DIR / "zeus" / "new"
@@ -6117,7 +6134,8 @@ class ZeusApp(App):
             except (OSError, json.JSONDecodeError):
                 continue
 
-            if data.get("type") != "worktree_merge_done":
+            signal_type = (data.get("type") or "").strip()
+            if signal_type not in {"worktree_merge_done", "worktree_discard_done"}:
                 continue
 
             agent_id = data.get("agent_id", "")
@@ -6140,18 +6158,22 @@ class ZeusApp(App):
 
             # Clean up the worktree
             if repo_root and agent_name:
-                try:
-                    from ..worktree import remove_worktree
-                    ok, msg = remove_worktree(repo_root, agent_name)
-                    _wt_log(f"merge-done cleanup: {agent_name} ok={ok} msg={msg}")
-                except Exception as exc:
-                    _wt_log(f"merge-done cleanup error: {exc}")
+                self._remove_worktree_branch(
+                    repo_root,
+                    agent_name,
+                    source=signal_type,
+                )
 
             # Remove any pending queue messages for this agent
             self._purge_queue_for_agent(agent_id)
 
+            if signal_type == "worktree_discard_done":
+                note = f"🌿 Discarded & cleaned: {agent_name or agent_id[:8]}"
+            else:
+                note = f"🌿 Merged & cleaned: {agent_name or agent_id[:8]}"
+
             self.notify(
-                f"🌿 Merged & cleaned: {agent_name or agent_id[:8]}",
+                note,
                 severity="information",
             )
 
