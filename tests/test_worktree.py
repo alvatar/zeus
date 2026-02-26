@@ -229,6 +229,7 @@ def test_build_worktree_review_passes_delta_width_to_delta(
     assert "delta-rendered" in out
     assert out.rstrip().endswith("=== END OF REVIEW ===")
     assert delta_calls
+    assert "--side-by-side" in delta_calls[0]
     assert "--dark" in delta_calls[0]
     assert "--width=157" in delta_calls[0]
 
@@ -265,7 +266,10 @@ def test_build_worktree_review_passes_light_mode_to_delta(
     assert "delta-rendered" in out
     assert out.rstrip().endswith("=== END OF REVIEW ===")
     assert delta_calls
+    assert "--side-by-side" in delta_calls[0]
     assert "--light" in delta_calls[0]
+    assert "--syntax-theme" in delta_calls[0]
+    assert "GitHub" in delta_calls[0]
     assert "--map-styles" in delta_calls[0]
     assert "dim => normal" in delta_calls[0]
     assert "--zero-style" in delta_calls[0]

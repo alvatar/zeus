@@ -459,12 +459,15 @@ def build_worktree_review(
             theme_mode = (delta_theme_mode or "dark").strip().lower()
             theme_mode = "light" if theme_mode == "light" else "dark"
 
-            delta_cmd = ["delta", "--paging=never"]
+            # Keep split layout deterministic regardless of user/global config.
+            delta_cmd = ["delta", "--paging=never", "--side-by-side"]
             delta_cmd.append("--light" if theme_mode == "light" else "--dark")
             if theme_mode == "light":
-                # Keep light-mode review output legible in the TUI and avoid
-                # reverse-style warning boxes masking content.
+                # Keep light-mode review output legible and avoid reverse-style
+                # warning boxes masking content.
                 delta_cmd.extend([
+                    "--syntax-theme",
+                    "GitHub",
                     "--map-styles",
                     "dim => normal",
                     "--zero-style",
