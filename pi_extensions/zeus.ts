@@ -557,282 +557,281 @@ export default function (pi: ExtensionAPI) {
     return `  ${ns}/${key}${tagStr}\n    ${preview.replace(/\n/g, "\n    ")}`;
   }
 
-  // TEMP DISABLED (Oracle request 2026-02-25): /memory command registration. Restore by uncommenting this registration block.
-//   pi.registerCommand("memory", {
-//     description: "Memory system — /memory help for all subcommands",
-//     async handler(args: string, _ctx) {
+  pi.registerCommand("memory", {
+    description: "Memory system — /memory help for all subcommands",
+    async handler(args: string, _ctx) {
       // Preserve case for namespace/key args, lowercase only the subcommand
-//       const rawParts = args.trim().split(/\s+/);
-//       const sub = (rawParts[0] || "help").toLowerCase();
-// 
+      const rawParts = args.trim().split(/\s+/);
+      const sub = (rawParts[0] || "help").toLowerCase();
+
       // ── verbose ──────────────────────────────────────────────────
-//       if (sub === "verbose") {
-//         const val = (rawParts[1] || "").toLowerCase();
-//         if (val === "on" || val === "true" || val === "1") {
-//           memoryConfig.verbose = true;
-//           saveMemoryConfig(memoryConfig);
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: ON", display: true });
-//         } else if (val === "off" || val === "false" || val === "0") {
-//           memoryConfig.verbose = false;
-//           saveMemoryConfig(memoryConfig);
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: OFF", display: true });
-//         } else {
-//           pi.sendMessage({
-//             customType: "zeus_memory_log",
-//             content: `🧠 Verbose logging: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
-//             display: true,
-//           });
-//         }
-//         return;
-//       }
-// 
+      if (sub === "verbose") {
+        const val = (rawParts[1] || "").toLowerCase();
+        if (val === "on" || val === "true" || val === "1") {
+          memoryConfig.verbose = true;
+          saveMemoryConfig(memoryConfig);
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: ON", display: true });
+        } else if (val === "off" || val === "false" || val === "0") {
+          memoryConfig.verbose = false;
+          saveMemoryConfig(memoryConfig);
+          pi.sendMessage({ customType: "zeus_memory_log", content: "🧠 Memory verbose logging: OFF", display: true });
+        } else {
+          pi.sendMessage({
+            customType: "zeus_memory_log",
+            content: `🧠 Verbose logging: ${memoryConfig.verbose ? "ON" : "OFF"}\nUsage: /memory verbose on|off`,
+            display: true,
+          });
+        }
+        return;
+      }
+
       // ── injection toggle (current agent only) ────────────────────
-//       if (sub === "enable") {
-//         memoryInjectionEnabled = true;
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: "🧠 Memory injection: ON (current agent)",
-//           display: true,
-//         });
-//         return;
-//       }
-// 
-//       if (sub === "disable") {
-//         memoryInjectionEnabled = false;
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: "🧠 Memory injection: OFF (current agent)",
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "enable") {
+        memoryInjectionEnabled = true;
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: "🧠 Memory injection: ON (current agent)",
+          display: true,
+        });
+        return;
+      }
+
+      if (sub === "disable") {
+        memoryInjectionEnabled = false;
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: "🧠 Memory injection: OFF (current agent)",
+          display: true,
+        });
+        return;
+      }
+
       // ── status ───────────────────────────────────────────────────
-//       if (sub === "status") {
-//         const dbPath = path.join(getStateDir(), "memory.db");
-//         const exists = fs.existsSync(dbPath);
-//         let count = "?";
-//         let namespaces = "";
-//         if (exists) {
-//           count = await memoryQueryRaw("SELECT COUNT(*) FROM memories WHERE archived = 0;") || "0";
-//           namespaces = await memoryQueryRaw(
-//             "SELECT namespace || ' (' || COUNT(*) || ')' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
-//           );
-//         }
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: [
-//             `🧠 Memory status:`,
-//             `  DB: ${dbPath} (${exists ? "exists" : "not created"})`,
-//             `  Total: ${count} active memories`,
-//             `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
-//             `  Injection (this agent): ${memoryInjectionEnabled ? "ON" : "OFF"}`,
-//             namespaces ? `  Namespaces:\n    ${namespaces.split("\n").join("\n    ")}` : "",
-//           ].filter(Boolean).join("\n"),
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "status") {
+        const dbPath = path.join(getStateDir(), "memory.db");
+        const exists = fs.existsSync(dbPath);
+        let count = "?";
+        let namespaces = "";
+        if (exists) {
+          count = await memoryQueryRaw("SELECT COUNT(*) FROM memories WHERE archived = 0;") || "0";
+          namespaces = await memoryQueryRaw(
+            "SELECT namespace || ' (' || COUNT(*) || ')' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
+          );
+        }
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: [
+            `🧠 Memory status:`,
+            `  DB: ${dbPath} (${exists ? "exists" : "not created"})`,
+            `  Total: ${count} active memories`,
+            `  Verbose: ${memoryConfig.verbose ? "ON" : "OFF"}`,
+            `  Injection (this agent): ${memoryInjectionEnabled ? "ON" : "OFF"}`,
+            namespaces ? `  Namespaces:\n    ${namespaces.split("\n").join("\n    ")}` : "",
+          ].filter(Boolean).join("\n"),
+          display: true,
+        });
+        return;
+      }
+
       // ── list [namespace] ─────────────────────────────────────────
-//       if (sub === "list" || sub === "ls") {
-//         const ns = rawParts[1] || "";
-//         let sql: string;
-//         if (ns) {
-//           sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' ORDER BY key;`;
-//         } else {
-//           sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 ORDER BY namespace, key;`;
-//         }
-//         const rows = await memoryQueryJson(sql);
-//         if (!rows.length) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: ns ? `🧠 No memories in namespace '${ns}'.` : "🧠 No memories found.", display: true });
-//           return;
-//         }
-//         const entries = rows.map(r => fmtMemory(r.namespace, r.key, r.content, r.tags));
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: `🧠 Memories${ns ? ` in ${ns}` : ""} (${rows.length}):\n${entries.join("\n\n")}`,
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "list" || sub === "ls") {
+        const ns = rawParts[1] || "";
+        let sql: string;
+        if (ns) {
+          sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' ORDER BY key;`;
+        } else {
+          sql = `SELECT namespace, key, content, tags FROM memories WHERE archived = 0 ORDER BY namespace, key;`;
+        }
+        const rows = await memoryQueryJson(sql);
+        if (!rows.length) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: ns ? `🧠 No memories in namespace '${ns}'.` : "🧠 No memories found.", display: true });
+          return;
+        }
+        const entries = rows.map(r => fmtMemory(r.namespace, r.key, r.content, r.tags));
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 Memories${ns ? ` in ${ns}` : ""} (${rows.length}):\n${entries.join("\n\n")}`,
+          display: true,
+        });
+        return;
+      }
+
       // ── get <namespace> <key> ────────────────────────────────────
-//       if (sub === "get" || sub === "recall") {
-//         const ns = rawParts[1];
-//         const key = rawParts[2];
-//         if (!ns || !key) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory get <namespace> <key>", display: true });
-//           return;
-//         }
-//         const rows = await memoryQueryJson(
-//           `SELECT content, tags, updated_at FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
-//         );
-//         if (!rows.length) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
-//           return;
-//         }
-//         const r = rows[0];
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: `🧠 ${ns}/${key}${r.tags ? ` [${r.tags}]` : ""}${r.updated_at ? ` (updated: ${r.updated_at})` : ""}\n\n${r.content}`,
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "get" || sub === "recall") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        if (!ns || !key) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory get <namespace> <key>", display: true });
+          return;
+        }
+        const rows = await memoryQueryJson(
+          `SELECT content, tags, updated_at FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        if (!rows.length) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
+          return;
+        }
+        const r = rows[0];
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 ${ns}/${key}${r.tags ? ` [${r.tags}]` : ""}${r.updated_at ? ` (updated: ${r.updated_at})` : ""}\n\n${r.content}`,
+          display: true,
+        });
+        return;
+      }
+
       // ── search <query> ───────────────────────────────────────────
-//       if (sub === "search" || sub === "find") {
-//         const query = rawParts.slice(1).join(" ");
-//         if (!query) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory search <query>", display: true });
-//           return;
-//         }
-//         const escaped = query.replace(/'/g, "''");
-//         const rows = await memoryQueryJson(
-//           `SELECT m.namespace, m.key, m.content, m.tags FROM memories m JOIN memories_fts f ON m.id = f.rowid WHERE m.archived = 0 AND f.memories_fts MATCH '${escaped}' ORDER BY rank LIMIT 20;`
-//         );
-//         if (!rows.length) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No results for '${query}'.`, display: true });
-//           return;
-//         }
-//         const entries = rows.map(r => fmtMemory(r.namespace, r.key, r.content, r.tags));
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: `🧠 Search '${query}' (${entries.length} results):\n${entries.join("\n\n")}`,
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "search" || sub === "find") {
+        const query = rawParts.slice(1).join(" ");
+        if (!query) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory search <query>", display: true });
+          return;
+        }
+        const escaped = query.replace(/'/g, "''");
+        const rows = await memoryQueryJson(
+          `SELECT m.namespace, m.key, m.content, m.tags FROM memories m JOIN memories_fts f ON m.id = f.rowid WHERE m.archived = 0 AND f.memories_fts MATCH '${escaped}' ORDER BY rank LIMIT 20;`
+        );
+        if (!rows.length) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No results for '${query}'.`, display: true });
+          return;
+        }
+        const entries = rows.map(r => fmtMemory(r.namespace, r.key, r.content, r.tags));
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: `🧠 Search '${query}' (${entries.length} results):\n${entries.join("\n\n")}`,
+          display: true,
+        });
+        return;
+      }
+
       // ── delete <namespace> <key> ─────────────────────────────────
-//       if (sub === "delete" || sub === "rm") {
-//         const ns = rawParts[1];
-//         const key = rawParts[2];
-//         if (!ns || !key) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory delete <namespace> <key>", display: true });
-//           return;
-//         }
-//         const rows = await memoryQueryJson(
-//           `SELECT id FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
-//         );
-//         if (!rows.length) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
-//           return;
-//         }
-//         await memoryQueryRaw(
-//           `DELETE FROM memories WHERE namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
-//         );
-//         pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Deleted: ${ns}/${key}`, display: true });
-//         return;
-//       }
-// 
+      if (sub === "delete" || sub === "rm") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        if (!ns || !key) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory delete <namespace> <key>", display: true });
+          return;
+        }
+        const rows = await memoryQueryJson(
+          `SELECT id FROM memories WHERE archived = 0 AND namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        if (!rows.length) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Not found: ${ns}/${key}`, display: true });
+          return;
+        }
+        await memoryQueryRaw(
+          `DELETE FROM memories WHERE namespace = '${ns.replace(/'/g, "''")}' AND key = '${key.replace(/'/g, "''")}';`
+        );
+        pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Deleted: ${ns}/${key}`, display: true });
+        return;
+      }
+
       // ── topics ───────────────────────────────────────────────────
-//       if (sub === "topics") {
-//         const topics = await memoryQueryRaw(
-//           "SELECT REPLACE(namespace, 'topic:', '') || ' (' || COUNT(*) || ' memories)' FROM memories WHERE archived = 0 AND namespace LIKE 'topic:%' GROUP BY namespace ORDER BY namespace;"
-//         );
-//         const pending = await memoryQueryRaw(
-//           "SELECT REPLACE(namespace, 'new:', '') || ' (' || COUNT(*) || ' pending)' FROM memories WHERE archived = 0 AND namespace LIKE 'new:%' GROUP BY namespace ORDER BY namespace;"
-//         );
-//         const lines: string[] = ["🧠 Topics:"];
-//         if (topics) lines.push("  Promoted:\n    " + topics.split("\n").join("\n    "));
-//         else lines.push("  (no promoted topics)");
-//         if (pending) lines.push("  Staging (new:*):\n    " + pending.split("\n").join("\n    "));
-//         pi.sendMessage({ customType: "zeus_memory_log", content: lines.join("\n"), display: true });
-//         return;
-//       }
-// 
+      if (sub === "topics") {
+        const topics = await memoryQueryRaw(
+          "SELECT REPLACE(namespace, 'topic:', '') || ' (' || COUNT(*) || ' memories)' FROM memories WHERE archived = 0 AND namespace LIKE 'topic:%' GROUP BY namespace ORDER BY namespace;"
+        );
+        const pending = await memoryQueryRaw(
+          "SELECT REPLACE(namespace, 'new:', '') || ' (' || COUNT(*) || ' pending)' FROM memories WHERE archived = 0 AND namespace LIKE 'new:%' GROUP BY namespace ORDER BY namespace;"
+        );
+        const lines: string[] = ["🧠 Topics:"];
+        if (topics) lines.push("  Promoted:\n    " + topics.split("\n").join("\n    "));
+        else lines.push("  (no promoted topics)");
+        if (pending) lines.push("  Staging (new:*):\n    " + pending.split("\n").join("\n    "));
+        pi.sendMessage({ customType: "zeus_memory_log", content: lines.join("\n"), display: true });
+        return;
+      }
+
       // ── save <namespace> <key> <content...> ────────────────────
-//       if (sub === "save" || sub === "set") {
-//         const ns = rawParts[1];
-//         const key = rawParts[2];
-//         const content = rawParts.slice(3).join(" ");
-//         if (!ns || !key || !content) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory save <namespace> <key> <content...>", display: true });
-//           return;
-//         }
-//         try {
-//           await ensureMemorySchema();
-//           await sqliteExec(
-//             `INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
-//              VALUES ('${sqlEscape(ns)}', '${sqlEscape(key)}', '${sqlEscape(content)}', '', '${sqlEscape(getAgentId())}', '${sqlEscape(await resolveProjectName())}')
-//              ON CONFLICT(namespace, key) DO UPDATE SET content = excluded.content, updated_at = datetime('now');`
-//           );
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Saved: ${ns}/${key}`, display: true });
-//         } catch (e: any) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error saving: ${e.message || e}`, display: true });
-//         }
-//         return;
-//       }
-// 
+      if (sub === "save" || sub === "set") {
+        const ns = rawParts[1];
+        const key = rawParts[2];
+        const content = rawParts.slice(3).join(" ");
+        if (!ns || !key || !content) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory save <namespace> <key> <content...>", display: true });
+          return;
+        }
+        try {
+          await ensureMemorySchema();
+          await sqliteExec(
+            `INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
+             VALUES ('${sqlEscape(ns)}', '${sqlEscape(key)}', '${sqlEscape(content)}', '', '${sqlEscape(getAgentId())}', '${sqlEscape(await resolveProjectName())}')
+             ON CONFLICT(namespace, key) DO UPDATE SET content = excluded.content, updated_at = datetime('now');`
+          );
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Saved: ${ns}/${key}`, display: true });
+        } catch (e: any) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error saving: ${e.message || e}`, display: true });
+        }
+        return;
+      }
+
       // ── rename <old_ns> <new_ns> ─────────────────────────────────
-//       if (sub === "rename" || sub === "mv") {
-//         const oldNs = rawParts[1];
-//         const newNs = rawParts[2];
-//         if (!oldNs || !newNs) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory rename <old_namespace> <new_namespace>\nExample: /memory rename project:old-name project:new-name", display: true });
-//           return;
-//         }
-//         try {
-//           await ensureMemorySchema();
-//           const count = await memoryQueryRaw(
-//             `SELECT COUNT(*) FROM memories WHERE namespace = '${sqlEscape(oldNs)}';`
-//           );
-//           if (!count || count === "0") {
-//             pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No memories found in namespace '${oldNs}'.`, display: true });
-//             return;
-//           }
-//           await sqliteExec(`
-//             UPDATE memories SET namespace = '${sqlEscape(newNs)}' WHERE namespace = '${sqlEscape(oldNs)}';
-//             UPDATE memories SET source_project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE source_project = '${sqlEscape(oldNs.replace("project:", ""))}';
-//             UPDATE topic_links SET project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE project = '${sqlEscape(oldNs.replace("project:", ""))}';
-//           `);
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Renamed: ${oldNs} → ${newNs} (${count} memories)`, display: true });
-//         } catch (e: any) {
-//           pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error: ${e.message || e}`, display: true });
-//         }
-//         return;
-//       }
-// 
+      if (sub === "rename" || sub === "mv") {
+        const oldNs = rawParts[1];
+        const newNs = rawParts[2];
+        if (!oldNs || !newNs) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: "Usage: /memory rename <old_namespace> <new_namespace>\nExample: /memory rename project:old-name project:new-name", display: true });
+          return;
+        }
+        try {
+          await ensureMemorySchema();
+          const count = await memoryQueryRaw(
+            `SELECT COUNT(*) FROM memories WHERE namespace = '${sqlEscape(oldNs)}';`
+          );
+          if (!count || count === "0") {
+            pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 No memories found in namespace '${oldNs}'.`, display: true });
+            return;
+          }
+          await sqliteExec(`
+            UPDATE memories SET namespace = '${sqlEscape(newNs)}' WHERE namespace = '${sqlEscape(oldNs)}';
+            UPDATE memories SET source_project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE source_project = '${sqlEscape(oldNs.replace("project:", ""))}';
+            UPDATE topic_links SET project = '${sqlEscape(newNs.replace("project:", ""))}' WHERE project = '${sqlEscape(oldNs.replace("project:", ""))}';
+          `);
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Renamed: ${oldNs} → ${newNs} (${count} memories)`, display: true });
+        } catch (e: any) {
+          pi.sendMessage({ customType: "zeus_memory_log", content: `🧠 Error: ${e.message || e}`, display: true });
+        }
+        return;
+      }
+
       // ── namespaces ───────────────────────────────────────────────
-//       if (sub === "namespaces" || sub === "ns") {
-//         const raw = await memoryQueryRaw(
-//           "SELECT namespace || ': ' || COUNT(*) || ' memories' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
-//         );
-//         pi.sendMessage({
-//           customType: "zeus_memory_log",
-//           content: raw ? `🧠 Namespaces:\n  ${raw.split("\n").join("\n  ")}` : "🧠 No memories.",
-//           display: true,
-//         });
-//         return;
-//       }
-// 
+      if (sub === "namespaces" || sub === "ns") {
+        const raw = await memoryQueryRaw(
+          "SELECT namespace || ': ' || COUNT(*) || ' memories' FROM memories WHERE archived = 0 GROUP BY namespace ORDER BY namespace;"
+        );
+        pi.sendMessage({
+          customType: "zeus_memory_log",
+          content: raw ? `🧠 Namespaces:\n  ${raw.split("\n").join("\n  ")}` : "🧠 No memories.",
+          display: true,
+        });
+        return;
+      }
+
       // ── help ─────────────────────────────────────────────────────
-//       pi.sendMessage({
-//         customType: "zeus_memory_log",
-//         content: [
-//           "🧠 /memory commands:",
-//           "",
-//           "  /memory status                       — DB stats, namespace counts, verbose state",
-//           "  /memory list [namespace]             — list all memories (or filter by namespace)",
-//           "  /memory get <ns> <key>               — show full content of a memory",
-//           "  /memory save <ns> <key> <content...> — save or update a memory",
-//           "  /memory search <query>               — full-text search across all memories",
-//           "  /memory delete <ns> <key>            — permanently remove a memory",
-//           "  /memory rename <old_ns> <new_ns>     — rename a namespace (e.g. after moving a project folder)",
-//           "  /memory namespaces                   — list all namespaces with counts",
-//           "  /memory topics                       — list topics and pending staging entries",
-//           "  /memory enable                       — enable memory injection for this agent",
-//           "  /memory disable                      — disable memory injection for this agent",
-//           "  /memory verbose on|off               — toggle verbose memory logging",
-//           "",
-//           "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save, mv=rename",
-//         ].join("\n"),
-//         display: true,
-//       });
-//     },
-//   });
+      pi.sendMessage({
+        customType: "zeus_memory_log",
+        content: [
+          "🧠 /memory commands:",
+          "",
+          "  /memory status                       — DB stats, namespace counts, verbose state",
+          "  /memory list [namespace]             — list all memories (or filter by namespace)",
+          "  /memory get <ns> <key>               — show full content of a memory",
+          "  /memory save <ns> <key> <content...> — save or update a memory",
+          "  /memory search <query>               — full-text search across all memories",
+          "  /memory delete <ns> <key>            — permanently remove a memory",
+          "  /memory rename <old_ns> <new_ns>     — rename a namespace (e.g. after moving a project folder)",
+          "  /memory namespaces                   — list all namespaces with counts",
+          "  /memory topics                       — list topics and pending staging entries",
+          "  /memory enable                       — enable memory injection for this agent",
+          "  /memory disable                      — disable memory injection for this agent",
+          "  /memory verbose on|off               — toggle verbose memory logging",
+          "",
+          "  Aliases: ls=list, find=search, rm=delete, ns=namespaces, recall=get, set=save, mv=rename",
+        ].join("\n"),
+        display: true,
+      });
+    },
+  });
 
   // ── Memory injection (before_agent_start) ─────────────────────────────
   // Appends relevant memories to the system prompt each turn.
@@ -843,126 +842,125 @@ export default function (pi: ExtensionAPI) {
   const TOPIC_BUDGET = 16000;    // ~4K tokens
   // Remainder for FTS if needed (not used in auto-injection yet).
 
-  // TEMP DISABLED (Oracle request 2026-02-25): memory before_agent_start injection registration. Restore by uncommenting this registration block.
-//   pi.on("before_agent_start", async (event, _ctx) => {
-//     try {
-//       if (!memoryInjectionEnabled) return;
-// 
-//       const dbPath = path.join(getStateDir(), "memory.db");
-//       if (!fs.existsSync(dbPath)) return;
-// 
-//       const project = await resolveProjectName();
-//       if (!project) return;
-// 
+  pi.on("before_agent_start", async (event, _ctx) => {
+    try {
+      if (!memoryInjectionEnabled) return;
+
+      const dbPath = path.join(getStateDir(), "memory.db");
+      if (!fs.existsSync(dbPath)) return;
+
+      const project = await resolveProjectName();
+      if (!project) return;
+
       // Load linked topics
-//       let linkedTopics: string[] = [];
-//       try {
-//         const linkResult = await pi.exec("sqlite3", [
-//           dbPath, ".mode json",
-//           `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
-//         ], { timeout: 5000 });
-//         if (linkResult.code === 0 && linkResult.stdout) {
-//           const parsed = JSON.parse(linkResult.stdout.trim() || "[]");
-//           linkedTopics = parsed.map((r: any) => r.topic).filter(Boolean);
-//         }
-//       } catch {}
-// 
+      let linkedTopics: string[] = [];
+      try {
+        const linkResult = await pi.exec("sqlite3", [
+          dbPath, ".mode json",
+          `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
+        ], { timeout: 5000 });
+        if (linkResult.code === 0 && linkResult.stdout) {
+          const parsed = JSON.parse(linkResult.stdout.trim() || "[]");
+          linkedTopics = parsed.map((r: any) => r.topic).filter(Boolean);
+        }
+      } catch {}
+
       // Build namespace list
-//       const namespaces = ["global", `project:${project}`];
-//       for (const t of linkedTopics) namespaces.push(`topic:${t}`);
-// 
+      const namespaces = ["global", `project:${project}`];
+      for (const t of linkedTopics) namespaces.push(`topic:${t}`);
+
       // Load all memories in relevant namespaces
-//       const inClause = namespaces.map((n) => `'${sqlEscape(n)}'`).join(",");
-//       const memResult = await pi.exec("sqlite3", [
-//         dbPath, ".mode json",
-//         `SELECT namespace, key, content FROM memories WHERE namespace IN (${inClause}) AND archived = 0 ORDER BY access_count DESC, updated_at DESC;`,
-//       ], { timeout: 5000 });
-// 
-//       if (memResult.code !== 0 || !memResult.stdout?.trim()) return;
-// 
-//       let rows: Array<{ namespace: string; key: string; content: string }>;
-//       try {
-//         rows = JSON.parse(memResult.stdout.trim());
-//       } catch {
-//         return;
-//       }
-//       if (!rows.length) return;
-// 
+      const inClause = namespaces.map((n) => `'${sqlEscape(n)}'`).join(",");
+      const memResult = await pi.exec("sqlite3", [
+        dbPath, ".mode json",
+        `SELECT namespace, key, content FROM memories WHERE namespace IN (${inClause}) AND archived = 0 ORDER BY access_count DESC, updated_at DESC;`,
+      ], { timeout: 5000 });
+
+      if (memResult.code !== 0 || !memResult.stdout?.trim()) return;
+
+      let rows: Array<{ namespace: string; key: string; content: string }>;
+      try {
+        rows = JSON.parse(memResult.stdout.trim());
+      } catch {
+        return;
+      }
+      if (!rows.length) return;
+
       // Partition by type
-//       const globalMems: typeof rows = [];
-//       const projectMems: typeof rows = [];
-//       const topicMems: Record<string, typeof rows> = {};
-// 
-//       for (const r of rows) {
-//         if (r.namespace === "global") {
-//           globalMems.push(r);
-//         } else if (r.namespace === `project:${project}`) {
-//           projectMems.push(r);
-//         } else if (r.namespace.startsWith("topic:")) {
-//           const tName = r.namespace.slice(6);
-//           if (!topicMems[tName]) topicMems[tName] = [];
-//           topicMems[tName].push(r);
-//         }
-//       }
-// 
+      const globalMems: typeof rows = [];
+      const projectMems: typeof rows = [];
+      const topicMems: Record<string, typeof rows> = {};
+
+      for (const r of rows) {
+        if (r.namespace === "global") {
+          globalMems.push(r);
+        } else if (r.namespace === `project:${project}`) {
+          projectMems.push(r);
+        } else if (r.namespace.startsWith("topic:")) {
+          const tName = r.namespace.slice(6);
+          if (!topicMems[tName]) topicMems[tName] = [];
+          topicMems[tName].push(r);
+        }
+      }
+
       // Format sections with budget enforcement
-//       const sections: string[] = [];
-//       let totalChars = 0;
-// 
-//       const addSection = (title: string, mems: typeof rows, budget: number) => {
-//         if (!mems.length) return;
-//         let used = 0;
-//         const lines: string[] = [`## ${title}`];
-//         for (const m of mems) {
-//           const line = `- **${m.key}**: ${m.content}`;
-//           if (used + line.length > budget) break;
-//           lines.push(line);
-//           used += line.length;
-//         }
-//         if (lines.length > 1) {
-//           const block = lines.join("\n");
-//           totalChars += block.length;
-//           sections.push(block);
-//         }
-//       };
-// 
-//       addSection("Global Memories", globalMems, GLOBAL_BUDGET);
-//       addSection(`Project: ${project}`, projectMems, PROJECT_BUDGET);
-// 
+      const sections: string[] = [];
+      let totalChars = 0;
+
+      const addSection = (title: string, mems: typeof rows, budget: number) => {
+        if (!mems.length) return;
+        let used = 0;
+        const lines: string[] = [`## ${title}`];
+        for (const m of mems) {
+          const line = `- **${m.key}**: ${m.content}`;
+          if (used + line.length > budget) break;
+          lines.push(line);
+          used += line.length;
+        }
+        if (lines.length > 1) {
+          const block = lines.join("\n");
+          totalChars += block.length;
+          sections.push(block);
+        }
+      };
+
+      addSection("Global Memories", globalMems, GLOBAL_BUDGET);
+      addSection(`Project: ${project}`, projectMems, PROJECT_BUDGET);
+
       // Distribute topic budget across linked topics
-//       const topicNames = Object.keys(topicMems);
-//       if (topicNames.length > 0) {
-//         const perTopic = Math.floor(TOPIC_BUDGET / topicNames.length);
-//         for (const tName of topicNames) {
-//           addSection(`Topic: ${tName}`, topicMems[tName], perTopic);
-//         }
-//       }
-// 
-//       if (!sections.length) return;
-//       if (totalChars > MEMORY_BUDGET_CHARS) {
+      const topicNames = Object.keys(topicMems);
+      if (topicNames.length > 0) {
+        const perTopic = Math.floor(TOPIC_BUDGET / topicNames.length);
+        for (const tName of topicNames) {
+          addSection(`Topic: ${tName}`, topicMems[tName], perTopic);
+        }
+      }
+
+      if (!sections.length) return;
+      if (totalChars > MEMORY_BUDGET_CHARS) {
         // Truncate: drop last sections if over budget
-//         while (sections.length > 1 && totalChars > MEMORY_BUDGET_CHARS) {
-//           const removed = sections.pop()!;
-//           totalChars -= removed.length;
-//         }
-//       }
-// 
-//       const memoryBlock = [
-//         "",
-//         "# Agent Memory",
-//         "The following are your persistent memories across sessions. Use them as context.",
-//         "",
-//         ...sections,
-//       ].join("\n");
-// 
-//       memoryLog("inject", `${rows.length} memories injected (${totalChars} chars) — global:${globalMems.length} project:${projectMems.length} topics:${topicNames.length}`);
-// 
-//       return { systemPrompt: event.systemPrompt + memoryBlock };
-//     } catch {
+        while (sections.length > 1 && totalChars > MEMORY_BUDGET_CHARS) {
+          const removed = sections.pop()!;
+          totalChars -= removed.length;
+        }
+      }
+
+      const memoryBlock = [
+        "",
+        "# Agent Memory",
+        "The following are your persistent memories across sessions. Use them as context.",
+        "",
+        ...sections,
+      ].join("\n");
+
+      memoryLog("inject", `${rows.length} memories injected (${totalChars} chars) — global:${globalMems.length} project:${projectMems.length} topics:${topicNames.length}`);
+
+      return { systemPrompt: event.systemPrompt + memoryBlock };
+    } catch {
       // Memory injection is best-effort; never break the agent loop.
-//       return;
-//     }
-//   });
+      return;
+    }
+  });
 
   // ── Memory helpers ────────────────────────────────────────────────────
   const MEMORY_DB = path.join(getStateDir(), "memory.db");
@@ -1157,370 +1155,362 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── zeus_memory_save ────────────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_save tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_save",
-//     label: "Save memory",
-//     description:
-//       "Store a persistent memory. Namespace must be 'global', 'project:<name>', or 'new:<name>'. Use 'new:<name>' for specialized knowledge beyond the current project.",
-//     parameters: Type.Object({
-//       namespace: Type.String({ description: "Namespace: 'global', 'project:<name>', or 'new:<name>'" }),
-//       key: Type.String({ description: "Descriptive key (e.g. 'error-handling-convention')" }),
-//       content: Type.String({ description: "Memory content — concise, actionable" }),
-//       tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       const ns = validateNamespace(params.namespace);
-//       if (!ns) {
-//         const trimmed = params.namespace.trim();
-//         if (/^topic:/.test(trimmed)) {
-//           return {
-//             content: [{ type: "text", text: `Cannot write directly to '${trimmed}'. Write to 'new:${trimmed.slice(6)}' instead.` }],
-//           };
-//         }
-//         return {
-//           content: [{ type: "text", text: `Invalid namespace '${params.namespace}'. Must be global, project:<name>, or new:<name>.` }],
-//         };
-//       }
-// 
-//       await withSchema(signal);
-//       const agentId = getAgentId();
-//       const project = await resolveProjectName(signal);
-//       const key = sqlEscape(params.key.trim());
-//       const content = sqlEscape(params.content);
-//       const tags = sqlEscape((params.tags || "").trim());
-// 
-//       await sqliteExec(`
-//         INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
-//         VALUES ('${sqlEscape(ns)}', '${key}', '${content}', '${tags}', '${sqlEscape(agentId)}', '${sqlEscape(project)}')
-//         ON CONFLICT(namespace, key) DO UPDATE SET
-//           content = excluded.content,
-//           tags = excluded.tags,
-//           source_agent = excluded.source_agent,
-//           source_project = excluded.source_project,
-//           updated_at = datetime('now');
-//       `, signal);
-// 
+  pi.registerTool({
+    name: "zeus_memory_save",
+    label: "Save memory",
+    description:
+      "Store a persistent memory. Namespace must be 'global', 'project:<name>', or 'new:<name>'. Use 'new:<name>' for specialized knowledge beyond the current project.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace: 'global', 'project:<name>', or 'new:<name>'" }),
+      key: Type.String({ description: "Descriptive key (e.g. 'error-handling-convention')" }),
+      content: Type.String({ description: "Memory content — concise, actionable" }),
+      tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      const ns = validateNamespace(params.namespace);
+      if (!ns) {
+        const trimmed = params.namespace.trim();
+        if (/^topic:/.test(trimmed)) {
+          return {
+            content: [{ type: "text", text: `Cannot write directly to '${trimmed}'. Write to 'new:${trimmed.slice(6)}' instead.` }],
+          };
+        }
+        return {
+          content: [{ type: "text", text: `Invalid namespace '${params.namespace}'. Must be global, project:<name>, or new:<name>.` }],
+        };
+      }
+
+      await withSchema(signal);
+      const agentId = getAgentId();
+      const project = await resolveProjectName(signal);
+      const key = sqlEscape(params.key.trim());
+      const content = sqlEscape(params.content);
+      const tags = sqlEscape((params.tags || "").trim());
+
+      await sqliteExec(`
+        INSERT INTO memories (namespace, key, content, tags, source_agent, source_project)
+        VALUES ('${sqlEscape(ns)}', '${key}', '${content}', '${tags}', '${sqlEscape(agentId)}', '${sqlEscape(project)}')
+        ON CONFLICT(namespace, key) DO UPDATE SET
+          content = excluded.content,
+          tags = excluded.tags,
+          source_agent = excluded.source_agent,
+          source_project = excluded.source_project,
+          updated_at = datetime('now');
+      `, signal);
+
       // Auto-create topic_links for new:* saves
-//       if (ns.startsWith("new:") && project) {
-//         const topicName = sqlEscape(ns.slice(4));
-//         try {
-//           await sqliteExec(`
-//             INSERT OR IGNORE INTO topic_links (project, topic) VALUES ('${sqlEscape(project)}', '${topicName}');
-//           `, signal);
-//         } catch { /* best effort */ }
-//       }
-// 
-//       return {
-//         content: [{ type: "text", text: `Saved memory '${params.key.trim()}' in ${ns}.` }],
-//         details: { namespace: ns, key: params.key.trim() },
-//       };
-//     },
-//   });
+      if (ns.startsWith("new:") && project) {
+        const topicName = sqlEscape(ns.slice(4));
+        try {
+          await sqliteExec(`
+            INSERT OR IGNORE INTO topic_links (project, topic) VALUES ('${sqlEscape(project)}', '${topicName}');
+          `, signal);
+        } catch { /* best effort */ }
+      }
+
+      return {
+        content: [{ type: "text", text: `Saved memory '${params.key.trim()}' in ${ns}.` }],
+        details: { namespace: ns, key: params.key.trim() },
+      };
+    },
+  });
 
   // ── zeus_memory_recall ──────────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_recall tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_recall",
-//     label: "Recall memory",
-//     description: "Retrieve a specific memory by exact namespace and key.",
-//     parameters: Type.Object({
-//       namespace: Type.String({ description: "Namespace to look up" }),
-//       key: Type.String({ description: "Exact key" }),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       await withSchema(signal);
-//       const ns = sqlEscape(params.namespace.trim());
-//       const key = sqlEscape(params.key.trim());
-//       const raw = await sqliteExec(`
-//         UPDATE memories SET access_count = access_count + 1, accessed_at = datetime('now')
-//         WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
-//         SELECT namespace, key, content, tags, source_agent, source_project, created_at, updated_at, access_count
-//         FROM memories WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
-//       `, signal);
-// 
-//       if (!raw || raw === "[]") {
-//         return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
-//       }
-// 
-//       try {
-//         const rows = JSON.parse(raw);
-//         if (!Array.isArray(rows) || rows.length === 0) {
-//           return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
-//         }
-//         const m = rows[0];
-//         return {
-//           content: [{ type: "text", text: `[${m.namespace}] ${m.key}\n${m.content}\nTags: ${m.tags || "(none)"}\nCreated: ${m.created_at} | Updated: ${m.updated_at}` }],
-//           details: m,
-//         };
-//       } catch {
-//         return { content: [{ type: "text", text: raw }] };
-//       }
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_memory_recall",
+    label: "Recall memory",
+    description: "Retrieve a specific memory by exact namespace and key.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace to look up" }),
+      key: Type.String({ description: "Exact key" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const ns = sqlEscape(params.namespace.trim());
+      const key = sqlEscape(params.key.trim());
+      const raw = await sqliteExec(`
+        UPDATE memories SET access_count = access_count + 1, accessed_at = datetime('now')
+        WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
+        SELECT namespace, key, content, tags, source_agent, source_project, created_at, updated_at, access_count
+        FROM memories WHERE namespace = '${ns}' AND key = '${key}' AND archived = 0;
+      `, signal);
+
+      if (!raw || raw === "[]") {
+        return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
+      }
+
+      try {
+        const rows = JSON.parse(raw);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          return { content: [{ type: "text", text: `No memory found for '${params.key.trim()}' in ${params.namespace.trim()}.` }] };
+        }
+        const m = rows[0];
+        return {
+          content: [{ type: "text", text: `[${m.namespace}] ${m.key}\n${m.content}\nTags: ${m.tags || "(none)"}\nCreated: ${m.created_at} | Updated: ${m.updated_at}` }],
+          details: m,
+        };
+      } catch {
+        return { content: [{ type: "text", text: raw }] };
+      }
+    },
+  });
 
   // ── zeus_memory_search ──────────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_search tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_search",
-//     label: "Search memories",
-//     description:
-//       "Full-text search across memories. If namespace is omitted, searches global + current project + linked topics.",
-//     parameters: Type.Object({
-//       query: Type.String({ description: "Search query" }),
-//       namespace: Type.Optional(Type.String({ description: "Restrict to a specific namespace" })),
-//       limit: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       await withSchema(signal);
-//       const limit = params.limit || 10;
-//       const query = sqlEscape(params.query.trim());
-// 
-//       if (!query) {
-//         return { content: [{ type: "text", text: "Empty search query." }] };
-//       }
-// 
-//       let nsFilter = "";
-//       if (params.namespace) {
-//         nsFilter = `AND m.namespace = '${sqlEscape(params.namespace.trim())}'`;
-//       } else {
+  pi.registerTool({
+    name: "zeus_memory_search",
+    label: "Search memories",
+    description:
+      "Full-text search across memories. If namespace is omitted, searches global + current project + linked topics.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Search query" }),
+      namespace: Type.Optional(Type.String({ description: "Restrict to a specific namespace" })),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const limit = params.limit || 10;
+      const query = sqlEscape(params.query.trim());
+
+      if (!query) {
+        return { content: [{ type: "text", text: "Empty search query." }] };
+      }
+
+      let nsFilter = "";
+      if (params.namespace) {
+        nsFilter = `AND m.namespace = '${sqlEscape(params.namespace.trim())}'`;
+      } else {
         // Search global + project + linked topics
-//         const project = await resolveProjectName(signal);
-//         const namespaces = ["'global'"];
-//         if (project) {
-//           namespaces.push(`'project:${sqlEscape(project)}'`);
+        const project = await resolveProjectName(signal);
+        const namespaces = ["'global'"];
+        if (project) {
+          namespaces.push(`'project:${sqlEscape(project)}'`);
           // Get linked topics
-//           try {
-//             const linkRaw = await sqliteExec(
-//               `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}';`,
-//               signal,
-//             );
-//             if (linkRaw && linkRaw !== "[]") {
-//               const links = JSON.parse(linkRaw);
-//               for (const link of links) {
-//                 if (link.topic) namespaces.push(`'topic:${sqlEscape(link.topic)}'`);
-//               }
-//             }
-//           } catch { /* best effort */ }
-//         }
-//         nsFilter = `AND m.namespace IN (${namespaces.join(",")})`;
-//       }
-// 
-//       try {
-//         const raw = await sqliteExec(`
-//           SELECT m.namespace, m.key, SUBSTR(m.content, 1, 300) AS content, m.tags
-//           FROM memories_fts f
-//           JOIN memories m ON m.id = f.rowid
-//           WHERE memories_fts MATCH '${query}'
-//             ${nsFilter}
-//             AND m.archived = 0
-//           ORDER BY bm25(memories_fts)
-//           LIMIT ${limit};
-//         `, signal);
-// 
-//         if (!raw || raw === "[]") {
-//           return { content: [{ type: "text", text: `No results for '${params.query.trim()}'.` }] };
-//         }
-// 
-//         const rows = JSON.parse(raw);
-//         const lines = rows.map((r: any) => `- [${r.namespace}] ${r.key}: ${r.content}`);
-//         return {
-//           content: [{ type: "text", text: `Found ${rows.length} result(s):\n${lines.join("\n")}` }],
-//           details: { results: rows },
-//         };
-//       } catch (err: any) {
-//         return { content: [{ type: "text", text: `Search error: ${err?.message || String(err)}` }] };
-//       }
-//     },
-//   });
+          try {
+            const linkRaw = await sqliteExec(
+              `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}';`,
+              signal,
+            );
+            if (linkRaw && linkRaw !== "[]") {
+              const links = JSON.parse(linkRaw);
+              for (const link of links) {
+                if (link.topic) namespaces.push(`'topic:${sqlEscape(link.topic)}'`);
+              }
+            }
+          } catch { /* best effort */ }
+        }
+        nsFilter = `AND m.namespace IN (${namespaces.join(",")})`;
+      }
+
+      try {
+        const raw = await sqliteExec(`
+          SELECT m.namespace, m.key, SUBSTR(m.content, 1, 300) AS content, m.tags
+          FROM memories_fts f
+          JOIN memories m ON m.id = f.rowid
+          WHERE memories_fts MATCH '${query}'
+            ${nsFilter}
+            AND m.archived = 0
+          ORDER BY bm25(memories_fts)
+          LIMIT ${limit};
+        `, signal);
+
+        if (!raw || raw === "[]") {
+          return { content: [{ type: "text", text: `No results for '${params.query.trim()}'.` }] };
+        }
+
+        const rows = JSON.parse(raw);
+        const lines = rows.map((r: any) => `- [${r.namespace}] ${r.key}: ${r.content}`);
+        return {
+          content: [{ type: "text", text: `Found ${rows.length} result(s):\n${lines.join("\n")}` }],
+          details: { results: rows },
+        };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Search error: ${err?.message || String(err)}` }] };
+      }
+    },
+  });
 
   // ── zeus_memory_list ────────────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_list tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_list",
-//     label: "List memories",
-//     description:
-//       "Browse memories in a namespace. If namespace is omitted, lists the current project.",
-//     parameters: Type.Object({
-//       namespace: Type.Optional(Type.String({ description: "Namespace to list (default: current project)" })),
-//       limit: Type.Optional(Type.Number({ description: "Max results (default 50)" })),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       await withSchema(signal);
-//       const limit = params.limit || 50;
-//       let ns: string;
-//       if (params.namespace) {
-//         ns = params.namespace.trim();
-//       } else {
-//         const project = await resolveProjectName(signal);
-//         ns = project ? `project:${project}` : "global";
-//       }
-// 
-//       const raw = await sqliteExec(`
-//         SELECT namespace, key, SUBSTR(content, 1, 200) AS content_preview, tags,
-//                source_project, created_at, updated_at, access_count
-//         FROM memories
-//         WHERE namespace = '${sqlEscape(ns)}' AND archived = 0
-//         ORDER BY updated_at DESC
-//         LIMIT ${limit};
-//       `, signal);
-// 
-//       if (!raw || raw === "[]") {
-//         return { content: [{ type: "text", text: `No memories in '${ns}'.` }] };
-//       }
-// 
-//       const rows = JSON.parse(raw);
-//       const lines = rows.map((r: any) => `- ${r.key}: ${r.content_preview}${r.tags ? ` [${r.tags}]` : ""}`);
-//       return {
-//         content: [{ type: "text", text: `${rows.length} memor${rows.length === 1 ? "y" : "ies"} in '${ns}':\n${lines.join("\n")}` }],
-//         details: { namespace: ns, count: rows.length, results: rows },
-//       };
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_memory_list",
+    label: "List memories",
+    description:
+      "Browse memories in a namespace. If namespace is omitted, lists the current project.",
+    parameters: Type.Object({
+      namespace: Type.Optional(Type.String({ description: "Namespace to list (default: current project)" })),
+      limit: Type.Optional(Type.Number({ description: "Max results (default 50)" })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const limit = params.limit || 50;
+      let ns: string;
+      if (params.namespace) {
+        ns = params.namespace.trim();
+      } else {
+        const project = await resolveProjectName(signal);
+        ns = project ? `project:${project}` : "global";
+      }
+
+      const raw = await sqliteExec(`
+        SELECT namespace, key, SUBSTR(content, 1, 200) AS content_preview, tags,
+               source_project, created_at, updated_at, access_count
+        FROM memories
+        WHERE namespace = '${sqlEscape(ns)}' AND archived = 0
+        ORDER BY updated_at DESC
+        LIMIT ${limit};
+      `, signal);
+
+      if (!raw || raw === "[]") {
+        return { content: [{ type: "text", text: `No memories in '${ns}'.` }] };
+      }
+
+      const rows = JSON.parse(raw);
+      const lines = rows.map((r: any) => `- ${r.key}: ${r.content_preview}${r.tags ? ` [${r.tags}]` : ""}`);
+      return {
+        content: [{ type: "text", text: `${rows.length} memor${rows.length === 1 ? "y" : "ies"} in '${ns}':\n${lines.join("\n")}` }],
+        details: { namespace: ns, count: rows.length, results: rows },
+      };
+    },
+  });
 
   // ── zeus_memory_delete ──────────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_delete tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_delete",
-//     label: "Delete memory",
-//     description: "Permanently remove a memory by namespace and key.",
-//     parameters: Type.Object({
-//       namespace: Type.String({ description: "Namespace" }),
-//       key: Type.String({ description: "Key to delete" }),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       await withSchema(signal);
-//       const ns = sqlEscape(params.namespace.trim());
-//       const key = sqlEscape(params.key.trim());
-//       const raw = await sqliteExec(`
-//         DELETE FROM memories WHERE namespace = '${ns}' AND key = '${key}';
-//         SELECT changes() AS deleted;
-//       `, signal);
-// 
-//       let deleted = 0;
-//       try {
-//         const rows = JSON.parse(raw);
-//         deleted = rows?.[0]?.deleted || 0;
-//       } catch {}
-// 
-//       if (deleted > 0) {
-//         return { content: [{ type: "text", text: `Deleted '${params.key.trim()}' from ${params.namespace.trim()}.` }] };
-//       }
-//       return { content: [{ type: "text", text: `No memory '${params.key.trim()}' found in ${params.namespace.trim()}.` }] };
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_memory_delete",
+    label: "Delete memory",
+    description: "Permanently remove a memory by namespace and key.",
+    parameters: Type.Object({
+      namespace: Type.String({ description: "Namespace" }),
+      key: Type.String({ description: "Key to delete" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const ns = sqlEscape(params.namespace.trim());
+      const key = sqlEscape(params.key.trim());
+      const raw = await sqliteExec(`
+        DELETE FROM memories WHERE namespace = '${ns}' AND key = '${key}';
+        SELECT changes() AS deleted;
+      `, signal);
+
+      let deleted = 0;
+      try {
+        const rows = JSON.parse(raw);
+        deleted = rows?.[0]?.deleted || 0;
+      } catch {}
+
+      if (deleted > 0) {
+        return { content: [{ type: "text", text: `Deleted '${params.key.trim()}' from ${params.namespace.trim()}.` }] };
+      }
+      return { content: [{ type: "text", text: `No memory '${params.key.trim()}' found in ${params.namespace.trim()}.` }] };
+    },
+  });
 
   // ── zeus_memory_list_topics ─────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_list_topics tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_list_topics",
-//     label: "List topics",
-//     description:
-//       "Show topics linked to the current project and count of pending new:* memories.",
-//     parameters: Type.Object({}),
-//     async execute(_toolCallId, _params, signal) {
-//       await withSchema(signal);
-//       const project = await resolveProjectName(signal);
-//       if (!project) {
-//         return { content: [{ type: "text", text: "Not in a git repository — cannot determine project." }] };
-//       }
-// 
-//       const linkRaw = await sqliteExec(
-//         `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
-//         signal,
-//       );
-//       const pendingRaw = await sqliteExec(
-//         `SELECT COUNT(*) AS cnt FROM memories WHERE namespace LIKE 'new:%' AND source_project = '${sqlEscape(project)}' AND archived = 0;`,
-//         signal,
-//       );
-// 
-//       let topics: string[] = [];
-//       let pending = 0;
-//       try {
-//         const links = JSON.parse(linkRaw || "[]");
-//         topics = links.map((r: any) => r.topic);
-//       } catch {}
-//       try {
-//         const p = JSON.parse(pendingRaw || "[]");
-//         pending = p?.[0]?.cnt || 0;
-//       } catch {}
-// 
-//       const topicList = topics.length > 0 ? topics.join(", ") : "(none)";
-//       return {
-//         content: [{ type: "text", text: `Project: ${project}\nLinked topics: ${topicList}\nPending new topics: ${pending}` }],
-//         details: { project, linked_topics: topics, pending_new_count: pending },
-//       };
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_memory_list_topics",
+    label: "List topics",
+    description:
+      "Show topics linked to the current project and count of pending new:* memories.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      await withSchema(signal);
+      const project = await resolveProjectName(signal);
+      if (!project) {
+        return { content: [{ type: "text", text: "Not in a git repository — cannot determine project." }] };
+      }
+
+      const linkRaw = await sqliteExec(
+        `SELECT topic FROM topic_links WHERE project = '${sqlEscape(project)}' ORDER BY topic;`,
+        signal,
+      );
+      const pendingRaw = await sqliteExec(
+        `SELECT COUNT(*) AS cnt FROM memories WHERE namespace LIKE 'new:%' AND source_project = '${sqlEscape(project)}' AND archived = 0;`,
+        signal,
+      );
+
+      let topics: string[] = [];
+      let pending = 0;
+      try {
+        const links = JSON.parse(linkRaw || "[]");
+        topics = links.map((r: any) => r.topic);
+      } catch {}
+      try {
+        const p = JSON.parse(pendingRaw || "[]");
+        pending = p?.[0]?.cnt || 0;
+      } catch {}
+
+      const topicList = topics.length > 0 ? topics.join(", ") : "(none)";
+      return {
+        content: [{ type: "text", text: `Project: ${project}\nLinked topics: ${topicList}\nPending new topics: ${pending}` }],
+        details: { project, linked_topics: topics, pending_new_count: pending },
+      };
+    },
+  });
 
   // ── zeus_memory_rename_project ──────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_memory_rename_project tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_memory_rename_project",
-//     label: "Rename project",
-//     description: "Rename a project namespace and update all references (memories, topic_links, source_project).",
-//     parameters: Type.Object({
-//       old_name: Type.String({ description: "Current project name (without 'project:' prefix)" }),
-//       new_name: Type.String({ description: "New project name (without 'project:' prefix)" }),
-//     }),
-//     async execute(_toolCallId, params, signal) {
-//       await withSchema(signal);
-//       const oldName = sqlEscape(params.old_name.trim());
-//       const newName = sqlEscape(params.new_name.trim());
-// 
-//       if (!oldName || !newName) {
-//         return { content: [{ type: "text", text: "Both old_name and new_name are required." }] };
-//       }
-// 
-//       await sqliteExec(`
-//         UPDATE memories SET namespace = 'project:${newName}' WHERE namespace = 'project:${oldName}';
-//         UPDATE memories SET source_project = '${newName}' WHERE source_project = '${oldName}';
-//         UPDATE topic_links SET project = '${newName}' WHERE project = '${oldName}';
-//       `, signal);
-// 
-//       return {
-//         content: [{ type: "text", text: `Renamed project '${params.old_name.trim()}' to '${params.new_name.trim()}'.` }],
-//         details: { old_name: params.old_name.trim(), new_name: params.new_name.trim() },
-//       };
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_memory_rename_project",
+    label: "Rename project",
+    description: "Rename a project namespace and update all references (memories, topic_links, source_project).",
+    parameters: Type.Object({
+      old_name: Type.String({ description: "Current project name (without 'project:' prefix)" }),
+      new_name: Type.String({ description: "New project name (without 'project:' prefix)" }),
+    }),
+    async execute(_toolCallId, params, signal) {
+      await withSchema(signal);
+      const oldName = sqlEscape(params.old_name.trim());
+      const newName = sqlEscape(params.new_name.trim());
+
+      if (!oldName || !newName) {
+        return { content: [{ type: "text", text: "Both old_name and new_name are required." }] };
+      }
+
+      await sqliteExec(`
+        UPDATE memories SET namespace = 'project:${newName}' WHERE namespace = 'project:${oldName}';
+        UPDATE memories SET source_project = '${newName}' WHERE source_project = '${oldName}';
+        UPDATE topic_links SET project = '${newName}' WHERE project = '${oldName}';
+      `, signal);
+
+      return {
+        content: [{ type: "text", text: `Renamed project '${params.old_name.trim()}' to '${params.new_name.trim()}'.` }],
+        details: { old_name: params.old_name.trim(), new_name: params.new_name.trim() },
+      };
+    },
+  });
 
   // ── zeus_consolidation_done ─────────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_consolidation_done tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_consolidation_done",
-//     label: "Consolidation done",
-//     description:
-//       "Signal that memory consolidation is complete. Only used by ephemeral consolidation agents.",
-//     parameters: Type.Object({}),
-//     async execute(_toolCallId, _params, signal) {
-//       const agentId = getAgentId();
-//       if (!agentId) {
-//         return { content: [{ type: "text", text: "No ZEUS_AGENT_ID — cannot signal completion." }] };
-//       }
-// 
+  pi.registerTool({
+    name: "zeus_consolidation_done",
+    label: "Consolidation done",
+    description:
+      "Signal that memory consolidation is complete. Only used by ephemeral consolidation agents.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      const agentId = getAgentId();
+      if (!agentId) {
+        return { content: [{ type: "text", text: "No ZEUS_AGENT_ID — cannot signal completion." }] };
+      }
+
       // Send consolidation_done message through agent bus
-//       const busInboxDir = path.join(getBusDir(), "inbox", "zeus", "new");
-//       try {
-//         fs.mkdirSync(busInboxDir, { recursive: true });
-//       } catch {}
-// 
-//       const msgId = `consolidation-done-${agentId}-${Date.now()}`;
-//       const payload = {
-//         id: msgId,
-//         type: "consolidation_done",
-//         agent_id: agentId,
-//         timestamp: new Date().toISOString(),
-//       };
-// 
-//       writeJsonAtomic(path.join(busInboxDir, `${msgId}.json`), payload);
-// 
-//       return {
-//         content: [{ type: "text", text: "Consolidation complete. Signaled Zeus for cleanup." }],
-//         details: { agent_id: agentId, message_id: msgId },
-//       };
-//     },
-//   });
+      const busInboxDir = path.join(getBusDir(), "inbox", "zeus", "new");
+      try {
+        fs.mkdirSync(busInboxDir, { recursive: true });
+      } catch {}
+
+      const msgId = `consolidation-done-${agentId}-${Date.now()}`;
+      const payload = {
+        id: msgId,
+        type: "consolidation_done",
+        agent_id: agentId,
+        timestamp: new Date().toISOString(),
+      };
+
+      writeJsonAtomic(path.join(busInboxDir, `${msgId}.json`), payload);
+
+      return {
+        content: [{ type: "text", text: "Consolidation complete. Signaled Zeus for cleanup." }],
+        details: { agent_id: agentId, message_id: msgId },
+      };
+    },
+  });
 
   // ── Worktree merge helpers ──────────────────────────────────────────
 
@@ -1672,32 +1662,30 @@ export default function (pi: ExtensionAPI) {
   }
 
   // ── zeus_worktree_merge_and_finalize (finalize) ────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_worktree_merge_and_finalize tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_worktree_merge_and_finalize",
-//     label: "Merge & finalize",
-//     description:
-//       "Merge the current worktree branch back into the parent branch and finalize. " +
-//       "After a successful merge, Zeus kills this agent and removes the worktree. " +
-//       "Use this when your work is DONE. Only works from a Zeus workdir agent.",
-//     parameters: Type.Object({}),
-//     async execute(_toolCallId, _params, signal) {
-//       return doWorktreeMerge(signal, true);
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_worktree_merge_and_finalize",
+    label: "Merge & finalize",
+    description:
+      "Merge the current worktree branch back into the parent branch and finalize. " +
+      "After a successful merge, Zeus kills this agent and removes the worktree. " +
+      "Use this when your work is DONE. Only works from a Zeus workdir agent.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      return doWorktreeMerge(signal, true);
+    },
+  });
 
   // ── zeus_worktree_merge_and_continue (continue) ─────────────────────────────────────
-  // TEMP DISABLED (Oracle request 2026-02-25): zeus_worktree_merge_and_continue tool registration. Restore by uncommenting this registration block.
-//   pi.registerTool({
-//     name: "zeus_worktree_merge_and_continue",
-//     label: "Merge & continue",
-//     description:
-//       "Merge the current worktree branch into the parent branch but keep working. " +
-//       "The worktree and agent stay alive after the merge. " +
-//       "Use this to push intermediate progress without finishing. Only works from a Zeus workdir agent.",
-//     parameters: Type.Object({}),
-//     async execute(_toolCallId, _params, signal) {
-//       return doWorktreeMerge(signal, false);
-//     },
-//   });
+  pi.registerTool({
+    name: "zeus_worktree_merge_and_continue",
+    label: "Merge & continue",
+    description:
+      "Merge the current worktree branch into the parent branch but keep working. " +
+      "The worktree and agent stay alive after the merge. " +
+      "Use this to push intermediate progress without finishing. Only works from a Zeus workdir agent.",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, signal) {
+      return doWorktreeMerge(signal, false);
+    },
+  });
 }
