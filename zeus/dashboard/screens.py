@@ -1061,6 +1061,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("enter", "message", "Message", show=False),
     ]
     _SCROLL_FLASH_DURATION_S = 0.35
+    _VIM_SCROLL_STEP = 10
 
     def __init__(
         self,
@@ -1130,7 +1131,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             )
             yield Static("", id="expanded-output-scroll-flash", classes="hidden")
             yield Label(
-                "↑/↓ PgUp/PgDn Home/End scroll",
+                "↑/↓ PgUp/PgDn Home/End scroll • j/k ±10 lines",
                 id="expanded-output-footer",
             )
 
@@ -1265,6 +1266,12 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             stream.scroll_home(animate=False)
         elif key == "end":
             stream.scroll_end(animate=False)
+        elif key == "j":
+            for _ in range(self._VIM_SCROLL_STEP):
+                stream.scroll_down(animate=False)
+        elif key == "k":
+            for _ in range(self._VIM_SCROLL_STEP):
+                stream.scroll_up(animate=False)
         else:
             return False
 
@@ -2281,6 +2288,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("↑/↓", "Cursor up/down; at edges browse history"),
     ("", "─── Dialogs ───"),
     ("Esc", "Close/cancel active dialog"),
+    ("j / k (expanded/review)", "Scroll down/up 10 lines"),
     ("Ctrl+s (tasks)", "Save tasks"),
     ("Ctrl+s (message)", "Send in Message / Preset dialog"),
     ("Ctrl+w (message)", "Queue in Message / Preset dialog"),

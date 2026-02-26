@@ -667,6 +667,40 @@ def test_expanded_output_scroll_shows_transient_flash_indicator(monkeypatch) -> 
     assert "hidden" in flash.classes
 
 
+def test_expanded_output_vim_scroll_keys_move_by_ten_lines(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1))
+    stream = _DummyRichLog()
+    stream.max_scroll_y = 200.0
+    stream.size = SimpleNamespace(height=10)
+    stream.region = SimpleNamespace(y=2)
+    flash = _DummyFlash()
+    dialog = SimpleNamespace(region=SimpleNamespace(y=1))
+
+    class _FakeTimer:
+        def stop(self) -> None:
+            return
+
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return flash
+        if selector == "#expanded-output-dialog":
+            return dialog
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+    monkeypatch.setattr(screen, "set_timer", lambda *_args, **_kwargs: _FakeTimer())
+
+    assert screen._scroll_stream_by_key("j") is True
+    assert stream.scroll_y == 10.0
+
+    assert screen._scroll_stream_by_key("k") is True
+    assert stream.scroll_y == 0.0
+
+
 def test_expanded_output_scroll_does_not_show_flash_without_overflow(monkeypatch) -> None:
     screen = ExpandedOutputScreen(_agent("alpha", 1))
     stream = _DummyRichLog()
