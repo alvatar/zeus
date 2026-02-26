@@ -4376,7 +4376,12 @@ class ZeusApp(App):
             return
         self.do_kill_tmux_session(tmux)
 
-    def do_kill_agent(self, agent: AgentWindow) -> None:
+    def do_kill_agent(
+        self,
+        agent: AgentWindow,
+        *,
+        cleanup_workdir: bool = True,
+    ) -> None:
         if self._is_stygian_agent(agent):
             sess_name = (agent.tmux_session or "").strip()
             if not sess_name:
@@ -4392,7 +4397,8 @@ class ZeusApp(App):
             return
 
         close_window(agent)
-        self._cleanup_worktree_if_needed(agent)
+        if cleanup_workdir:
+            self._cleanup_worktree_if_needed(agent)
         self.notify(f"Killed: {agent.name}", timeout=2)
         self.poll_and_update()
 

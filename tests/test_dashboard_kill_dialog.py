@@ -80,6 +80,65 @@ def test_confirm_kill_tmux_no_button_does_not_kill(monkeypatch) -> None:
     assert event.stopped is True
 
 
+def test_confirm_kill_workdir_yes_uses_checkbox_state_for_cleanup(monkeypatch) -> None:
+    agent = _agent()
+    agent.cwd = "/tmp/project/.worktrees/agent"
+    screen = ConfirmKillScreen(agent)
+
+    kill_calls: list[tuple[str, bool]] = []
+
+    class _ZeusStub:
+        def do_kill_agent(
+            self,
+            agent: AgentWindow,
+            *,
+            cleanup_workdir: bool = True,
+        ) -> None:
+            kill_calls.append((agent.name, cleanup_workdir))
+
+    monkeypatch.setattr(ConfirmKillScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#kill-delete-workdir":
+            return SimpleNamespace(value=True)
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    dismissed: list[bool] = []
+    monkeypatch.setattr(screen, "dismiss", lambda: dismissed.append(True))
+
+    event = _Pressed("yes-btn")
+    screen.on_button_pressed(event)  # type: ignore[arg-type]
+
+    assert kill_calls == [("agent", True)]
+    assert dismissed == [True]
+    assert event.stopped is True
+
+
+def test_do_kill_agent_can_skip_workdir_cleanup(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent()
+    agent.cwd = "/tmp/project/.worktrees/agent"
+
+    closed: list[str] = []
+    cleaned: list[str] = []
+    notices: list[str] = []
+    polled: list[bool] = []
+
+    monkeypatch.setattr("zeus.dashboard.app.close_window", lambda a: closed.append(a.name))
+    monkeypatch.setattr(app, "_cleanup_worktree_if_needed", lambda a: cleaned.append(a.name))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=2: notices.append(msg))
+    monkeypatch.setattr(app, "poll_and_update", lambda: polled.append(True))
+
+    app.do_kill_agent(agent, cleanup_workdir=False)
+
+    assert closed == ["agent"]
+    assert cleaned == []
+    assert notices[-1] == "Killed: agent"
+    assert polled == [True]
+
+
 def test_confirm_kill_screens_do_not_force_enter_handler() -> None:
     assert "on_key" not in ConfirmKillScreen.__dict__
     assert "on_key" not in ConfirmKillTmuxScreen.__dict__

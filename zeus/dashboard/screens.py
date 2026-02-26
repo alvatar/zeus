@@ -1641,9 +1641,41 @@ class ConfirmKillScreen(_ZeusScreenMixin, ModalScreen):
         super().__init__()
         self.agent = agent
 
+    @staticmethod
+    def _is_workdir_agent(agent: AgentWindow) -> bool:
+        cwd = (agent.cwd or "").strip()
+        if not cwd:
+            return False
+        normalized = os.path.normpath(os.path.expanduser(cwd))
+        marker = f"{os.path.sep}.worktrees{os.path.sep}"
+        return marker in f"{normalized}{os.path.sep}"
+
+    def _cleanup_workdir_requested(self) -> bool:
+        if not self._is_workdir_agent(self.agent):
+            return True
+        try:
+            return bool(self.query_one("#kill-delete-workdir", Checkbox).value)
+        except Exception:
+            return False
+
+    def _confirm_kill(self) -> None:
+        if self._is_workdir_agent(self.agent):
+            self.zeus.do_kill_agent(
+                self.agent,
+                cleanup_workdir=self._cleanup_workdir_requested(),
+            )
+        else:
+            self.zeus.do_kill_agent(self.agent)
+
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-kill-dialog"):
             yield Label(f"Kill Hippeus [bold]{self.agent.name}[/bold]?")
+            if self._is_workdir_agent(self.agent):
+                yield Checkbox(
+                    "Delete workdir and branch",
+                    value=False,
+                    id="kill-delete-workdir",
+                )
             with Horizontal(id="confirm-kill-buttons"):
                 yield Button("Yes, kill", variant="error", id="yes-btn")
                 yield Button("No", variant="default", id="no-btn")
@@ -1653,12 +1685,12 @@ class ConfirmKillScreen(_ZeusScreenMixin, ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "yes-btn":
-            self.zeus.do_kill_agent(self.agent)
+            self._confirm_kill()
         self.dismiss()
         event.stop()
 
     def action_confirm(self) -> None:
-        self.zeus.do_kill_agent(self.agent)
+        self._confirm_kill()
         self.dismiss()
 
 
