@@ -573,8 +573,10 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.do_set_last_invoke_model_spec(model_spec)
 
         if role == "workdir-hippeus":
+            # Invoke-mode workdir Hippeus is always independent (top-level),
+            # never parented to the currently selected row.
             self.zeus.do_spawn_workdir_agent(
-                self._workdir_source_agent,
+                None,
                 name,
                 dismiss_screen=self,
                 source_directory=directory,

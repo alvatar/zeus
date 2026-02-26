@@ -869,7 +869,7 @@ def test_invoke_launch_workdir_does_not_require_selected_source_agent(monkeypatc
     assert workdir_calls[0][3] == os.path.expanduser("~/code")
 
 
-def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
+def test_invoke_launch_workdir_ignores_selected_source_agent(monkeypatch) -> None:
     source_agent = SimpleNamespace(name="base", cwd="/tmp/repo", agent_id="parent-1")
     screen = NewAgentScreen(workdir_source_agent=source_agent)
     name_input = _InputStub("wt-alpha")
@@ -924,7 +924,7 @@ def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
     assert saved_models == ["openai/gpt-4o"]
     assert popen_called == []
     assert len(workdir_calls) == 1
-    assert workdir_calls[0][0] is source_agent
+    assert workdir_calls[0][0] is None
     assert workdir_calls[0][1] == "wt-alpha"
     assert workdir_calls[0][2] is screen
     assert workdir_calls[0][3] == os.path.expanduser("~/code")
