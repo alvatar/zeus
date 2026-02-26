@@ -201,7 +201,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
             yield Label("Type:")
             yield RadioSet(
-                RadioButton("New Hippeus", value=True, id="invoke-role-hippeus"),
+                RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
                 RadioButton("Workdir Hippeus", id="invoke-role-workdir-hippeus"),
                 RadioButton("Stygian Hippeus", id="invoke-role-stygian-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
