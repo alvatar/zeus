@@ -236,7 +236,7 @@ def test_build_worktree_review_passes_delta_width_to_delta(
     remove_worktree(git_repo, "review-width")
 
 
-def test_build_worktree_review_passes_light_mode_to_delta(
+def test_build_worktree_review_light_mode_uses_dark_delta_rendering(
     git_repo: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -267,13 +267,9 @@ def test_build_worktree_review_passes_light_mode_to_delta(
     assert out.rstrip().endswith("=== END OF REVIEW ===")
     assert delta_calls
     assert "--side-by-side" in delta_calls[0]
-    assert "--light" in delta_calls[0]
-    assert "--map-styles" in delta_calls[0]
-    assert "dim => normal" in delta_calls[0]
-    assert "--zero-style" in delta_calls[0]
-    assert "normal #050505" in delta_calls[0]
-    assert "--whitespace-error-style" in delta_calls[0]
-    assert "normal #7a0000 #ffd6d6" in delta_calls[0]
+    assert "--dark" in delta_calls[0]
+    assert "--light" not in delta_calls[0]
+    assert "--map-styles" not in delta_calls[0]
 
     remove_worktree(git_repo, "review-light")
 

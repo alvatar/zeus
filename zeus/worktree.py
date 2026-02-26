@@ -456,23 +456,10 @@ def build_worktree_review(
 
     if use_delta and shutil.which("delta"):
         try:
-            theme_mode = (delta_theme_mode or "dark").strip().lower()
-            theme_mode = "light" if theme_mode == "light" else "dark"
-
             # Keep split layout deterministic regardless of user/global config.
-            delta_cmd = ["delta", "--paging=never", "--side-by-side"]
-            delta_cmd.append("--light" if theme_mode == "light" else "--dark")
-            if theme_mode == "light":
-                # Keep light-mode review output legible and avoid reverse-style
-                # warning boxes masking content.
-                delta_cmd.extend([
-                    "--map-styles",
-                    "dim => normal",
-                    "--zero-style",
-                    "normal #050505",
-                    "--whitespace-error-style",
-                    "normal #7a0000 #ffd6d6",
-                ])
+            # For now, light review mode reuses the same delta rendering as dark
+            # mode; only the surrounding TUI background changes.
+            delta_cmd = ["delta", "--paging=never", "--side-by-side", "--dark"]
 
             width = int(delta_width or 0)
             if width > 0:
