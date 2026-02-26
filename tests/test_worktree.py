@@ -231,6 +231,11 @@ def test_build_worktree_review_passes_delta_width_to_delta(
     assert delta_calls
     assert "--side-by-side" in delta_calls[0]
     assert "--dark" in delta_calls[0]
+    assert "--file-style" in delta_calls[0]
+    assert "bold #5a5a5a" in delta_calls[0]
+    assert "--hunk-header-decoration-style" in delta_calls[0]
+    assert "#4a4a4a" in delta_calls[0]
+    assert "--line-numbers-left-style" in delta_calls[0]
     assert "--width=157" in delta_calls[0]
 
     remove_worktree(git_repo, "review-width")
@@ -269,6 +274,8 @@ def test_build_worktree_review_light_mode_uses_dark_delta_rendering(
     assert "--side-by-side" in delta_calls[0]
     assert "--dark" in delta_calls[0]
     assert "--light" not in delta_calls[0]
+    assert "--file-style" in delta_calls[0]
+    assert "bold #5a5a5a" in delta_calls[0]
     assert "--map-styles" not in delta_calls[0]
 
     remove_worktree(git_repo, "review-light")
