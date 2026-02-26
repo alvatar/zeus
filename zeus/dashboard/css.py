@@ -30,6 +30,7 @@ def _confirm_dialog_css(
     dialog_id: str,
     buttons_id: str,
     border_color: str,
+    max_height: str = "12",
 ) -> str:
     return f"""
 {screen_selectors} {{
@@ -40,7 +41,7 @@ def _confirm_dialog_css(
 #{dialog_id} {{
     width: 60;
     height: auto;
-    max-height: 12;
+    max-height: {max_height};
     border: thick {border_color};
     background: #0a0a0a;
     padding: 2 3;
@@ -828,6 +829,7 @@ CONFIRM_KILL_CSS = _confirm_dialog_css(
     dialog_id="confirm-kill-dialog",
     buttons_id="confirm-kill-buttons",
     border_color="#ff3366",
+    max_height="16",
 )
 
 CONFIRM_PROMOTE_CSS = _confirm_dialog_css(

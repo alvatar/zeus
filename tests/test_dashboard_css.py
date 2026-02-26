@@ -35,6 +35,7 @@ def test_dialog_css_contains_inlined_button_rows() -> None:
 
 def test_confirm_promote_css_uses_distinct_border_color() -> None:
     assert "border: thick #ff3366;" in css.CONFIRM_KILL_CSS
+    assert "max-height: 16;" in css.CONFIRM_KILL_CSS
     assert "border: thick #ffb000;" in css.CONFIRM_PROMOTE_CSS
 
 
