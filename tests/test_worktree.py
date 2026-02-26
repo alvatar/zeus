@@ -193,6 +193,8 @@ def test_build_worktree_review_uses_pr_style_ranges(git_repo: str) -> None:
     assert "=== FULL DIFF (base...branch) ===" in out
     assert "ranges: commits=main..zeus/review-test diff=main...zeus/review-test" in out
     assert "+review change" in out
+    assert "=== REVIEW OUTPUT STATS ===" in out
+    assert out.rstrip().endswith("=== END OF REVIEW ===")
 
     remove_worktree(git_repo, "review-test")
 
@@ -224,7 +226,8 @@ def test_build_worktree_review_passes_delta_width_to_delta(
     ok, out = build_worktree_review(wt, delta_width=157)
 
     assert ok
-    assert out == "delta-rendered"
+    assert "delta-rendered" in out
+    assert out.rstrip().endswith("=== END OF REVIEW ===")
     assert delta_calls
     assert "--width=157" in delta_calls[0]
 

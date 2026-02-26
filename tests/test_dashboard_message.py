@@ -536,6 +536,41 @@ def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> No
     assert refreshed == [(agent, 156)]
 
 
+def test_expanded_output_review_mode_on_mount_kicks_off_build(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+    screen.set_worktree_review_request_id("req-1")
+    stream = _DummyRichLog()
+    stream.size = SimpleNamespace(width=142, height=10)
+    flash = _DummyFlash()
+    kicked: list[tuple[AgentWindow, str, int | None]] = []
+
+    class _ZeusStub:
+        def _kickoff_worktree_review_build(
+            self,
+            value: AgentWindow,
+            request_id: str,
+            preferred_width: int | None,
+        ) -> None:
+            kicked.append((value, request_id, preferred_width))
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+    monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        if selector == "#expanded-output-scroll-flash":
+            return flash
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    screen.on_mount()
+
+    assert kicked == [(agent, "req-1", 142)]
+
+
 def test_expanded_output_review_mode_apply_starts_at_top(monkeypatch) -> None:
     screen = ExpandedOutputScreen(_agent("alpha", 1), worktree_review_mode=True)
     stream = _DummyRichLog()

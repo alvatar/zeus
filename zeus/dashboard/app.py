@@ -4629,28 +4629,41 @@ class ZeusApp(App):
         live = self._get_agent_by_key(self._agent_key(agent))
         target = live if live is not None else agent
         request_id = f"worktree-review-{time.time_ns()}"
-        expanded = self._ensure_worktree_review_screen(target, request_id)
+        expanded, can_build_now = self._ensure_worktree_review_screen(target, request_id)
         expanded.queue_worktree_review_loading()
+        if not can_build_now:
+            return
+
         screen_width = expanded.current_worktree_review_width()
-        delta_width = self._resolve_worktree_review_width(
+        self._kickoff_worktree_review_build(
+            target,
+            request_id,
             screen_width if screen_width is not None else preferred_width,
         )
-        self._build_worktree_review_async(target, request_id, delta_width)
 
     def _ensure_worktree_review_screen(
         self,
         agent: AgentWindow,
         request_id: str,
-    ) -> ExpandedOutputScreen:
+    ) -> tuple[ExpandedOutputScreen, bool]:
         current = self.screen
         if isinstance(current, ExpandedOutputScreen) and current.is_worktree_review_for(agent):
             current.set_worktree_review_request_id(request_id)
-            return current
+            return current, current.is_attached
 
         screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
         screen.set_worktree_review_request_id(request_id)
         self.push_screen(screen)
-        return screen
+        return screen, False
+
+    def _kickoff_worktree_review_build(
+        self,
+        agent: AgentWindow,
+        request_id: str,
+        preferred_width: int | None,
+    ) -> None:
+        delta_width = self._resolve_worktree_review_width(preferred_width)
+        self._build_worktree_review_async(agent, request_id, delta_width)
 
     @work(thread=True, exclusive=True, group="worktree_review")
     def _build_worktree_review_async(

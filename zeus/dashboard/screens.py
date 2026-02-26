@@ -1147,6 +1147,17 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             self._apply_worktree_review_output_internal(
                 self._pending_worktree_review_content,
             )
+            if self.worktree_review_request_id:
+                self.zeus._kickoff_worktree_review_build(
+                    self.agent,
+                    self.worktree_review_request_id,
+                    self.current_worktree_review_width(),
+                )
+            else:
+                self.zeus.do_refresh_worktree_review(
+                    self.agent,
+                    self.current_worktree_review_width(),
+                )
             return
         self._fetch_output()
 

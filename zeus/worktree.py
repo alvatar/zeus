@@ -313,6 +313,20 @@ def _infer_review_base_branch(cwd: str, branch: str) -> str:
     return ""
 
 
+def _append_review_footer(content: str) -> str:
+    body = (content or "").rstrip("\n")
+    if not body:
+        return "=== END OF REVIEW ===\n"
+    line_count = body.count("\n") + 1
+    return (
+        f"{body}\n\n"
+        "=== REVIEW OUTPUT STATS ===\n"
+        f"lines: {line_count}\n"
+        f"chars: {len(body)}\n"
+        "=== END OF REVIEW ===\n"
+    )
+
+
 def build_worktree_review(
     cwd: str,
     *,
@@ -461,14 +475,16 @@ def build_worktree_review(
                 cwd=cwd,
             )
             if delta_result.returncode == 0 and (delta_result.stdout or "").strip():
-                return True, delta_result.stdout
+                return True, _append_review_footer(delta_result.stdout)
 
             detail = (delta_result.stderr or delta_result.stdout or "").strip()
             fallback = plain
             if detail:
                 fallback += f"\n[delta warning] {detail}\n"
-            return True, fallback
+            return True, _append_review_footer(fallback)
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-            return True, plain + f"\n[delta warning] {exc}\n"
+            return True, _append_review_footer(
+                plain + f"\n[delta warning] {exc}\n"
+            )
 
-    return True, plain
+    return True, _append_review_footer(plain)
