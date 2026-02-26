@@ -284,7 +284,13 @@ def test_build_worktree_review_light_mode_uses_dark_delta_rendering(
     assert "--map-styles" in delta_calls[0]
     assert "dim => normal" in delta_calls[0]
     assert "--zero-style" in delta_calls[0]
-    assert "normal #1a1a1a" in delta_calls[0]
+    assert "normal #1a1a1a #e0e0e0" in delta_calls[0]
+    assert "--plus-style" in delta_calls[0]
+    assert "normal #0f4f0f #f0fff0" in delta_calls[0]
+    assert "--minus-style" in delta_calls[0]
+    assert "normal #5f2020 #fff0f0" in delta_calls[0]
+    assert "--whitespace-error-style" in delta_calls[0]
+    assert "normal #7a0000 #ffdede" in delta_calls[0]
 
     remove_worktree(git_repo, "review-light")
 
