@@ -317,14 +317,7 @@ def _append_review_footer(content: str) -> str:
     body = (content or "").rstrip("\n")
     if not body:
         return "=== END OF REVIEW ===\n"
-    line_count = body.count("\n") + 1
-    return (
-        f"{body}\n\n"
-        "=== REVIEW OUTPUT STATS ===\n"
-        f"lines: {line_count}\n"
-        f"chars: {len(body)}\n"
-        "=== END OF REVIEW ===\n"
-    )
+    return f"{body}\n\n=== END OF REVIEW ===\n"
 
 
 def build_worktree_review(

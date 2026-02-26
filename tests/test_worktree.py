@@ -193,7 +193,7 @@ def test_build_worktree_review_uses_pr_style_ranges(git_repo: str) -> None:
     assert "=== FULL DIFF (base...branch) ===" in out
     assert "ranges: commits=main..zeus/review-test diff=main...zeus/review-test" in out
     assert "+review change" in out
-    assert "=== REVIEW OUTPUT STATS ===" in out
+    assert "=== REVIEW OUTPUT STATS ===" not in out
     assert out.rstrip().endswith("=== END OF REVIEW ===")
 
     remove_worktree(git_repo, "review-test")
