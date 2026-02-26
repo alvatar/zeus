@@ -99,7 +99,7 @@ def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
 
     bindings = {binding.key: binding.action for binding in ExpandedOutputScreen.BINDINGS}
     assert bindings["escape"] == "dismiss"
-    assert bindings["e"] == "dismiss"
+    assert bindings["space"] == "dismiss"
     assert bindings["f5"] == "refresh"
     assert bindings["g"] == "go_ahead"
     assert bindings["enter"] == "message"
@@ -113,9 +113,12 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "os.getcwd()" not in source
     assert "RadioSet(" in source
     assert "invoke-role-hippeus" in source
+    assert "invoke-role-workdir-hippeus" in source
     assert "invoke-role-stygian-hippeus" in source
     assert "invoke-role-polemarch" in source
     assert "invoke-role-god" in source
+    assert source.index("invoke-role-workdir-hippeus") > source.index("invoke-role-hippeus")
+    assert source.index("invoke-role-stygian-hippeus") > source.index("invoke-role-workdir-hippeus")
     assert source.index("invoke-role-god") > source.index("invoke-role-polemarch")
     assert "compact=False" in source
     assert "Select(" in source
@@ -220,6 +223,21 @@ def test_action_new_agent_passes_last_used_and_cached_models_into_dialog(
         "openai/gpt-4o",
     ]
     assert pushed[0]._model_specs_loaded is True
+
+
+def test_action_new_agent_passes_selected_agent_as_workdir_source(monkeypatch) -> None:
+    app = ZeusApp()
+    source_agent = SimpleNamespace(name="base", cwd="/tmp/repo", agent_id="parent-1")
+
+    pushed: list[object] = []
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: source_agent)
+    monkeypatch.setattr(app, "push_screen", lambda screen: pushed.append(screen))
+
+    app.action_new_agent()
+
+    assert pushed
+    assert isinstance(pushed[0], NewAgentScreen)
+    assert pushed[0]._workdir_source_agent is source_agent
 
 
 def test_new_agent_on_mount_fetches_models_when_not_preloaded(monkeypatch) -> None:
@@ -789,6 +807,104 @@ def test_invoke_launch_rejects_duplicate_agent_name(monkeypatch) -> None:
     assert name_input.focused is True
     assert popen_called == []
     assert dismissed == []
+
+
+def test_invoke_launch_workdir_requires_selected_source_agent(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    name_input = _InputStub("wt-alpha")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-workdir-hippeus"))
+        if selector == "#invoke-model":
+            return _SelectStub("__default__")
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    notices: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, message: str, timeout: int = 3) -> None:
+            notices.append(message)
+
+        def do_spawn_workdir_agent(self, *_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
+            raise AssertionError("must not spawn workdir without source agent")
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_called: list[bool] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.subprocess.Popen",
+        lambda *args, **kwargs: popen_called.append(True),  # noqa: ARG005
+    )
+
+    screen._launch()
+
+    assert notices[-1] == "Workdir Hippeus requires a selected Hippeus row"
+    assert popen_called == []
+
+
+def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
+    source_agent = SimpleNamespace(name="base", cwd="/tmp/repo", agent_id="parent-1")
+    screen = NewAgentScreen(workdir_source_agent=source_agent)
+    name_input = _InputStub("wt-alpha")
+    dir_input = _InputStub("~/code")
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-name":
+            return name_input
+        if selector == "#agent-dir":
+            return dir_input
+        if selector == "#invoke-role":
+            return SimpleNamespace(pressed_button=SimpleNamespace(id="invoke-role-workdir-hippeus"))
+        if selector == "#invoke-model":
+            return _SelectStub("openai/gpt-4o")
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    workdir_calls: list[tuple[object, str, object]] = []
+    saved_models: list[str] = []
+
+    class _ZeusStub:
+        def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
+            return False
+
+        def notify(self, _message: str, timeout: int = 3) -> None:  # noqa: ARG002
+            return
+
+        def do_set_last_invoke_model_spec(self, model_spec: str) -> None:
+            saved_models.append(model_spec)
+
+        def do_spawn_workdir_agent(self, agent, name: str, dismiss_screen=None) -> bool:  # noqa: ANN001
+            workdir_calls.append((agent, name, dismiss_screen))
+            return True
+
+    monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    popen_called: list[bool] = []
+    monkeypatch.setattr(
+        "zeus.dashboard.screens.subprocess.Popen",
+        lambda *args, **kwargs: popen_called.append(True),  # noqa: ARG005
+    )
+
+    screen._launch()
+
+    assert saved_models == ["openai/gpt-4o"]
+    assert popen_called == []
+    assert len(workdir_calls) == 1
+    assert workdir_calls[0][0] is source_agent
+    assert workdir_calls[0][1] == "wt-alpha"
+    assert workdir_calls[0][2] is screen
 
 
 def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:

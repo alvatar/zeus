@@ -4574,11 +4574,16 @@ class ZeusApp(App):
         self.call_from_thread(self.do_set_invoke_model_specs, specs)
 
     def action_new_agent(self) -> None:
+        try:
+            selected = self._get_selected_agent()
+        except Exception:
+            selected = None
         self.push_screen(
             NewAgentScreen(
                 preferred_model_spec=self.do_get_last_invoke_model_spec(),
                 available_model_specs=self.do_get_invoke_model_specs(),
                 model_specs_loaded=self.do_has_loaded_invoke_model_specs(),
+                workdir_source_agent=selected,
             )
         )
 

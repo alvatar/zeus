@@ -182,6 +182,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         preferred_model_spec: str = "",
         available_model_specs: list[str] | None = None,
         model_specs_loaded: bool = False,
+        workdir_source_agent: AgentWindow | None = None,
     ) -> None:
         super().__init__()
         self._dir_suggestion_values: list[str] = []
@@ -191,6 +192,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         self._available_model_specs: list[str] = list(available_model_specs or [])
         self._model_specs_loaded: bool = model_specs_loaded
         self._preferred_model_spec: str = preferred_model_spec.strip()
+        self._workdir_source_agent: AgentWindow | None = workdir_source_agent
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-agent-dialog"):
@@ -199,7 +201,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             yield Input(placeholder="e.g. fix-auth-bug", id="agent-name")
             yield Label("Type:")
             yield RadioSet(
-                RadioButton("Hippeus", value=True, id="invoke-role-hippeus"),
+                RadioButton("New Hippeus", value=True, id="invoke-role-hippeus"),
+                RadioButton("Workdir Hippeus", id="invoke-role-workdir-hippeus"),
                 RadioButton("Stygian Hippeus", id="invoke-role-stygian-hippeus"),
                 RadioButton("Polemarch", id="invoke-role-polemarch"),
                 RadioButton("God", id="invoke-role-god"),
@@ -540,6 +543,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return "polemarch"
         if pressed is not None and pressed.id == "invoke-role-stygian-hippeus":
             return "stygian-hippeus"
+        if pressed is not None and pressed.id == "invoke-role-workdir-hippeus":
+            return "workdir-hippeus"
         return "hippeus"
 
     def _launch(self) -> None:
@@ -556,7 +561,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             return
 
         role = self._selected_role()
-        agent_id = generate_agent_id()
         directory = os.path.expanduser(directory)
 
         raw_model = self.query_one("#invoke-model", Select).value
@@ -567,6 +571,23 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
 
         if hasattr(self.zeus, "do_set_last_invoke_model_spec"):
             self.zeus.do_set_last_invoke_model_spec(model_spec)
+
+        if role == "workdir-hippeus":
+            source_agent = self._workdir_source_agent
+            if source_agent is None:
+                self.zeus.notify(
+                    "Workdir Hippeus requires a selected Hippeus row",
+                    timeout=3,
+                )
+                return
+            self.zeus.do_spawn_workdir_agent(
+                source_agent,
+                name,
+                dismiss_screen=self,
+            )
+            return
+
+        agent_id = generate_agent_id()
 
         if role == "stygian-hippeus":
             try:
