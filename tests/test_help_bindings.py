@@ -59,6 +59,7 @@ def test_help_lists_core_bindings() -> None:
     # Navigation
     assert "Tab" in entries
     assert "Enter" in entries
+    assert "j / k (agent list)" in entries
     assert "Esc" in entries
     assert "Ctrl+Enter" in entries
     assert "Ctrl+o" in entries

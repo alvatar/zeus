@@ -2273,6 +2273,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Navigation ───"),
     ("Tab", "Toggle focus between table and interact input"),
     ("Enter", "Focus interact input"),
+    ("j / k (agent list)", "Move selection down / up"),
     ("Esc", "Back to Hippeis table"),
     ("Ctrl+Enter", "Teleport to Hippeus / open tmux"),
     ("Ctrl+o", "Open kitty shell in selected directory"),
