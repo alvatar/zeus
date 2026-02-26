@@ -5485,18 +5485,19 @@ class ZeusApp(App):
 
     def do_spawn_workdir_agent(
         self,
-        agent: AgentWindow,
+        agent: AgentWindow | None,
         name: str,
         dismiss_screen: ModalScreen | None = None,
         source_directory: str | None = None,
     ) -> None:
         """Create a git worktree and launch a workdir agent in it."""
         clean_name = name.strip()
-        source_cwd = (source_directory or "").strip() or (agent.cwd or "")
+        source_cwd = (source_directory or "").strip() or ((agent.cwd if agent else "") or "")
         _wt_log(
             "do_spawn_workdir_agent called: "
-            f"name={clean_name!r} agent={agent.name!r} cwd={agent.cwd!r} "
-            f"source_cwd={source_cwd!r} agent_id={agent.agent_id!r}"
+            f"name={clean_name!r} agent={(agent.name if agent else '<none>')!r} "
+            f"cwd={(agent.cwd if agent else '')!r} source_cwd={source_cwd!r} "
+            f"agent_id={((agent.agent_id if agent else '') or '')!r}"
         )
 
         if self._is_agent_name_taken(clean_name):
@@ -5506,7 +5507,7 @@ class ZeusApp(App):
             self.notify_force(f"Name already exists: {clean_name}", timeout=3)
             return
 
-        if not (agent.agent_id or "").strip():
+        if agent is not None and not (agent.agent_id or "").strip():
             _wt_log("missing parent agent_id")
             if dismiss_screen:
                 dismiss_screen.dismiss()
@@ -5557,7 +5558,10 @@ class ZeusApp(App):
         )
 
     def _replace_existing_worktree(
-        self, agent: AgentWindow, name: str, repo_root: str,
+        self,
+        agent: AgentWindow | None,
+        name: str,
+        repo_root: str,
     ) -> None:
         """Remove existing worktree then spawn fresh."""
         from ..worktree import remove_worktree
@@ -5573,15 +5577,15 @@ class ZeusApp(App):
 
     async def _do_spawn_workdir(
         self,
-        agent: AgentWindow,
+        agent: AgentWindow | None,
         name: str,
         *,
         repo_root: str | None = None,
     ) -> None:
         import asyncio
         _wt_log(
-            f"starting for {name}, agent={agent.name}, cwd={agent.cwd}, "
-            f"repo_root={repo_root!r}"
+            f"starting for {name}, agent={(agent.name if agent else '<none>')}, "
+            f"cwd={(agent.cwd if agent else '')}, repo_root={repo_root!r}"
         )
         try:
             result = await asyncio.to_thread(
@@ -5604,7 +5608,7 @@ class ZeusApp(App):
 
     def _spawn_workdir_blocking(
         self,
-        agent: AgentWindow,
+        agent: AgentWindow | None,
         name: str,
         *,
         repo_root: str | None = None,
@@ -5618,10 +5622,10 @@ class ZeusApp(App):
             worktree_branch,
         )
 
-        cwd = agent.cwd or ""
+        cwd = (agent.cwd if agent else "") or ""
         repo_root = (repo_root or "").strip() or get_worktree_repo_root(cwd)
         if not repo_root:
-            raise RuntimeError(f"Not a git repo: {cwd}")
+            raise RuntimeError(f"Not a git repo: {cwd or '<empty>'}")
 
         parent_branch = get_current_branch(repo_root)
         if not parent_branch:
@@ -5636,7 +5640,7 @@ class ZeusApp(App):
 
         # Same launch pattern as NewAgentScreen._do_invoke
         agent_id = generate_agent_id()
-        parent_id = (agent.agent_id or "").strip()
+        parent_id = ((agent.agent_id if agent else "") or "").strip()
         session_path = make_new_session_path(wt_path)
 
         env: dict[str, str] = os.environ.copy()
@@ -5658,7 +5662,7 @@ class ZeusApp(App):
         )
         _wt_log(f"kitty launched pid={proc.pid} cwd={wt_path} session={session_path}")
 
-        workspace = agent.workspace
+        workspace = (agent.workspace if agent else "")
         if workspace and workspace != "?":
             from ..kitty import move_pid_to_workspace_and_focus_later
             move_pid_to_workspace_and_focus_later(proc.pid, workspace, delay=0.5)

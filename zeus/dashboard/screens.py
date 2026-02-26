@@ -573,15 +573,8 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.do_set_last_invoke_model_spec(model_spec)
 
         if role == "workdir-hippeus":
-            source_agent = self._workdir_source_agent
-            if source_agent is None:
-                self.zeus.notify(
-                    "Workdir Hippeus requires a selected Hippeus row",
-                    timeout=3,
-                )
-                return
             self.zeus.do_spawn_workdir_agent(
-                source_agent,
+                self._workdir_source_agent,
                 name,
                 dismiss_screen=self,
                 source_directory=directory,

@@ -438,22 +438,17 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
 
 def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
     git_repo: str,
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from zeus.dashboard.app import ZeusApp
     import zeus.dashboard.app as app_mod
 
     app = ZeusApp.__new__(ZeusApp)
-    parent = MagicMock()
-    parent.name = "parent"
-    parent.cwd = str(tmp_path / "not-used")
-    parent.agent_id = "parent-1"
 
     source_dir = Path(git_repo) / "nested" / "dir"
     source_dir.mkdir(parents=True)
 
-    spawn_calls: list[tuple[object, str, str | None]] = []
+    spawn_calls: list[tuple[object | None, str, str | None]] = []
     notices: list[str] = []
 
     monkeypatch.setattr(app, "_is_agent_name_taken", lambda _name: False)
@@ -465,10 +460,10 @@ def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
     monkeypatch.setattr(app_mod.asyncio, "ensure_future", lambda _task: None)
     monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
 
-    app.do_spawn_workdir_agent(parent, "from-dialog", source_directory=str(source_dir))
+    app.do_spawn_workdir_agent(None, "from-dialog", source_directory=str(source_dir))
 
     assert notices == []
-    assert spawn_calls == [(parent, "from-dialog", git_repo)]
+    assert spawn_calls == [(None, "from-dialog", git_repo)]
 
 
 def test_do_spawn_workdir_agent_rejects_non_git_source_directory(

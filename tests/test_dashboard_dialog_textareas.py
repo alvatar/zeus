@@ -811,7 +811,7 @@ def test_invoke_launch_rejects_duplicate_agent_name(monkeypatch) -> None:
     assert dismissed == []
 
 
-def test_invoke_launch_workdir_requires_selected_source_agent(monkeypatch) -> None:
+def test_invoke_launch_workdir_does_not_require_selected_source_agent(monkeypatch) -> None:
     screen = NewAgentScreen()
     name_input = _InputStub("wt-alpha")
     dir_input = _InputStub("~/code")
@@ -829,17 +829,27 @@ def test_invoke_launch_workdir_requires_selected_source_agent(monkeypatch) -> No
 
     monkeypatch.setattr(screen, "query_one", _query_one)
 
-    notices: list[str] = []
+    workdir_calls: list[tuple[object | None, str, object, str | None]] = []
 
     class _ZeusStub:
         def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
             return False
 
-        def notify(self, message: str, timeout: int = 3) -> None:
-            notices.append(message)
+        def notify(self, _message: str, timeout: int = 3) -> None:  # noqa: ARG002
+            return
 
-        def do_spawn_workdir_agent(self, *_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
-            raise AssertionError("must not spawn workdir without source agent")
+        def do_set_last_invoke_model_spec(self, _model_spec: str) -> None:
+            return
+
+        def do_spawn_workdir_agent(
+            self,
+            agent,
+            name: str,
+            dismiss_screen=None,
+            source_directory: str | None = None,
+        ) -> bool:  # noqa: ANN001
+            workdir_calls.append((agent, name, dismiss_screen, source_directory))
+            return True
 
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
 
@@ -851,8 +861,12 @@ def test_invoke_launch_workdir_requires_selected_source_agent(monkeypatch) -> No
 
     screen._launch()
 
-    assert notices[-1] == "Workdir Hippeus requires a selected Hippeus row"
     assert popen_called == []
+    assert len(workdir_calls) == 1
+    assert workdir_calls[0][0] is None
+    assert workdir_calls[0][1] == "wt-alpha"
+    assert workdir_calls[0][2] is screen
+    assert workdir_calls[0][3] == os.path.expanduser("~/code")
 
 
 def test_invoke_launch_workdir_delegates_to_workdir_spawn(monkeypatch) -> None:
