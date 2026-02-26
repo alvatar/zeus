@@ -1013,6 +1013,36 @@ def test_enter_on_table_focuses_input_when_input_visible(monkeypatch) -> None:
     assert event.stopped is True
 
 
+def test_jk_on_table_moves_cursor_like_vim(monkeypatch) -> None:
+    app = _new_app()
+
+    class _Table(DataTable):
+        def __init__(self) -> None:
+            super().__init__()
+            self.moves: list[str] = []
+
+        def action_cursor_down(self) -> None:  # type: ignore[override]
+            self.moves.append("down")
+
+        def action_cursor_up(self) -> None:  # type: ignore[override]
+            self.moves.append("up")
+
+    table = _Table()
+    down = _DummyKeyEvent("j")
+    up = _DummyKeyEvent("k")
+
+    monkeypatch.setattr(ZeusApp, "focused", property(lambda self: table))
+    monkeypatch.setattr(app, "_dismiss_splash", lambda: False)
+    monkeypatch.setattr(app, "_dismiss_celebration", lambda: False)
+
+    app.on_key(down)  # type: ignore[arg-type]
+    app.on_key(up)  # type: ignore[arg-type]
+
+    assert table.moves == ["down", "up"]
+    assert down.prevented is True and down.stopped is True
+    assert up.prevented is True and up.stopped is True
+
+
 def test_do_save_agent_message_draft_roundtrip() -> None:
     app = _new_app()
     agent = _agent("alpha", 1)

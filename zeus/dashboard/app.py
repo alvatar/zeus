@@ -4242,6 +4242,16 @@ class ZeusApp(App):
                 self.action_agent_message()
             return
 
+        if event.key in {"j", "k"} and isinstance(self.focused, DataTable):
+            event.prevent_default()
+            event.stop()
+            table = cast(DataTable, self.focused)
+            if event.key == "j":
+                table.action_cursor_down()
+            else:
+                table.action_cursor_up()
+            return
+
         if event.key in {"up", "down"} and isinstance(self.focused, ZeusTextArea):
             ta = self.query_one("#interact-input", ZeusTextArea)
             if self.focused is ta and self._handle_interact_history_nav(event.key):
