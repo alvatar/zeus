@@ -118,7 +118,22 @@ else
     echo "⚠ Zeus pi extension source missing: $ZEUS_PI_EXTENSION_SRC" >&2
 fi
 
-# 4. Install message presets (always overwritten)
+# 4. Install pi system prompt appendix (always overwritten)
+APPEND_SYSTEM_SRC="$SCRIPT_DIR/prompts/APPEND_SYSTEM.md"
+APPEND_SYSTEM_DEST="${HOME}/.pi/agent/APPEND_SYSTEM.md"
+
+if [ -f "$APPEND_SYSTEM_SRC" ]; then
+    mkdir -p "${HOME}/.pi/agent" 2>/dev/null || true
+    if cp "$APPEND_SYSTEM_SRC" "$APPEND_SYSTEM_DEST" 2>/dev/null; then
+        echo "✓ Installed pi system prompt appendix at $APPEND_SYSTEM_DEST"
+    else
+        echo "⚠ Could not install pi system prompt appendix at $APPEND_SYSTEM_DEST (permission denied); skipped" >&2
+    fi
+else
+    echo "⚠ pi system prompt appendix source missing: $APPEND_SYSTEM_SRC" >&2
+fi
+
+# 5. Install message presets (always overwritten)
 PRESETS_SRC="$SCRIPT_DIR/config/message-presets.toml"
 PRESETS_DEST="${HOME}/.zeus/message-presets.toml"
 
@@ -133,7 +148,7 @@ else
     echo "⚠ Message presets source missing: $PRESETS_SRC" >&2
 fi
 
-# 5. Install consolidation prompt templates (always overwritten)
+# 6. Install consolidation prompt templates (always overwritten)
 CONS_PROJECT_SRC="$SCRIPT_DIR/config/consolidation-project.md"
 CONS_TOPIC_SRC="$SCRIPT_DIR/config/consolidation-topic.md"
 WORKDIR_SRC="$SCRIPT_DIR/config/workdir-agent.md"
@@ -158,7 +173,7 @@ for src_dest in "$CONS_PROJECT_SRC:$CONS_PROJECT_DEST" "$CONS_TOPIC_SRC:$CONS_TO
     fi
 done
 
-# 6. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
+# 7. Optional pi wrapper (deterministic identity + optional bwrap sandbox)
 if $WRAP_PI; then
     PI_BIN="$BIN_DIR/pi"
     PI_ORIG="$BIN_DIR/pi.zeus-orig"
@@ -402,7 +417,7 @@ EOF
     fi
 fi
 
-# 7. Patch kitty.conf (idempotent)
+# 8. Patch kitty.conf (idempotent)
 KITTY_CONF="${HOME}/.config/kitty/kitty.conf"
 KITTY_CONF_DIR="$(dirname "$KITTY_CONF")"
 if mkdir -p "$KITTY_CONF_DIR" 2>/dev/null; then
@@ -430,7 +445,7 @@ else
     echo "⚠ Could not create $KITTY_CONF_DIR (permission denied); skipped" >&2
 fi
 
-# 8. Sway config (just show instructions)
+# 9. Sway config (just show instructions)
 echo ""
 echo "── Manual step: Sway config ──"
 echo "Edit ~/.config/sway/config and change your terminal keybinding:"
@@ -443,7 +458,7 @@ echo ""
 echo "Then reload sway: swaymsg reload"
 echo ""
 
-# 9. Verify
+# 10. Verify
 echo "── Status ──"
 if command -v zeus &>/dev/null; then
     echo "✓ zeus is in PATH"
