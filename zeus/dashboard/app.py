@@ -4141,13 +4141,28 @@ class ZeusApp(App):
     def _alpha_sort_key(self, agent: AgentWindow) -> tuple[int, str]:
         return (self._agent_list_role_rank(agent), agent.name.lower())
 
+    @staticmethod
+    def _is_workdir_agent(agent: AgentWindow) -> bool:
+        cwd = (agent.cwd or "").strip()
+        if not cwd:
+            return False
+        normalized = os.path.normpath(os.path.expanduser(cwd))
+        marker = f"{os.sep}.worktrees{os.sep}"
+        return marker in f"{normalized}{os.sep}"
+
     def _name_role_marker(self, agent: AgentWindow) -> str:
+        parts: list[str] = []
+
         role = self._agent_role(agent)
         if role == "god":
-            return "⌁⌁⌁ "
-        if role == "polemarch":
-            return "⌁ "
-        return ""
+            parts.append("⌁⌁⌁")
+        elif role == "polemarch":
+            parts.append("⌁")
+
+        if self._is_workdir_agent(agent):
+            parts.append("⎇")
+
+        return (" ".join(parts) + " ") if parts else ""
 
     def _get_priority(self, agent: AgentWindow) -> int:
         """Return priority for an agent (1=high … 4=paused, default=3)."""

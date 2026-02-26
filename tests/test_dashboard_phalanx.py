@@ -155,6 +155,43 @@ def test_render_agent_table_shows_triple_marker_for_god(monkeypatch) -> None:
     assert name_cell.plain == "⌁⌁⌁ oracle"
 
 
+def test_render_agent_table_shows_branch_glyph_for_top_level_workdir(monkeypatch) -> None:
+    app = ZeusApp()
+    workdir = _agent(agent_id="workdir-1", role="")
+    workdir.name = "tester"
+    workdir.cwd = "/tmp/project/.worktrees/tester"
+    app.agents = [workdir]
+
+    table, _ = _render(app, monkeypatch)
+
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    name_idx = cols.index("Name")
+    name_cell = table.added_rows[0][name_idx]
+    assert isinstance(name_cell, Text)
+    assert name_cell.plain == "⎇ tester"
+
+
+def test_render_agent_table_shows_branch_glyph_for_descendant_workdir(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent(agent_id="parent-1", role="")
+    parent.name = "parent"
+    child = _agent(agent_id="child-1", role="")
+    child.name = "tester"
+    child.parent_id = "parent-1"
+    child.cwd = "/tmp/project/.worktrees/tester"
+    child.kitty_id = 2
+    child.socket = "/tmp/kitty-2"
+    app.agents = [parent, child]
+
+    table, _ = _render(app, monkeypatch)
+
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    name_idx = cols.index("Name")
+    child_name_cell = table.added_rows[1][name_idx]
+    assert isinstance(child_name_cell, Text)
+    assert "🧬 ⎇ tester" in child_name_cell.plain
+
+
 def test_render_agent_table_requires_explicit_polemarch_role_for_label(monkeypatch) -> None:
     app = ZeusApp()
     agent = _agent(agent_id="polemarch-1", role="")
