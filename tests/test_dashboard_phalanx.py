@@ -168,7 +168,7 @@ def test_render_agent_table_shows_branch_glyph_for_top_level_workdir(monkeypatch
     name_idx = cols.index("Name")
     name_cell = table.added_rows[0][name_idx]
     assert isinstance(name_cell, Text)
-    assert name_cell.plain == "⎇ tester"
+    assert name_cell.plain == "⑂ tester"
 
 
 def test_render_agent_table_shows_branch_glyph_for_descendant_workdir(monkeypatch) -> None:
@@ -189,7 +189,7 @@ def test_render_agent_table_shows_branch_glyph_for_descendant_workdir(monkeypatc
     name_idx = cols.index("Name")
     child_name_cell = table.added_rows[1][name_idx]
     assert isinstance(child_name_cell, Text)
-    assert "🧬 ⎇ tester" in child_name_cell.plain
+    assert "🧬 ⑂ tester" in child_name_cell.plain
 
 
 def test_render_agent_table_requires_explicit_polemarch_role_for_label(monkeypatch) -> None:
