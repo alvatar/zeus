@@ -1110,11 +1110,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             if self.worktree_review_mode
             else f"Expanded output [bold]{self.agent.name}[/bold]"
         )
-        hint = (
-            "(F5 refresh | Esc close)"
-            if self.worktree_review_mode
-            else "(Enter message | G go ahead | F5 refresh | Esc close)"
-        )
+        hint = "(Enter message | G go ahead | F5 refresh | Esc close)"
         with Vertical(id="expanded-output-dialog"):
             with Horizontal(id="expanded-output-title-row"):
                 yield Label(
@@ -1295,8 +1291,6 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         self._fetch_output()
 
     def action_message(self) -> None:
-        if self.worktree_review_mode:
-            return
         self.zeus.push_screen(
             AgentMessageScreen(
                 self.agent,
@@ -1306,8 +1300,6 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         )
 
     def action_go_ahead(self) -> None:
-        if self.worktree_review_mode:
-            return
         self.dismiss()
         self.zeus.action_go_ahead()
 

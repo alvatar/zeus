@@ -593,7 +593,7 @@ def test_expanded_output_review_mode_apply_starts_at_top(monkeypatch) -> None:
     assert stream.writes
 
 
-def test_expanded_output_review_mode_disables_message_and_go_ahead(monkeypatch) -> None:
+def test_expanded_output_review_mode_enables_message_and_go_ahead(monkeypatch) -> None:
     agent = _agent("alpha", 1)
     screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
     pushed: list[object] = []
@@ -616,9 +616,10 @@ def test_expanded_output_review_mode_disables_message_and_go_ahead(monkeypatch) 
     screen.action_message()
     screen.action_go_ahead()
 
-    assert pushed == []
-    assert dismissed == []
-    assert go_calls == []
+    assert len(pushed) == 1
+    assert isinstance(pushed[0], AgentMessageScreen)
+    assert dismissed == [True]
+    assert go_calls == [True]
 
 
 def test_expanded_output_scroll_shows_transient_flash_indicator(monkeypatch) -> None:
