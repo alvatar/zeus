@@ -22,7 +22,8 @@ def test_help_lists_core_bindings() -> None:
 
     # Hippeis management
     assert "q" in entries
-    assert "e" in entries
+    assert "Space" in entries
+    assert "v" in entries
     assert "r" in entries
     assert "Ctrl+r" in entries
     assert "Ctrl+Alt+r" in entries
@@ -37,8 +38,8 @@ def test_help_lists_core_bindings() -> None:
     assert "g" in entries
     assert "Ctrl+g" in entries
     assert "h" in entries
-    assert "k" in entries
     assert "Ctrl+k" in entries
+    assert "Ctrl+Alt+k" in entries
     assert "z" in entries
     assert "b" in entries
     assert "n" in entries
@@ -82,7 +83,8 @@ def test_help_orders_agent_management_by_qwerty() -> None:
 
     assert keys == [
         "q",
-        "e",
+        "Space",
+        "v",
         "r",
         "Ctrl+r",
         "Ctrl+Alt+r",
@@ -97,8 +99,8 @@ def test_help_orders_agent_management_by_qwerty() -> None:
         "g",
         "Ctrl+g",
         "h",
-        "k",
         "Ctrl+k",
+        "Ctrl+Alt+k",
         "z",
         "b",
         "n",
@@ -158,6 +160,7 @@ def test_help_no_stale_bindings() -> None:
     keys = {key for key, _desc in _HELP_BINDINGS if key}
     # These old keys should not be present
     assert "Ctrl+k (tmux row)" not in keys
+    assert "k" not in keys
     assert "Ctrl+q" not in keys
     assert "i" not in keys
     assert "Ctrl+b" not in keys
