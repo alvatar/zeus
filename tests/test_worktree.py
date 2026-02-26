@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -249,10 +250,10 @@ def test_build_worktree_review_passes_delta_width_to_delta(
     assert "--dark" in delta_calls[0]
     assert "--file-decoration-style" in delta_calls[0]
     assert "--hunk-header-decoration-style" in delta_calls[0]
-    assert "box #5a5a5a" in delta_calls[0]
+    assert "box #707070" in delta_calls[0]
     assert "--line-numbers-left-style" in delta_calls[0]
     assert "--line-numbers-right-style" in delta_calls[0]
-    assert "#5a5a5a" in delta_calls[0]
+    assert "#707070" in delta_calls[0]
     assert "--width=157" in delta_calls[0]
 
     remove_worktree(git_repo, "review-width")
@@ -293,22 +294,52 @@ def test_build_worktree_review_light_mode_uses_dark_delta_rendering(
     assert "--light" not in delta_calls[0]
     assert "--file-decoration-style" in delta_calls[0]
     assert "--hunk-header-decoration-style" in delta_calls[0]
-    assert "box #5a5a5a" in delta_calls[0]
+    assert "box #707070" in delta_calls[0]
     assert "--line-numbers-left-style" in delta_calls[0]
     assert "--line-numbers-right-style" in delta_calls[0]
-    assert "#5a5a5a" in delta_calls[0]
+    assert "#707070" in delta_calls[0]
     assert "--map-styles" in delta_calls[0]
     assert "dim => normal" in delta_calls[0]
     assert "--zero-style" in delta_calls[0]
-    assert "normal #1a1a1a #e0e0e0" in delta_calls[0]
+    assert "#0a0a0a #dcdcdc" in delta_calls[0]
     assert "--plus-style" in delta_calls[0]
-    assert "normal #0f4f0f #f0fff0" in delta_calls[0]
+    assert "#0b3a0b #e8fae8" in delta_calls[0]
+    assert "--plus-non-emph-style" in delta_calls[0]
+    assert "--plus-emph-style" in delta_calls[0]
+    assert "bold #021c02 #b8e8b8" in delta_calls[0]
     assert "--minus-style" in delta_calls[0]
-    assert "normal #5f2020 #fff0f0" in delta_calls[0]
-    assert "--whitespace-error-style" in delta_calls[0]
-    assert "normal #7a0000 #ffdede" in delta_calls[0]
+    assert "#4d1010 #ffe6e6" in delta_calls[0]
+    assert "--minus-non-emph-style" in delta_calls[0]
+    assert "--minus-emph-style" in delta_calls[0]
+    assert "bold #260303 #f1b8b8" in delta_calls[0]
+    assert "--file-style" in delta_calls[0]
+    assert "--hunk-header-style" in delta_calls[0]
+    assert "#0a0a0a" in delta_calls[0]
 
     remove_worktree(git_repo, "review-light")
+
+
+def test_build_worktree_review_light_mode_delta_styles_are_valid_with_real_delta(
+    git_repo: str,
+) -> None:
+    if not shutil.which("delta"):
+        pytest.skip("delta not installed")
+
+    create_worktree(git_repo, "review-light-real", base_branch="main")
+    wt = worktree_path(git_repo, "review-light-real")
+
+    payload = Path(wt) / "README.md"
+    payload.write_text("review light real delta\n")
+    subprocess.run(["git", "add", "README.md"], cwd=wt, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "review light real"], cwd=wt, capture_output=True, check=True)
+
+    ok, out = build_worktree_review(wt, delta_theme_mode="light")
+
+    assert ok
+    assert out.rstrip().endswith("=== END OF REVIEW ===")
+    assert "[delta warning]" not in out
+
+    remove_worktree(git_repo, "review-light-real")
 
 
 def test_build_worktree_review_excludes_uncommitted_changes(git_repo: str) -> None:

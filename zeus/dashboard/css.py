@@ -627,31 +627,31 @@ ExpandedOutputScreen {
 }
 
 ExpandedOutputScreen.review-light {
-    background: #d0d0d0d8;
+    background: #c8c8c8d8;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-dialog {
-    background: #e0e0e0;
+    background: #efefef;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-title-row {
-    background: #c9c9c9;
-    color: #1a1a1a;
+    background: #dddddd;
+    color: #101010;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-title {
-    color: #121212;
+    color: #101010;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-hint,
 ExpandedOutputScreen.review-light #expanded-output-footer {
-    color: #2a2a2a;
+    color: #3a3a3a;
 }
 
 ExpandedOutputScreen.review-light #expanded-output-stream {
-    border-top: solid #b0b0b0;
-    background: #e0e0e0;
-    color: #1a1a1a;
+    border-top: solid #c4c4c4;
+    background: #efefef;
+    color: #101010;
 }
 """
 
