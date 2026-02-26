@@ -261,7 +261,7 @@ NewAgentScreen {{
 }}
 
 #new-agent-dialog {{
-    width: 72;
+    width: 96;
     height: auto;
     max-height: 34;
     border: thick #00d7d7;
