@@ -463,9 +463,9 @@ def build_worktree_review(
             # Neutralize divider lines/bars to gray.
             delta_cmd.extend([
                 "--file-decoration-style",
-                "#5a5a5a",
+                "box #5a5a5a",
                 "--hunk-header-decoration-style",
-                "#5a5a5a",
+                "box #5a5a5a",
                 "--line-numbers-left-style",
                 "#5a5a5a",
                 "--line-numbers-right-style",
