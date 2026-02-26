@@ -510,7 +510,7 @@ def test_expanded_output_empty_state_has_no_leading_margin(monkeypatch) -> None:
 def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> None:
     agent = _agent("alpha", 1)
     screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
-    refreshed: list[tuple[AgentWindow, int | None]] = []
+    refreshed: list[tuple[AgentWindow, int | None, str | None]] = []
     stream = _DummyRichLog()
     stream.size = SimpleNamespace(width=156, height=10)
 
@@ -519,8 +519,9 @@ def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> No
             self,
             value: AgentWindow,
             preferred_width: int | None = None,
+            theme_mode: str | None = None,
         ) -> None:
-            refreshed.append((value, preferred_width))
+            refreshed.append((value, preferred_width, theme_mode))
 
     monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
 
@@ -533,7 +534,60 @@ def test_expanded_output_review_mode_refresh_delegates_to_app(monkeypatch) -> No
 
     screen.action_refresh()
 
-    assert refreshed == [(agent, 156)]
+    assert refreshed == [(agent, 156, "dark")]
+
+
+def test_expanded_output_review_mode_toggle_theme_rebuilds_with_new_mode(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+    stream = _DummyRichLog()
+    stream.size = SimpleNamespace(width=120, height=10)
+    refreshed: list[tuple[AgentWindow, int | None, str | None]] = []
+
+    class _ZeusStub:
+        def do_toggle_worktree_review_theme_mode(self) -> str:
+            return "light"
+
+        def do_refresh_worktree_review(
+            self,
+            value: AgentWindow,
+            preferred_width: int | None = None,
+            theme_mode: str | None = None,
+        ) -> None:
+            refreshed.append((value, preferred_width, theme_mode))
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    def _query_one(selector: str, _cls=None):  # noqa: ANN001
+        if selector == "#expanded-output-stream":
+            return stream
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    screen.action_toggle_review_theme()
+
+    assert screen.worktree_review_theme_mode == "light"
+    assert refreshed == [(agent, 120, "light")]
+
+
+def test_expanded_output_toggle_theme_noop_outside_review_mode(monkeypatch) -> None:
+    screen = ExpandedOutputScreen(_agent("alpha", 1), worktree_review_mode=False)
+    calls: list[str] = []
+
+    class _ZeusStub:
+        def do_toggle_worktree_review_theme_mode(self) -> str:
+            calls.append("toggle")
+            return "light"
+
+        def do_refresh_worktree_review(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            calls.append("refresh")
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.action_toggle_review_theme()
+
+    assert calls == []
 
 
 def test_expanded_output_review_mode_on_mount_kicks_off_build(monkeypatch) -> None:
@@ -543,7 +597,7 @@ def test_expanded_output_review_mode_on_mount_kicks_off_build(monkeypatch) -> No
     stream = _DummyRichLog()
     stream.size = SimpleNamespace(width=142, height=10)
     flash = _DummyFlash()
-    kicked: list[tuple[AgentWindow, str, int | None]] = []
+    kicked: list[tuple[AgentWindow, str, int | None, str]] = []
 
     class _ZeusStub:
         def _kickoff_worktree_review_build(
@@ -551,8 +605,9 @@ def test_expanded_output_review_mode_on_mount_kicks_off_build(monkeypatch) -> No
             value: AgentWindow,
             request_id: str,
             preferred_width: int | None,
+            review_theme_mode: str,
         ) -> None:
-            kicked.append((value, request_id, preferred_width))
+            kicked.append((value, request_id, preferred_width, review_theme_mode))
 
     monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
     monkeypatch.setattr(ExpandedOutputScreen, "is_attached", property(lambda self: True))
@@ -568,7 +623,7 @@ def test_expanded_output_review_mode_on_mount_kicks_off_build(monkeypatch) -> No
 
     screen.on_mount()
 
-    assert kicked == [(agent, "req-1", 142)]
+    assert kicked == [(agent, "req-1", 142, "dark")]
 
 
 def test_expanded_output_review_mode_apply_starts_at_top(monkeypatch) -> None:

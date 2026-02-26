@@ -625,6 +625,33 @@ ExpandedOutputScreen {
     margin: 1 0 0 0;
     padding: 0 1;
 }
+
+ExpandedOutputScreen.review-light {
+    background: #e8e8e8d0;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-dialog {
+    background: #f7f7f7;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-title-row {
+    background: #dddddd;
+    color: #303030;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-hint,
+ExpandedOutputScreen.review-light #expanded-output-footer {
+    color: #555555;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-stream {
+    border-top: solid #c8c8c8;
+    background: #f7f7f7;
+}
+
+ExpandedOutputScreen.review-light #expanded-output-scroll-flash {
+    color: #666666;
+}
 """
 
 DEPENDENCY_SELECT_CSS = f"""

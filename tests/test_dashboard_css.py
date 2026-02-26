@@ -169,6 +169,13 @@ def test_expanded_output_stream_uses_zero_side_padding_only_for_output_content()
     assert "#expanded-output-footer {\n    height: 1;\n    color: #6a9090;\n    margin: 1 0 0 0;\n    padding: 0 1;" in css.EXPANDED_OUTPUT_CSS
 
 
+def test_expanded_output_css_has_review_light_mode_overrides() -> None:
+    assert "ExpandedOutputScreen.review-light {" in css.EXPANDED_OUTPUT_CSS
+    assert "ExpandedOutputScreen.review-light #expanded-output-dialog {" in css.EXPANDED_OUTPUT_CSS
+    assert "ExpandedOutputScreen.review-light #expanded-output-title-row {" in css.EXPANDED_OUTPUT_CSS
+    assert "ExpandedOutputScreen.review-light #expanded-output-stream {" in css.EXPANDED_OUTPUT_CSS
+
+
 def test_help_css_uses_table_like_rows_without_borders() -> None:
     assert "#help-bindings-scroll .help-row {" in css.HELP_CSS
     assert "#help-bindings-scroll .help-key {" in css.HELP_CSS

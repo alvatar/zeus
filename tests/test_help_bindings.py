@@ -150,6 +150,7 @@ def test_help_lists_dialog_bindings() -> None:
     entries = {key: desc for key, desc in _HELP_BINDINGS if key}
     # Dialog-specific contextual bindings
     assert "Esc" in entries  # close dialog
+    assert "i (review)" in entries
     assert "Ctrl+s (tasks)" in entries
     assert "Ctrl+s (message)" in entries
     assert "Ctrl+w (message)" in entries

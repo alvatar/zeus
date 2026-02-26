@@ -326,6 +326,7 @@ def build_worktree_review(
     base_branch: str = "",
     use_delta: bool = True,
     delta_width: int | None = None,
+    delta_theme_mode: str = "dark",
 ) -> tuple[bool, str]:
     """Build a single continuous review view for a worktree branch.
 
@@ -334,6 +335,7 @@ def build_worktree_review(
     - Diff: base...branch (merge-base style / PR-style)
     - Uncommitted changes are intentionally excluded from the diff.
     - Delta width can be forced via ``delta_width`` to match UI viewport.
+    - Delta color mode can be forced via ``delta_theme_mode`` ("dark" | "light").
     """
     repo_root = get_repo_root(cwd)
     if not repo_root:
@@ -454,7 +456,12 @@ def build_worktree_review(
 
     if use_delta and shutil.which("delta"):
         try:
+            theme_mode = (delta_theme_mode or "dark").strip().lower()
+            theme_mode = "light" if theme_mode == "light" else "dark"
+
             delta_cmd = ["delta", "--paging=never"]
+            delta_cmd.append("--light" if theme_mode == "light" else "--dark")
+
             width = int(delta_width or 0)
             if width > 0:
                 delta_cmd.append(f"--width={max(40, width)}")

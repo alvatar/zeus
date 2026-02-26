@@ -648,6 +648,7 @@ class ZeusApp(App):
     _steady_armed: bool = True
     _last_invoke_model_spec: str = ""
     _last_consolidation_model_spec: str = ""
+    _worktree_review_theme_mode: Literal["dark", "light"] = "dark"
     _invoke_model_specs: list[str] = []
     _invoke_model_specs_loaded: bool = False
     _celebration_cooldown_started_at: float | None = None
@@ -4057,6 +4058,11 @@ class ZeusApp(App):
 
     # ── Invoke preferences ──────────────────────────────────────────
 
+    @staticmethod
+    def _normalize_worktree_review_theme_mode(raw: str | None) -> Literal["dark", "light"]:
+        value = (raw or "").strip().lower()
+        return "light" if value == "light" else "dark"
+
     def _load_model_preferences(self) -> None:
         """Load per-dialog model preferences from disk."""
         data = self._read_json_dict(INVOKE_PREFERENCES_FILE)
@@ -4070,6 +4076,12 @@ class ZeusApp(App):
         if isinstance(raw_cons, str):
             self._last_consolidation_model_spec = raw_cons.strip()
 
+        raw_review_theme = data.get("worktree_review_theme_mode")
+        if isinstance(raw_review_theme, str):
+            self._worktree_review_theme_mode = self._normalize_worktree_review_theme_mode(
+                raw_review_theme,
+            )
+
     def _save_model_preferences(self) -> None:
         """Persist per-dialog model preferences to disk."""
         self._write_json_dict(
@@ -4077,6 +4089,7 @@ class ZeusApp(App):
             {
                 "last_model_spec": (self._last_invoke_model_spec or "").strip(),
                 "last_consolidation_model_spec": (self._last_consolidation_model_spec or "").strip(),
+                "worktree_review_theme_mode": self._worktree_review_theme_mode,
             },
         )
 
@@ -4550,6 +4563,24 @@ class ZeusApp(App):
         except OSError:
             return
 
+    def do_get_worktree_review_theme_mode(self) -> Literal["dark", "light"]:
+        return self._worktree_review_theme_mode
+
+    def do_set_worktree_review_theme_mode(self, mode: str) -> Literal["dark", "light"]:
+        normalized = self._normalize_worktree_review_theme_mode(mode)
+        self._worktree_review_theme_mode = normalized
+        if not self.is_running:
+            return normalized
+        try:
+            self._save_model_preferences()
+        except OSError:
+            return normalized
+        return normalized
+
+    def do_toggle_worktree_review_theme_mode(self) -> Literal["dark", "light"]:
+        nxt = "light" if self._worktree_review_theme_mode == "dark" else "dark"
+        return self.do_set_worktree_review_theme_mode(nxt)
+
     def do_get_invoke_model_specs(self) -> list[str]:
         return list(self._invoke_model_specs)
 
@@ -4630,8 +4661,13 @@ class ZeusApp(App):
         self,
         agent: AgentWindow,
         preferred_width: int | None = None,
+        theme_mode: str | None = None,
     ) -> None:
-        self._start_worktree_review(agent, preferred_width)
+        self._start_worktree_review(
+            agent,
+            preferred_width,
+            theme_mode=theme_mode,
+        )
 
     def _resolve_worktree_review_width(self, preferred_width: int | None) -> int | None:
         width = int(preferred_width or 0)
@@ -4646,11 +4682,21 @@ class ZeusApp(App):
         self,
         agent: AgentWindow,
         preferred_width: int | None = None,
+        *,
+        theme_mode: str | None = None,
     ) -> None:
+        review_theme_mode = self._normalize_worktree_review_theme_mode(
+            theme_mode or self._worktree_review_theme_mode,
+        )
+
         live = self._get_agent_by_key(self._agent_key(agent))
         target = live if live is not None else agent
         request_id = f"worktree-review-{time.time_ns()}"
-        expanded, can_build_now = self._ensure_worktree_review_screen(target, request_id)
+        expanded, can_build_now = self._ensure_worktree_review_screen(
+            target,
+            request_id,
+            review_theme_mode,
+        )
         expanded.queue_worktree_review_loading()
         if not can_build_now:
             return
@@ -4660,19 +4706,26 @@ class ZeusApp(App):
             target,
             request_id,
             screen_width if screen_width is not None else preferred_width,
+            review_theme_mode,
         )
 
     def _ensure_worktree_review_screen(
         self,
         agent: AgentWindow,
         request_id: str,
+        review_theme_mode: Literal["dark", "light"],
     ) -> tuple[ExpandedOutputScreen, bool]:
         current = self.screen
         if isinstance(current, ExpandedOutputScreen) and current.is_worktree_review_for(agent):
             current.set_worktree_review_request_id(request_id)
+            current.set_worktree_review_theme_mode(review_theme_mode)
             return current, current.is_attached
 
-        screen = ExpandedOutputScreen(agent, worktree_review_mode=True)
+        screen = ExpandedOutputScreen(
+            agent,
+            worktree_review_mode=True,
+            worktree_review_theme_mode=review_theme_mode,
+        )
         screen.set_worktree_review_request_id(request_id)
         self.push_screen(screen)
         return screen, False
@@ -4682,9 +4735,15 @@ class ZeusApp(App):
         agent: AgentWindow,
         request_id: str,
         preferred_width: int | None,
+        review_theme_mode: Literal["dark", "light"],
     ) -> None:
         delta_width = self._resolve_worktree_review_width(preferred_width)
-        self._build_worktree_review_async(agent, request_id, delta_width)
+        self._build_worktree_review_async(
+            agent,
+            request_id,
+            delta_width,
+            review_theme_mode,
+        )
 
     @work(thread=True, exclusive=True, group="worktree_review")
     def _build_worktree_review_async(
@@ -4692,10 +4751,12 @@ class ZeusApp(App):
         agent: AgentWindow,
         request_id: str,
         delta_width: int | None,
+        review_theme_mode: Literal["dark", "light"],
     ) -> None:
         ok, output = build_worktree_review(
             agent.cwd,
             delta_width=delta_width,
+            delta_theme_mode=review_theme_mode,
         )
         self.call_from_thread(self._apply_worktree_review_output, request_id, ok, output)
 

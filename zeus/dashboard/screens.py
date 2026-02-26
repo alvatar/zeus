@@ -1080,6 +1080,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("g", "go_ahead", "Go ahead", show=False),
         Binding("enter", "message", "Message", show=False),
+        Binding("i", "toggle_review_theme", "Toggle review theme", show=False),
     ]
     _SCROLL_FLASH_DURATION_S = 0.35
     _VIM_SCROLL_STEP = 10
@@ -1089,10 +1090,14 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         agent: AgentWindow,
         *,
         worktree_review_mode: bool = False,
+        worktree_review_theme_mode: str = "dark",
     ) -> None:
         super().__init__()
         self.agent = agent
         self.worktree_review_mode = bool(worktree_review_mode)
+        self._worktree_review_theme_mode: Literal["dark", "light"] = (
+            self._normalize_worktree_review_theme_mode(worktree_review_theme_mode)
+        )
         self._scroll_flash_timer: Timer | None = None
         self._worktree_review_request_id: str = ""
         self._pending_worktree_review_content: str = (
@@ -1107,6 +1112,31 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
 
     def set_worktree_review_request_id(self, request_id: str) -> None:
         self._worktree_review_request_id = request_id.strip()
+
+    @staticmethod
+    def _normalize_worktree_review_theme_mode(raw: str | None) -> Literal["dark", "light"]:
+        value = (raw or "").strip().lower()
+        return "light" if value == "light" else "dark"
+
+    @property
+    def worktree_review_theme_mode(self) -> Literal["dark", "light"]:
+        return self._worktree_review_theme_mode
+
+    def set_worktree_review_theme_mode(self, mode: str) -> None:
+        self._worktree_review_theme_mode = self._normalize_worktree_review_theme_mode(mode)
+        self._apply_worktree_review_theme_mode()
+
+    def _apply_worktree_review_theme_mode(self) -> None:
+        if not self.worktree_review_mode or not self.is_attached:
+            return
+
+        dark = self._worktree_review_theme_mode != "light"
+        if dark:
+            self.remove_class("review-light")
+            self.add_class("review-dark")
+        else:
+            self.remove_class("review-dark")
+            self.add_class("review-light")
 
     def is_worktree_review_for(self, agent: AgentWindow) -> bool:
         if not self.worktree_review_mode:
@@ -1132,7 +1162,11 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             if self.worktree_review_mode
             else f"Expanded output [bold]{self.agent.name}[/bold]"
         )
-        hint = "(Enter message | G go ahead | F5 refresh | Space/Esc close)"
+        hint = (
+            "(Enter message | G go ahead | I theme | F5 refresh | Space/Esc close)"
+            if self.worktree_review_mode
+            else "(Enter message | G go ahead | F5 refresh | Space/Esc close)"
+        )
         with Vertical(id="expanded-output-dialog"):
             with Horizontal(id="expanded-output-title-row"):
                 yield Label(
@@ -1161,6 +1195,7 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         stream.can_focus = True
         stream.focus()
         self._hide_scroll_flash()
+        self._apply_worktree_review_theme_mode()
         if self.worktree_review_mode:
             self._apply_worktree_review_output_internal(
                 self._pending_worktree_review_content,
@@ -1170,11 +1205,13 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                     self.agent,
                     self.worktree_review_request_id,
                     self.current_worktree_review_width(),
+                    self.worktree_review_theme_mode,
                 )
             else:
                 self.zeus.do_refresh_worktree_review(
                     self.agent,
                     self.current_worktree_review_width(),
+                    theme_mode=self.worktree_review_theme_mode,
                 )
             return
         self._fetch_output()
@@ -1314,9 +1351,22 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.do_refresh_worktree_review(
                 self.agent,
                 self.current_worktree_review_width(),
+                theme_mode=self.worktree_review_theme_mode,
             )
             return
         self._fetch_output()
+
+    def action_toggle_review_theme(self) -> None:
+        if not self.worktree_review_mode:
+            return
+
+        next_mode = self.zeus.do_toggle_worktree_review_theme_mode()
+        self.set_worktree_review_theme_mode(next_mode)
+        self.zeus.do_refresh_worktree_review(
+            self.agent,
+            self.current_worktree_review_width(),
+            theme_mode=self.worktree_review_theme_mode,
+        )
 
     def action_message(self) -> None:
         self.zeus.push_screen(
@@ -2311,6 +2361,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("", "─── Dialogs ───"),
     ("Esc", "Close/cancel active dialog"),
     ("j / k (expanded/review)", "Scroll down/up 10 lines"),
+    ("i (review)", "Toggle dark/light review theme + regenerate delta"),
     ("Ctrl+s (tasks)", "Save tasks"),
     ("Ctrl+s (message)", "Send in Message / Preset dialog"),
     ("Ctrl+w (message)", "Queue in Message / Preset dialog"),
