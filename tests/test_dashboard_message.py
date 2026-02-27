@@ -335,16 +335,17 @@ def test_history_screen_up_down_navigates_from_latest_to_previous(monkeypatch) -
     assert "2/3" in pos.text
 
 
-def test_history_screen_includes_yank_binding() -> None:
+def test_history_screen_includes_yank_and_h_close_bindings() -> None:
     bindings = {binding.key: binding.action for binding in LastSentMessageScreen.BINDINGS}
 
     assert bindings["y"] == "yank"
+    assert bindings["h"] == "dismiss"
 
 
-def test_history_screen_hint_mentions_yank_shortcut() -> None:
+def test_history_screen_hint_mentions_yank_and_h_shortcuts() -> None:
     source = inspect.getsource(LastSentMessageScreen.compose)
 
-    assert "(↑ older | ↓ newer | y yank | Esc close)" in source
+    assert "(↑ older | ↓ newer | y yank | H/Esc close)" in source
 
 
 def test_history_screen_yank_copies_current_entry(monkeypatch) -> None:
@@ -800,6 +801,22 @@ def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:
     modal = pushed[0]
     assert isinstance(modal, AgentMessageScreen)
     assert modal.compact_for_expanded_output is True
+
+
+def test_expanded_output_history_dispatches_message_history_action(monkeypatch) -> None:
+    agent = _agent("alpha", 1)
+    screen = ExpandedOutputScreen(agent)
+    calls: list[str] = []
+
+    class _ZeusStub:
+        def action_message_history(self) -> None:
+            calls.append("history")
+
+    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
+
+    screen.action_history()
+
+    assert calls == ["history"]
 
 
 def test_expanded_output_go_ahead_closes_screen_and_dispatches_action(monkeypatch) -> None:
