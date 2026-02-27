@@ -802,22 +802,6 @@ def test_expanded_output_message_opens_compact_dialog(monkeypatch) -> None:
     assert modal.compact_for_expanded_output is True
 
 
-def test_expanded_output_history_dispatches_message_history_action(monkeypatch) -> None:
-    agent = _agent("alpha", 1)
-    screen = ExpandedOutputScreen(agent)
-    calls: list[str] = []
-
-    class _ZeusStub:
-        def action_message_history(self) -> None:
-            calls.append("history")
-
-    monkeypatch.setattr(ExpandedOutputScreen, "zeus", property(lambda self: _ZeusStub()))
-
-    screen.action_history()
-
-    assert calls == ["history"]
-
-
 def test_expanded_output_go_ahead_closes_screen_and_dispatches_action(monkeypatch) -> None:
     agent = _agent("alpha", 1)
     screen = ExpandedOutputScreen(agent)

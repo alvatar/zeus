@@ -103,10 +103,8 @@ def test_expanded_output_screen_uses_rich_log_and_message_shortcut() -> None:
     assert bindings["space"] == "dismiss"
     assert bindings["f5"] == "refresh"
     assert bindings["g"] == "go_ahead"
-    assert bindings["h"] == "history"
     assert bindings["enter"] == "message"
     assert bindings["i"] == "toggle_review_theme"
-    assert "H history" in source
     assert "m" not in bindings
 
 

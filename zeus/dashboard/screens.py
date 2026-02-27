@@ -1082,7 +1082,6 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
         Binding("space", "dismiss", "Close", show=False),
         Binding("f5", "refresh", "Refresh", show=False),
         Binding("g", "go_ahead", "Go ahead", show=False),
-        Binding("h", "history", "History", show=False),
         Binding("enter", "message", "Message", show=False),
         Binding("i", "toggle_review_theme", "Toggle review theme", show=False),
     ]
@@ -1167,9 +1166,9 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
             else f"Expanded output [bold]{self.agent.name}[/bold]"
         )
         hint = (
-            "(Enter message | H history | G go ahead | I theme | F5 refresh | Space/Esc close)"
+            "(Enter message | G go ahead | I theme | F5 refresh | Space/Esc close)"
             if self.worktree_review_mode
-            else "(Enter message | H history | G go ahead | F5 refresh | Space/Esc close)"
+            else "(Enter message | G go ahead | F5 refresh | Space/Esc close)"
         )
         with Vertical(id="expanded-output-dialog"):
             with Horizontal(id="expanded-output-title-row"):
@@ -1380,9 +1379,6 @@ class ExpandedOutputScreen(_ZeusScreenMixin, ModalScreen):
                 compact_for_expanded_output=True,
             )
         )
-
-    def action_history(self) -> None:
-        self.zeus.action_message_history()
 
     def action_go_ahead(self) -> None:
         self.dismiss()
