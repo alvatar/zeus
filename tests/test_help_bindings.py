@@ -33,7 +33,7 @@ def test_help_lists_core_bindings() -> None:
     assert "p" in entries
     assert "Ctrl+p" in entries
     assert "a" in entries
-    assert "Ctrl+a (agent list)" in entries
+    assert "Ctrl+a" in entries
     assert "s" in entries
     assert "d" in entries
     assert "g" in entries
@@ -96,7 +96,7 @@ def test_help_orders_agent_management_by_qwerty() -> None:
         "p",
         "Ctrl+p",
         "a",
-        "Ctrl+a (agent list)",
+        "Ctrl+a",
         "s",
         "d",
         "g",

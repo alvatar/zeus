@@ -2385,7 +2385,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("p", "Cycle priority (3→2→1→4→3)"),
     ("Ctrl+p", "Promote sub-Hippeus / Hippeus / Hoplite"),
     ("a", "Bring Hippeus under the Aegis"),
-    ("Ctrl+a (agent list)", "Toggle per-agent completion alarm"),
+    ("Ctrl+a", "Toggle per-agent completion alarm"),
     ("s", "Spawn sub-Hippeus"),
     ("d", "Set/remove blocking dependency"),
     ("g", "Queue 'go ahead'"),
