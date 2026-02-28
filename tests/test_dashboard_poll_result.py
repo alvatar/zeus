@@ -93,6 +93,31 @@ def test_play_state_transition_alarms_only_for_working_to_non_working(monkeypatc
     assert plays == []
 
 
+def test_play_alarm_sound_uses_paplay_with_default_75_percent_volume(monkeypatch) -> None:
+    app = ZeusApp()
+    popen_calls: list[list[str]] = []
+
+    monkeypatch.setattr("zeus.dashboard.app.os.path.isfile", lambda _p: True)
+    monkeypatch.setattr(
+        "zeus.dashboard.app.shutil.which",
+        lambda name: "/usr/sbin/paplay" if name == "paplay" else None,
+    )
+
+    def _popen(cmd, **_kwargs):  # noqa: ANN001
+        popen_calls.append(list(cmd))
+        return object()
+
+    monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", _popen)
+
+    ok = app._play_alarm_sound()
+
+    assert ok is True
+    assert len(popen_calls) == 1
+    assert popen_calls[0][0] == "paplay"
+    assert popen_calls[0][1] == "--volume=49152"
+    assert popen_calls[0][2] == app._alarm_sound_path()
+
+
 def test_poll_worker_reads_agent_metrics_from_window_pid(monkeypatch) -> None:
     app = ZeusApp()
 

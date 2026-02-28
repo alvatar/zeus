@@ -640,6 +640,7 @@ class ZeusApp(App):
         "sounds",
         "work-finished.mp3",
     )
+    _DEFAULT_ALARM_VOLUME_LINEAR = 49152  # 75% of PulseAudio 0..65536 range
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
@@ -978,22 +979,29 @@ class ZeusApp(App):
         return ZeusApp._DEFAULT_ALARM_SOUND_PATH
 
     @staticmethod
-    def _alarm_player_cmd() -> str:
-        configured = (os.environ.get("ZEUS_ALARM_PLAYER") or "").strip()
-        return configured or "paplay"
+    def _alarm_volume_linear() -> int:
+        raw = (os.environ.get("ZEUS_ALARM_VOLUME") or "").strip()
+        if not raw:
+            return ZeusApp._DEFAULT_ALARM_VOLUME_LINEAR
+        try:
+            value = int(raw)
+        except ValueError:
+            return ZeusApp._DEFAULT_ALARM_VOLUME_LINEAR
+        return max(0, min(65536, value))
 
     def _play_alarm_sound(self) -> bool:
         sound_path = self._alarm_sound_path()
         if not os.path.isfile(sound_path):
             return False
 
-        player = self._alarm_player_cmd()
+        player = "paplay"
         if shutil.which(player) is None:
             return False
 
+        volume = self._alarm_volume_linear()
         try:
             subprocess.Popen(
-                [player, sound_path],
+                [player, f"--volume={volume}", sound_path],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
