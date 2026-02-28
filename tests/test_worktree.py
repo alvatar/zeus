@@ -540,7 +540,7 @@ def test_check_worktree_merge_done_cleans_up(
     assert os.path.isdir(wt)
 
     # Set up bus inbox with a merge_done signal
-    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir = tmp_path / "zeus-agent-bus" / "inbox" / "zeus" / "new"
     bus_dir.mkdir(parents=True)
     signal_file = bus_dir / "worktree-done-test.json"
     signal_file.write_text(json.dumps({
@@ -551,7 +551,7 @@ def test_check_worktree_merge_done_cleans_up(
     }))
 
     # Patch AGENT_BUS_INBOX_DIR in config module (imported inside the method)
-    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "zeus-agent-bus" / "inbox")
 
     # Mock the app enough
     app = ZeusApp.__new__(ZeusApp)
@@ -583,7 +583,7 @@ def test_check_worktree_discard_done_cleans_up(
     wt = worktree_path(git_repo, "discard-agent")
     assert os.path.isdir(wt)
 
-    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir = tmp_path / "zeus-agent-bus" / "inbox" / "zeus" / "new"
     bus_dir.mkdir(parents=True)
     signal_file = bus_dir / "worktree-discard-test.json"
     signal_file.write_text(json.dumps({
@@ -593,7 +593,7 @@ def test_check_worktree_discard_done_cleans_up(
         "repo_root": git_repo,
     }))
 
-    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "zeus-agent-bus" / "inbox")
 
     app = ZeusApp.__new__(ZeusApp)
     app._agent_windows = []

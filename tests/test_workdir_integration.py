@@ -269,7 +269,7 @@ def test_merge_done_purges_queue(
     create_worktree(git_repo, "purge-test", base_branch="main")
 
     # Set up bus inbox with merge signal
-    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir = tmp_path / "zeus-agent-bus" / "inbox" / "zeus" / "new"
     bus_dir.mkdir(parents=True)
     (bus_dir / "signal.json").write_text(json.dumps({
         "type": "worktree_merge_done",
@@ -281,7 +281,7 @@ def test_merge_done_purges_queue(
     # Set up queue with a pending message for the dead agent
     queue_dir = tmp_path / "queue" / "new"
     queue_dir.mkdir(parents=True)
-    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "zeus-agent-bus" / "inbox")
 
     mock_purge = MagicMock()
     app = ZeusApp.__new__(ZeusApp)
@@ -303,7 +303,7 @@ def test_discard_done_purges_queue(
 
     create_worktree(git_repo, "purge-discard-test", base_branch="main")
 
-    bus_dir = tmp_path / "agent-bus" / "inbox" / "zeus" / "new"
+    bus_dir = tmp_path / "zeus-agent-bus" / "inbox" / "zeus" / "new"
     bus_dir.mkdir(parents=True)
     (bus_dir / "signal-discard.json").write_text(json.dumps({
         "type": "worktree_discard_done",
@@ -312,7 +312,7 @@ def test_discard_done_purges_queue(
         "repo_root": git_repo,
     }))
 
-    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "agent-bus" / "inbox")
+    monkeypatch.setattr("zeus.config.AGENT_BUS_INBOX_DIR", tmp_path / "zeus-agent-bus" / "inbox")
 
     mock_purge = MagicMock()
     app = ZeusApp.__new__(ZeusApp)

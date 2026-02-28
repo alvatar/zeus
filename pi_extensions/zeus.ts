@@ -1586,7 +1586,7 @@ export default function (pi: ExtensionAPI) {
         const agentId = process.env.ZEUS_AGENT_ID || "";
         const agentName = process.env.ZEUS_AGENT_NAME || "";
         if (agentId) {
-          const busDir = path.join(getStateDir(), "agent-bus", "inbox", "zeus", "new");
+          const busDir = path.join(getBusDir(), "inbox", "zeus", "new");
           try {
             fs.mkdirSync(busDir, { recursive: true });
             const signalPayload = JSON.stringify({
@@ -1698,7 +1698,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     try {
-      const busDir = path.join(getStateDir(), "agent-bus", "inbox", "zeus", "new");
+      const busDir = path.join(getBusDir(), "inbox", "zeus", "new");
       fs.mkdirSync(busDir, { recursive: true });
       const signalPayload = JSON.stringify({
         type: "worktree_discard_done",
