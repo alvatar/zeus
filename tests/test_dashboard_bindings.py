@@ -47,6 +47,11 @@ def test_clear_done_tasks_binding_action() -> None:
     assert bindings["ctrl+t"].action == "clear_done_tasks"
 
 
+def test_toggle_agent_alarm_binding_action() -> None:
+    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
+    assert bindings["ctrl+a"].action == "toggle_agent_alarm"
+
+
 def test_snapshot_and_interact_send_bindings() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert bindings["ctrl+r"].action == "save_snapshot"
@@ -74,11 +79,18 @@ def test_snapshot_restore_binding_map_accepts_alt_ctrl_and_ctrl_alt() -> None:
 
 
 def test_kill_tmux_session_binding_action() -> None:
-    bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
-    assert bindings["ctrl+k"].action == "kill_tmux_session"
+    from textual.binding import Binding
+
+    keys = {
+        binding.key: binding
+        for binding in Binding.make_bindings(ZeusApp.BINDINGS)
+    }
+
+    assert keys["alt+ctrl+k"].action == "kill_tmux_session"
+    assert keys["ctrl+alt+k"].action == "kill_tmux_session"
 
 
-def test_agent_management_keys_include_z_a_n_g_t_e_d_h_y_b_and_m() -> None:
+def test_agent_management_keys_include_z_a_n_g_t_space_d_h_y_b_and_m() -> None:
     bindings = {binding.key: binding for binding in ZeusApp.BINDINGS}
     assert "z" in bindings
     assert bindings["z"].action == "new_agent"
@@ -90,8 +102,8 @@ def test_agent_management_keys_include_z_a_n_g_t_e_d_h_y_b_and_m() -> None:
     assert bindings["g"].action == "go_ahead"
     assert "t" in bindings
     assert bindings["t"].action == "agent_tasks"
-    assert "e" in bindings
-    assert bindings["e"].action == "expand_output"
+    assert "space" in bindings
+    assert bindings["space"].action == "expand_output"
     assert "d" in bindings
     assert bindings["d"].action == "toggle_dependency"
     assert "h" in bindings

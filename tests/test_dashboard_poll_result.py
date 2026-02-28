@@ -28,6 +28,7 @@ def test_apply_poll_result_runs_helper_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(app, "_collect_sparkline_samples", lambda: calls.append("sparkline"))
     monkeypatch.setattr(app, "_refresh_interact_if_state_changed", lambda old: calls.append("refresh-interact"))
     monkeypatch.setattr(app, "_update_usage_bars", lambda usage, openai: calls.append("usage"))
+    monkeypatch.setattr(app, "_play_state_transition_alarms", lambda old: calls.append("alarm"))
     monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: calls.append("render") or True)
     monkeypatch.setattr(app, "_pulse_agent_table", lambda: calls.append("pulse"))
 
@@ -41,6 +42,7 @@ def test_apply_poll_result_runs_helper_pipeline(monkeypatch) -> None:
         "sparkline",
         "refresh-interact",
         "usage",
+        "alarm",
         "render",
         "pulse",
     ]
@@ -64,6 +66,31 @@ def test_apply_poll_result_skips_pulse_when_render_short_circuits(monkeypatch) -
     app._apply_poll_result(result)
 
     assert calls == []
+
+
+def test_play_state_transition_alarms_only_for_working_to_non_working(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = AgentWindow(
+        kitty_id=1,
+        socket="/tmp/kitty-1",
+        name="alpha",
+        pid=101,
+        kitty_pid=201,
+        cwd="/tmp/project",
+    )
+    agent.state = State.IDLE
+    app.agents = [agent]
+    app._agent_alarm_enabled = {app._agent_alarm_key(agent)}
+
+    plays: list[bool] = []
+    monkeypatch.setattr(app, "_play_alarm_sound", lambda: plays.append(True) or True)
+
+    app._play_state_transition_alarms({app._agent_key(agent): State.WORKING})
+    assert plays == [True]
+
+    plays.clear()
+    app._play_state_transition_alarms({app._agent_key(agent): State.IDLE})
+    assert plays == []
 
 
 def test_poll_worker_reads_agent_metrics_from_window_pid(monkeypatch) -> None:

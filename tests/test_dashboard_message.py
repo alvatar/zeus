@@ -301,6 +301,23 @@ def test_action_message_history_opens_placeholder_when_no_message(monkeypatch) -
     assert screen.history_entries == ["(no sent message recorded yet)"]
 
 
+def test_action_toggle_agent_alarm_toggles_flag_and_notifies(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("alpha", 1, agent_id="agent-alpha")
+    notices = capture_notify(app, monkeypatch)
+
+    monkeypatch.setattr(app, "_should_ignore_table_action", lambda: False)
+    monkeypatch.setattr(app, "_get_selected_agent", lambda: agent)
+
+    app.action_toggle_agent_alarm()
+    assert app._agent_alarm_key(agent) in app._agent_alarm_enabled
+    assert notices[-1] == "🔊 Alarm ON: alpha"
+
+    app.action_toggle_agent_alarm()
+    assert app._agent_alarm_key(agent) not in app._agent_alarm_enabled
+    assert notices[-1] == "🔊 Alarm OFF: alpha"
+
+
 def test_history_screen_up_down_navigates_from_latest_to_previous(monkeypatch) -> None:
     screen = LastSentMessageScreen(_agent("alpha", 1), ["first", "second", "third"])
     body = _DummyRichLog()

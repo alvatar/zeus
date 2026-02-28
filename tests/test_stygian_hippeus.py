@@ -330,3 +330,35 @@ def test_stygian_agents_render_with_icon_and_normal_row_style(monkeypatch) -> No
     assert isinstance(name_cell, Text)
     assert name_cell.plain.startswith("◆ shadow")
     assert name_cell.style == ""
+
+
+def test_stygian_agents_render_alarm_icon_left_of_stygian_icon(monkeypatch) -> None:
+    app = ZeusApp()
+    table = _FakeTable()
+    status = _FakeStatus()
+
+    agent = _stygian_agent("shadow")
+    app.agents = [agent]
+    app._agent_alarm_enabled = {app._agent_alarm_key(agent)}
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-table":
+            return table
+        if selector == "#status-line":
+            return status
+        raise LookupError(selector)
+
+    monkeypatch.setattr(app, "query_one", _query_one)
+    monkeypatch.setattr(app, "_get_selected_row_key", lambda: None)
+    monkeypatch.setattr(app, "_update_mini_map", lambda: None)
+    monkeypatch.setattr(app, "_update_sparkline", lambda: None)
+
+    app._render_agent_table_and_status()
+
+    row_key = app._agent_key(agent)
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    name_idx = cols.index("Name")
+    name_cell = table.row_cells[row_key][name_idx]
+
+    assert isinstance(name_cell, Text)
+    assert name_cell.plain.startswith("🔊 ◆ shadow")

@@ -155,6 +155,22 @@ def test_render_agent_table_shows_triple_marker_for_god(monkeypatch) -> None:
     assert name_cell.plain == "⌁⌁⌁ oracle"
 
 
+def test_render_agent_table_places_alarm_icon_before_role_marker(monkeypatch) -> None:
+    app = ZeusApp()
+    polemarch = _agent(agent_id="polemarch-1", role="polemarch")
+    polemarch.name = "planner"
+    app.agents = [polemarch]
+    app._agent_alarm_enabled = {app._agent_alarm_key(polemarch)}
+
+    table, _ = _render(app, monkeypatch)
+
+    cols = app._SPLIT_COLUMNS if app._split_mode else app._FULL_COLUMNS
+    name_idx = cols.index("Name")
+    name_cell = table.added_rows[0][name_idx]
+    assert isinstance(name_cell, Text)
+    assert name_cell.plain == "🔊 ⌁ planner [phalanx: 0]"
+
+
 def test_render_agent_table_shows_branch_glyph_for_top_level_workdir(monkeypatch) -> None:
     app = ZeusApp()
     workdir = _agent(agent_id="workdir-1", role="")

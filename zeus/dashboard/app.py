@@ -549,6 +549,7 @@ class ZeusApp(App):
         Binding("ctrl+o", "open_shell_here", "Open shell", show=False, priority=True),
         Binding("z", "new_agent", "Invoke"),
         Binding("a", "toggle_aegis", "Aegis"),
+        Binding("ctrl+a", "toggle_agent_alarm", "Alarm", show=False),
         Binding("n", "queue_next_task", "Queue Task"),
         Binding("g", "go_ahead", "Go ahead"),
         Binding("ctrl+g", "preset_message", "Preset message", show=False, priority=True),
@@ -632,6 +633,13 @@ class ZeusApp(App):
     _PRESET_MESSAGES: tuple[tuple[str, str], ...] = ()  # loaded dynamically
     _CELEBRATION_COOLDOWN_S = 3600.0
     _CELEBRATION_MIN_ACTIVE_AGENTS = 4
+    _ALARM_ICON = "🔊 "
+    _DEFAULT_ALARM_SOUND_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "assets",
+        "sounds",
+        "work-finished.mp3",
+    )
 
     agents: list[AgentWindow] = []
     sort_mode: SortMode = SortMode.PRIORITY
@@ -697,6 +705,7 @@ class ZeusApp(App):
     _aegis_prompts: dict[str, str] = {}
     _aegis_delay_timers: dict[str, Timer] = {}
     _aegis_check_timers: dict[str, Timer] = {}
+    _agent_alarm_enabled: set[str] = set()
     _notifications_enabled: bool = os.environ.get("ZEUS_NOTIFY", "").lower() in {
         "1", "true", "yes", "on",
     }
@@ -774,6 +783,7 @@ class ZeusApp(App):
         self._load_agent_dependencies()
         self._load_panel_visibility()
         self._load_model_preferences()
+        self._agent_alarm_enabled = set()
         self._warm_invoke_model_specs()
         self._celebration_cooldown_started_at = time.time()
         table = self.query_one("#agent-table", DataTable)
@@ -959,6 +969,51 @@ class ZeusApp(App):
             severity=severity,
             markup=markup,
         )
+
+    @staticmethod
+    def _alarm_sound_path() -> str:
+        configured = (os.environ.get("ZEUS_ALARM_SOUND") or "").strip()
+        if configured:
+            return os.path.expanduser(configured)
+        return ZeusApp._DEFAULT_ALARM_SOUND_PATH
+
+    @staticmethod
+    def _alarm_player_cmd() -> str:
+        configured = (os.environ.get("ZEUS_ALARM_PLAYER") or "").strip()
+        return configured or "paplay"
+
+    def _play_alarm_sound(self) -> bool:
+        sound_path = self._alarm_sound_path()
+        if not os.path.isfile(sound_path):
+            return False
+
+        player = self._alarm_player_cmd()
+        if shutil.which(player) is None:
+            return False
+
+        try:
+            subprocess.Popen(
+                [player, sound_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return True
+        except OSError:
+            return False
+
+    def _play_state_transition_alarms(self, old_states: dict[str, State]) -> None:
+        for agent in self.agents:
+            if not self._is_agent_alarm_enabled(agent):
+                continue
+
+            old_state = old_states.get(self._agent_key(agent))
+            if old_state != State.WORKING:
+                continue
+            if agent.state == State.WORKING:
+                continue
+
+            self._play_alarm_sound()
 
     @staticmethod
     def _copy_text_to_system_clipboard(text: str) -> bool:
@@ -1162,6 +1217,7 @@ class ZeusApp(App):
         self._collect_sparkline_samples()
         self._refresh_interact_if_state_changed(old_states)
         self._update_usage_bars(r.usage, r.openai)
+        self._play_state_transition_alarms(old_states)
 
         if not self._render_agent_table_and_status():
             return
@@ -1177,6 +1233,7 @@ class ZeusApp(App):
         self.idle_since = result.idle_since
         self.idle_notified = result.idle_notified
         self._normalize_priority_keys_for_live_agents()
+        self._prune_agent_alarm_keys_for_live_agents()
         self._reconcile_agent_dependencies()
         self._prune_interact_histories()
 
@@ -1596,6 +1653,7 @@ class ZeusApp(App):
             is_polemarch_display = agent_role == "polemarch"
             role_marker = self._name_role_marker(a)
             stygian_marker = "◆ " if stygian else ""
+            alarm_marker = self._ALARM_ICON if self._is_agent_alarm_enabled(a) else ""
             phalanx_marker = (
                 f" [phalanx: {hoplite_count}]" if is_polemarch_display else ""
             )
@@ -1605,15 +1663,17 @@ class ZeusApp(App):
                 if relation_icon:
                     raw_name = (
                         f"{branch_prefix}{relation_icon} "
-                        f"{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
+                        f"{alarm_marker}{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
                     )
                 else:
                     raw_name = (
-                        f"{branch_prefix}{stygian_marker}{role_marker}"
+                        f"{branch_prefix}{alarm_marker}{stygian_marker}{role_marker}"
                         f"{a.name}{phalanx_marker}"
                     )
             else:
-                raw_name = f"{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
+                raw_name = (
+                    f"{alarm_marker}{stygian_marker}{role_marker}{a.name}{phalanx_marker}"
+                )
 
             # Always use Text so bracketed labels like "[phalanx: N]" render
             # literally and are not parsed as Rich markup tags.
@@ -2464,6 +2524,22 @@ class ZeusApp(App):
 
     def _agent_priority_key(self, agent: AgentWindow) -> str:
         return self._agent_identity_key(agent)
+
+    def _agent_alarm_key(self, agent: AgentWindow) -> str:
+        return self._agent_identity_key(agent)
+
+    def _alarm_enabled_set(self) -> set[str]:
+        if "_agent_alarm_enabled" not in self.__dict__:
+            self._agent_alarm_enabled = set(self._agent_alarm_enabled)
+        return self._agent_alarm_enabled
+
+    def _is_agent_alarm_enabled(self, agent: AgentWindow) -> bool:
+        return self._agent_alarm_key(agent) in self._alarm_enabled_set()
+
+    def _prune_agent_alarm_keys_for_live_agents(self) -> None:
+        live_keys = {self._agent_alarm_key(agent) for agent in self.agents}
+        enabled = self._alarm_enabled_set()
+        enabled &= live_keys
 
     def _normalize_priority_keys_for_live_agents(self) -> None:
         """Migrate legacy name-keyed priorities to stable identity keys."""
@@ -4229,6 +4305,32 @@ class ZeusApp(App):
         self.poll_and_update()
         if self._interact_visible:
             self._refresh_interact_panel()
+
+    def action_toggle_agent_alarm(self) -> None:
+        """Ctrl+A: toggle completion alarm for the selected agent."""
+        if self._should_ignore_table_action():
+            return
+
+        agent = self._get_selected_agent()
+        if not agent:
+            self.notify("Select a Hippeus row to toggle alarm", timeout=2)
+            return
+
+        key = self._agent_alarm_key(agent)
+        enabled_keys = self._alarm_enabled_set()
+        enabled: bool
+        if key in enabled_keys:
+            enabled_keys.discard(key)
+            enabled = False
+        else:
+            enabled_keys.add(key)
+            enabled = True
+
+        if self.is_running:
+            self._render_agent_table_and_status()
+
+        state = "ON" if enabled else "OFF"
+        self.notify(f"{self._ALARM_ICON}Alarm {state}: {agent.name}", timeout=2)
 
     # ── Event handlers ────────────────────────────────────────────────
 
