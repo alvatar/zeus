@@ -165,6 +165,27 @@ def _spawn_claude_fetch() -> None:
         _claude_log(f"failed to spawn claude fetch helper: {e}")
 
 
+def _usage_bucket(value: object) -> dict[str, object]:
+    """Normalize usage payload bucket values to dictionaries."""
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _usage_float(bucket: dict[str, object], key: str) -> float:
+    value = bucket.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
+def _usage_str(bucket: dict[str, object], key: str) -> str:
+    value = bucket.get(key)
+    if isinstance(value, str):
+        return value
+    return ""
+
+
 def read_usage() -> UsageData:
     global _last_claude_fetch_attempt
 
@@ -177,11 +198,18 @@ def read_usage() -> UsageData:
             _spawn_claude_fetch()
 
     try:
-        data: dict = json.loads(USAGE_CACHE.read_text())
+        raw_data: object = json.loads(USAGE_CACHE.read_text())
     except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
         _claude_log(f"claude cache read failed: {type(e).__name__}: {e}")
         _maybe_fetch("cache-missing")
         return UsageData()
+
+    if not isinstance(raw_data, dict):
+        _claude_log("claude cache payload is not an object")
+        _maybe_fetch("cache-malformed-root")
+        return UsageData()
+
+    data = raw_data
 
     try:
         age: float = time.time() - USAGE_CACHE.stat().st_mtime
@@ -190,18 +218,22 @@ def read_usage() -> UsageData:
     except OSError:
         pass
 
+    five_hour = _usage_bucket(data.get("five_hour"))
+    seven_day = _usage_bucket(data.get("seven_day"))
+    extra_usage = _usage_bucket(data.get("extra_usage"))
+
     usage = UsageData(
-        session_pct=data.get("five_hour", {}).get("utilization") or 0,
-        week_pct=data.get("seven_day", {}).get("utilization") or 0,
-        extra_pct=data.get("extra_usage", {}).get("utilization") or 0,
-        extra_used=data.get("extra_usage", {}).get("used_credits") or 0,
-        extra_limit=data.get("extra_usage", {}).get("monthly_limit") or 0,
-        session_resets_at=data.get("five_hour", {}).get("resets_at") or "",
-        week_resets_at=data.get("seven_day", {}).get("resets_at") or "",
+        session_pct=_usage_float(five_hour, "utilization"),
+        week_pct=_usage_float(seven_day, "utilization"),
+        extra_pct=_usage_float(extra_usage, "utilization"),
+        extra_used=_usage_float(extra_usage, "used_credits"),
+        extra_limit=_usage_float(extra_usage, "monthly_limit"),
+        session_resets_at=_usage_str(five_hour, "resets_at"),
+        week_resets_at=_usage_str(seven_day, "resets_at"),
         available=True,
     )
 
-    if "five_hour" not in data:
+    if not five_hour:
         _maybe_fetch("cache-present-but-missing-five-hour")
 
     return usage

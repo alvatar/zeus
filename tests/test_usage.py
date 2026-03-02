@@ -104,6 +104,78 @@ def test_read_usage_valid_cache(tmp_path, monkeypatch):
     assert fetches == []
 
 
+def test_read_usage_handles_null_extra_usage_bucket(tmp_path, monkeypatch):
+    cache = tmp_path / "claude-null-extra.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "five_hour": {"utilization": 9.0, "resets_at": ""},
+                "seven_day": {"utilization": 24.0, "resets_at": ""},
+                "extra_usage": None,
+            }
+        )
+    )
+    monkeypatch.setattr(usage_claude, "USAGE_CACHE", cache)
+    monkeypatch.setattr(usage_claude, "_last_claude_fetch_attempt", 0.0)
+
+    fetches: list[str] = []
+    monkeypatch.setattr(usage_claude, "_spawn_claude_fetch", lambda: fetches.append("fetch"))
+
+    result = read_usage()
+
+    assert result.available is True
+    assert result.session_pct == 9.0
+    assert result.week_pct == 24.0
+    assert result.extra_pct == 0
+    assert result.extra_used == 0
+    assert result.extra_limit == 0
+    assert fetches == []
+
+
+def test_read_usage_handles_null_five_hour_bucket_and_triggers_refresh(
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "claude-null-five-hour.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "five_hour": None,
+                "seven_day": {"utilization": 24.0, "resets_at": ""},
+                "extra_usage": None,
+            }
+        )
+    )
+    monkeypatch.setattr(usage_claude, "USAGE_CACHE", cache)
+    monkeypatch.setattr(usage_claude, "_last_claude_fetch_attempt", 0.0)
+
+    fetches: list[str] = []
+    monkeypatch.setattr(usage_claude, "_spawn_claude_fetch", lambda: fetches.append("fetch"))
+
+    result = read_usage()
+
+    assert result.available is True
+    assert result.session_pct == 0
+    assert result.week_pct == 24.0
+    assert fetches == ["fetch"]
+
+
+def test_read_usage_handles_non_object_payload(tmp_path, monkeypatch):
+    cache = tmp_path / "claude-list.json"
+    cache.write_text(json.dumps([1, 2, 3]))
+
+    monkeypatch.setattr(usage_claude, "USAGE_CACHE", cache)
+    monkeypatch.setattr(usage_claude, "_last_claude_fetch_attempt", 0.0)
+
+    fetches: list[str] = []
+    monkeypatch.setattr(usage_claude, "_spawn_claude_fetch", lambda: fetches.append("fetch"))
+
+    result = read_usage()
+
+    assert result.available is False
+    assert fetches == ["fetch"]
+
+
 def test_read_usage_missing_cache_is_throttled(tmp_path, monkeypatch):
     monkeypatch.setattr(usage_claude, "USAGE_CACHE", tmp_path / "missing.json")
     monkeypatch.setattr(usage_claude, "_last_claude_fetch_attempt", 0.0)
