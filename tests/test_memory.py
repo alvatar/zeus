@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,34 @@ def test_resolve_project_name_in_zeus_repo() -> None:
 def test_resolve_project_name_not_a_repo(tmp_path: Path) -> None:
     name = resolve_project_name(str(tmp_path))
     assert name == ""
+
+
+def test_resolve_project_name_in_worktree_uses_common_repo_name(tmp_path: Path) -> None:
+    repo = tmp_path / "repo-main"
+    repo.mkdir()
+
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, capture_output=True, check=True)
+
+    (repo / "README.md").write_text("root\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
+
+    worktree = repo / ".worktrees" / "agent-a"
+    subprocess.run(
+        ["git", "worktree", "add", "-b", "zeus/agent-a", str(worktree)],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    )
+
+    nested = worktree / "src"
+    nested.mkdir(parents=True)
+
+    assert resolve_project_name(str(repo)) == "repo-main"
+    assert resolve_project_name(str(worktree)) == "repo-main"
+    assert resolve_project_name(str(nested)) == "repo-main"
 
 
 # ── Save / recall ────────────────────────────────────────────────────────

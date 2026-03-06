@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from .worktree import get_worktree_repo_root
+
 _ZEUS_HOME = os.path.join(os.environ.get("HOME", "~"), ".zeus")
 _DB_PATH_OVERRIDE: Optional[str] = None  # for testing
 
@@ -146,23 +148,15 @@ def validate_namespace(namespace: str, *, allow_topic: bool = False) -> str:
 
 
 def resolve_project_name(cwd: Optional[str] = None) -> str:
-    """Derive project name from git repo root.
+    """Derive project name from the canonical git repository root.
 
-    Runs ``git rev-parse --show-toplevel``, strips ~/code/ prefix,
-    replaces / with -. Returns empty string if not in a git repo.
+    For linked worktrees this resolves against ``git rev-parse --git-common-dir``
+    so all worktrees of the same repository share the same ``project:<name>``
+    namespace. Returns empty string if not in a git repo.
     """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=cwd,
-        )
-        if result.returncode != 0:
-            return ""
-        root = result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    probe_cwd = cwd or os.getcwd()
+    root = get_worktree_repo_root(probe_cwd)
+    if not root:
         return ""
 
     home = os.environ.get("HOME", "")

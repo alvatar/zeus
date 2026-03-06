@@ -36,3 +36,11 @@ def test_worktree_finalize_and_discard_emit_to_canonical_agent_bus_path() -> Non
         text,
         re.DOTALL,
     )
+
+
+def test_memory_project_resolution_uses_git_common_dir_for_worktrees() -> None:
+    text = _read("pi_extensions/zeus.ts")
+
+    assert 'pi.exec("git", ["rev-parse", "--git-common-dir"]' in text
+    assert 'if (path.basename(commonDir) === ".git") {' in text
+    assert 'root = path.dirname(commonDir);' in text

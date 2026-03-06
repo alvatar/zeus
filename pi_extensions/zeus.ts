@@ -1189,12 +1189,26 @@ export default function (pi: ExtensionAPI) {
     return s.replace(/'/g, "''");
   }
 
-  /** Resolve the current project name from git repo root. */
+  /** Resolve the current project name from the canonical git repo root. */
   async function resolveProjectName(signal?: AbortSignal): Promise<string> {
     try {
-      const result = await pi.exec("git", ["rev-parse", "--show-toplevel"], { signal, timeout: 5000 });
-      if (result.code !== 0) return "";
-      const root = (result.stdout || "").trim();
+      const commonResult = await pi.exec("git", ["rev-parse", "--git-common-dir"], { signal, timeout: 5000 });
+      if (commonResult.code !== 0) return "";
+
+      const commonRaw = (commonResult.stdout || "").trim();
+      const cwd = getCwd(latestCtx) || process.cwd();
+      const commonDir = path.resolve(cwd, commonRaw);
+
+      let root = "";
+      if (path.basename(commonDir) === ".git") {
+        root = path.dirname(commonDir);
+      } else {
+        const topResult = await pi.exec("git", ["rev-parse", "--show-toplevel"], { signal, timeout: 5000 });
+        if (topResult.code !== 0) return "";
+        root = (topResult.stdout || "").trim();
+      }
+      if (!root) return "";
+
       const home = process.env.HOME || "";
       const codePrefix = path.join(home, "code") + path.sep;
       let name: string;
