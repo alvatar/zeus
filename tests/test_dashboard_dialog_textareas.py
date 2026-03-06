@@ -131,9 +131,11 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "OptionList(" in source
     assert "agent-dir-suggestions" in source
     assert "_list_available_model_specs()" not in source
-    assert "new-agent-buttons" not in source
+    assert "new-agent-buttons" in source
+    assert 'Button("Create", variant="primary", id="create-btn")' in source
     assert "launch-btn" not in source
     assert "cancel-btn" not in source
+    assert source.index("create-btn") > source.index("agent-dir-suggestions")
 
     submit_source = inspect.getsource(NewAgentScreen.on_input_submitted)
     assert "event.input.id == \"agent-dir\"" in submit_source
@@ -528,6 +530,23 @@ def test_new_agent_submit_launches_without_completion_capture(monkeypatch) -> No
     screen.on_input_submitted(event)
 
     assert launches == [True]
+
+
+def test_new_agent_create_button_launches(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    launches: list[bool] = []
+    stops: list[bool] = []
+
+    monkeypatch.setattr(screen, "_launch", lambda: launches.append(True))
+
+    event = SimpleNamespace(
+        button=SimpleNamespace(id="create-btn"),
+        stop=lambda: stops.append(True),
+    )
+    screen.on_button_pressed(event)
+
+    assert launches == [True]
+    assert stops == [True]
 
 
 def test_new_agent_tab_cycles_directory_suggestions(monkeypatch) -> None:

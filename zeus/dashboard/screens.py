@@ -224,6 +224,9 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 id="agent-dir",
             )
             yield OptionList(id="agent-dir-suggestions", classes="hidden", compact=True)
+            with Horizontal(id="new-agent-buttons"):
+                yield Label("", id="new-agent-buttons-spacer")
+                yield Button("Create", variant="primary", id="create-btn")
 
     def _initial_model_select_value(self) -> str:
         preferred = self._preferred_model_spec.strip()
@@ -666,6 +669,11 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             self.zeus.notify(f"Invoked Hippeus: {name}", timeout=3)
         self.dismiss()
         self.zeus.set_timer(1.5, self.zeus.poll_and_update)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "create-btn":
+            self._launch()
+            event.stop()
 
 
 class AgentTasksScreen(_ZeusScreenMixin, ModalScreen):
