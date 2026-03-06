@@ -128,3 +128,51 @@ def test_read_runtime_session_path_rejects_missing_updated_at(
     (tmp_path / "agent-1.json").write_text(json.dumps(payload))
 
     assert session_runtime.read_runtime_session_path("agent-1") is None
+
+
+def test_list_runtime_sessions_reads_fresh_session_records(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ZEUS_SESSION_MAP_DIR", str(tmp_path))
+    monkeypatch.setattr(session_runtime.time, "time", lambda: 200.0)
+
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text("{}")
+
+    session_key = session_runtime.session_runtime_key(str(session_file))
+    assert session_key is not None
+
+    records_dir = tmp_path / "sessions"
+    records_dir.mkdir(parents=True, exist_ok=True)
+    (records_dir / f"{session_key}.json").write_text(
+        json.dumps(
+            {
+                "agentId": "",
+                "sessionPath": str(session_file),
+                "sessionId": "sess-1",
+                "cwd": "/tmp/project",
+                "updatedAt": _iso_utc(195.0),
+            }
+        )
+    )
+
+    entries = session_runtime.list_runtime_sessions(now=200.0)
+    assert len(entries) == 1
+    assert entries[0].session_path == str(session_file)
+    assert entries[0].session_id == "sess-1"
+    assert entries[0].cwd == "/tmp/project"
+    assert entries[0].agent_id == ""
+
+
+def test_write_session_adoption_roundtrip(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ZEUS_SESSION_MAP_DIR", str(tmp_path))
+
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text("{}")
+
+    assert session_runtime.write_session_adoption(str(session_file), "agent-adopted") is True
+    assert session_runtime.read_adopted_agent_id(str(session_file)) == "agent-adopted"

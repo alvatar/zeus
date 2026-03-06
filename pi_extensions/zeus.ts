@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Box, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -11,6 +12,8 @@ interface SessionSyncPayload {
   cwd: string;
   updatedAt: string;
   event: string;
+  sessionKey: string;
+  identitySource: "env" | "adopted" | "anonymous";
 }
 
 interface BusInboxPayload {
@@ -27,12 +30,14 @@ const TMP_FALLBACK_STATE_DIR = "/tmp/zeus";
 const CAPABILITY_HEARTBEAT_MS = 5000;
 
 let inboxWatcher: fs.FSWatcher | null = null;
+let adoptionWatcher: fs.FSWatcher | null = null;
 let watchedInboxDir = "";
+let watchedAdoptionsDir = "";
 let inboxPumpRunning = false;
 let inboxPumpScheduled = false;
 let capabilityTimer: NodeJS.Timeout | null = null;
 let latestCtx: any = null;
-let processedIdsLoaded = false;
+let processedIdsLoadedForAgentId = "";
 let processedIds = new Set<string>();
 
 function sanitizeAgentId(value: string): string {
@@ -51,6 +56,76 @@ function getMapDir(): string {
   const configured = (process.env.ZEUS_SESSION_MAP_DIR ?? "").trim();
   if (!configured) return DEFAULT_MAP_DIR;
   return configured;
+}
+
+function getSessionRecordDir(): string {
+  return path.join(getMapDir(), "sessions");
+}
+
+function getSessionAdoptionsDir(): string {
+  return path.join(getMapDir(), "adoptions");
+}
+
+function normalizeSessionPath(value: string): string {
+  const clean = value.trim();
+  if (!clean) return "";
+  const resolved = path.resolve(clean);
+  if (!path.isAbsolute(resolved)) return "";
+  try {
+    if (!fs.existsSync(resolved)) return "";
+    if (!fs.statSync(resolved).isFile()) return "";
+  } catch {
+    return "";
+  }
+  return resolved;
+}
+
+function getSessionKey(sessionPath: string): string {
+  const normalized = normalizeSessionPath(sessionPath);
+  if (!normalized) return "";
+  return crypto.createHash("sha256").update(normalized).digest("hex");
+}
+
+function getSessionRecordFile(sessionPath: string): string {
+  const key = getSessionKey(sessionPath);
+  if (!key) return "";
+  return path.join(getSessionRecordDir(), `${key}.json`);
+}
+
+function getSessionAdoptionFile(sessionPath: string): string {
+  const key = getSessionKey(sessionPath);
+  if (!key) return "";
+  return path.join(getSessionAdoptionsDir(), `${key}.json`);
+}
+
+function readAdoptedAgentId(ctx: any): string {
+  const sessionPath = normalizeSessionPath(getSessionFile(ctx));
+  if (!sessionPath) return "";
+
+  const filePath = getSessionAdoptionFile(sessionPath);
+  if (!filePath) return "";
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as any;
+    if (!raw || typeof raw !== "object") return "";
+    const adoptedPath = normalizeSessionPath(
+      typeof raw.sessionPath === "string" ? raw.sessionPath : "",
+    );
+    if (!adoptedPath || adoptedPath !== sessionPath) return "";
+    return sanitizeAgentId(typeof raw.agentId === "string" ? raw.agentId : "");
+  } catch {
+    return "";
+  }
+}
+
+function getEffectiveAgentId(ctx: any): string {
+  return getAgentId() || readAdoptedAgentId(ctx);
+}
+
+function getEffectiveIdentitySource(ctx: any): "env" | "adopted" | "anonymous" {
+  if (getAgentId()) return "env";
+  if (readAdoptedAgentId(ctx)) return "adopted";
+  return "anonymous";
 }
 
 function getStateDir(): string {
@@ -160,30 +235,40 @@ function removeFile(filePath: string): void {
 }
 
 function syncSession(eventName: string, ctx: any): void {
-  const agentId = getAgentId();
-  if (!agentId) return;
+  const sessionPath = normalizeSessionPath(getSessionFile(ctx));
+  const effectiveAgentId = getEffectiveAgentId(ctx);
 
-  const mapFile = path.join(getMapDir(), `${agentId}.json`);
-  const sessionPath = getSessionFile(ctx);
   if (!sessionPath) {
-    removeFile(mapFile);
+    if (effectiveAgentId) {
+      removeFile(path.join(getMapDir(), `${effectiveAgentId}.json`));
+    }
     return;
   }
 
   const payload: SessionSyncPayload = {
-    agentId,
+    agentId: effectiveAgentId,
     sessionPath,
     sessionId: getSessionId(ctx),
     cwd: getCwd(ctx),
     updatedAt: new Date().toISOString(),
     event: eventName,
+    sessionKey: getSessionKey(sessionPath),
+    identitySource: getEffectiveIdentitySource(ctx),
   };
 
-  writeJsonAtomic(mapFile, payload);
+  const sessionRecordFile = getSessionRecordFile(sessionPath);
+  if (sessionRecordFile) {
+    writeJsonAtomic(sessionRecordFile, payload);
+  }
+
+  if (effectiveAgentId) {
+    const mapFile = path.join(getMapDir(), `${effectiveAgentId}.json`);
+    writeJsonAtomic(mapFile, payload);
+  }
 }
 
 function writeCapability(ctx: any): void {
-  const agentId = getAgentId();
+  const agentId = getEffectiveAgentId(ctx);
   if (!agentId) return;
 
   const payload = {
@@ -206,13 +291,28 @@ function writeCapability(ctx: any): void {
   writeJsonAtomic(getCapabilityFile(agentId), payload);
 }
 
-function ensureCapabilityHeartbeat(): void {
+function ensureCapabilityHeartbeat(pi: ExtensionAPI): void {
   if (capabilityTimer) return;
   capabilityTimer = setInterval(() => {
+    if (!latestCtx) return;
+
+    try {
+      syncSession("heartbeat", latestCtx);
+    } catch {
+      // Runtime sync is best effort.
+    }
+
     try {
       writeCapability(latestCtx);
     } catch {
       // Capability heartbeat is best effort.
+    }
+
+    try {
+      ensureInboxWatcher(pi);
+      scheduleInboxPump(pi);
+    } catch {
+      // Inbox refresh is best effort.
     }
   }, CAPABILITY_HEARTBEAT_MS);
 }
@@ -246,8 +346,8 @@ function parseInboxPayload(raw: string): BusInboxPayload | null {
 }
 
 function loadProcessedIds(agentId: string): void {
-  if (processedIdsLoaded) return;
-  processedIdsLoaded = true;
+  if (processedIdsLoadedForAgentId === agentId) return;
+  processedIdsLoadedForAgentId = agentId;
   processedIds = new Set<string>();
 
   const filePath = getProcessedFile(agentId);
@@ -358,7 +458,7 @@ function processClaimedFile(
 }
 
 function processAgentInbox(pi: ExtensionAPI): void {
-  const agentId = getAgentId();
+  const agentId = getEffectiveAgentId(latestCtx);
   if (!agentId) return;
 
   if (inboxPumpRunning) {
@@ -406,7 +506,7 @@ function processAgentInbox(pi: ExtensionAPI): void {
 }
 
 function ensureInboxWatcher(pi: ExtensionAPI): void {
-  const agentId = getAgentId();
+  const agentId = getEffectiveAgentId(latestCtx);
   if (!agentId) return;
 
   const watchDir = getAgentInboxNewDir(agentId);
@@ -444,6 +544,50 @@ function ensureInboxWatcher(pi: ExtensionAPI): void {
   scheduleInboxPump(pi);
 }
 
+function ensureAdoptionWatcher(pi: ExtensionAPI): void {
+  const watchDir = getSessionAdoptionsDir();
+  try {
+    fs.mkdirSync(watchDir, { recursive: true });
+  } catch {
+    return;
+  }
+
+  if (adoptionWatcher && watchedAdoptionsDir === watchDir) {
+    return;
+  }
+
+  if (adoptionWatcher) {
+    try {
+      adoptionWatcher.close();
+    } catch {
+      // Ignore watcher close failures.
+    }
+    adoptionWatcher = null;
+    watchedAdoptionsDir = "";
+  }
+
+  try {
+    adoptionWatcher = fs.watch(watchDir, () => {
+      if (!latestCtx) return;
+      try {
+        syncSession("adoption_refresh", latestCtx);
+      } catch {
+        // Best effort.
+      }
+      try {
+        writeCapability(latestCtx);
+      } catch {
+        // Best effort.
+      }
+      ensureInboxWatcher(pi);
+      scheduleInboxPump(pi);
+    });
+    watchedAdoptionsDir = watchDir;
+  } catch {
+    // fs.watch can fail on some filesystems; heartbeat remains fallback.
+  }
+}
+
 export default function (pi: ExtensionAPI) {
   const subscribe = (eventName: string): void => {
     pi.on(eventName as any, async (_event, ctx) => {
@@ -460,7 +604,8 @@ export default function (pi: ExtensionAPI) {
       } catch {
         // Capability heartbeat writes are best effort.
       }
-      ensureCapabilityHeartbeat();
+      ensureCapabilityHeartbeat(pi);
+      ensureAdoptionWatcher(pi);
 
       if (
         eventName === "session_start" ||

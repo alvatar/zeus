@@ -2621,6 +2621,21 @@ class ZeusApp(App):
     def _is_input_blocked(self, agent: AgentWindow) -> bool:
         return self._is_paused(agent) or self._is_blocked(agent)
 
+    @staticmethod
+    def _is_agent_bus_deliverable(agent: AgentWindow) -> bool:
+        target_id = (agent.agent_id or "").strip()
+        if not target_id:
+            return False
+        return bool(getattr(agent, "bus_capable", True))
+
+    def _agent_bus_unavailable_reason(self, agent: AgentWindow) -> str | None:
+        if self._is_agent_bus_deliverable(agent):
+            return None
+        return (
+            "Captured Pi agent has no adopted deterministic identity yet; "
+            "messaging is disabled"
+        )
+
     def _would_create_dependency_cycle(
         self,
         blocked_dep_key: str,
@@ -2644,6 +2659,8 @@ class ZeusApp(App):
         for agent in self.agents:
             key = self._agent_key(agent)
             if key == source_key:
+                continue
+            if not self._is_agent_bus_deliverable(agent):
                 continue
             if self._is_blocked(agent):
                 continue
@@ -2715,6 +2732,8 @@ class ZeusApp(App):
             key = self._agent_key(agent)
             if key == source_key:
                 continue
+            if not self._is_agent_bus_deliverable(agent):
+                continue
             if (not self._is_blocked(agent)) or self._is_blocked_by_source_key(
                 agent, source_key
             ):
@@ -2736,6 +2755,8 @@ class ZeusApp(App):
         for key in recipient_keys:
             agent = self._get_agent_by_key(key)
             if agent is None:
+                continue
+            if not self._is_agent_bus_deliverable(agent):
                 continue
             if not self._is_blocked(agent):
                 options.append((agent.name, key))
@@ -3174,6 +3195,8 @@ class ZeusApp(App):
 
         if kind == "agent" and detail.startswith("agent target not active:"):
             return True
+        if kind == "agent" and detail.startswith("agent target not bus-addressable:"):
+            return True
         if detail.startswith("unsupported queue target kind:"):
             return True
         if detail.startswith("agent target id is empty"):
@@ -3234,6 +3257,8 @@ class ZeusApp(App):
             target = self._get_agent_by_id(target_id)
             if target is None:
                 return [], f"agent target not active: {target_id or '<missing>'}"
+            if not self._is_agent_bus_deliverable(target):
+                return [], f"agent target not bus-addressable: {target.name}"
             recipient_agent_id = (target.agent_id or "").strip()
             if not recipient_agent_id:
                 return [], (
@@ -3388,6 +3413,9 @@ class ZeusApp(App):
         source_agent_id: str = "",
         delivery_mode: str = "followUp",
     ) -> bool:
+        if not self._is_agent_bus_deliverable(target):
+            return False
+
         target_id = (target.agent_id or "").strip()
         if not target_id:
             return False
@@ -3682,6 +3710,11 @@ class ZeusApp(App):
         )
         if self._is_blocked(target) and not blocked_by_source:
             self.notify("Target is no longer active", timeout=3)
+            return
+
+        bus_reason = self._agent_bus_unavailable_reason(target)
+        if bus_reason:
+            self.notify(bus_reason, timeout=3)
             return
 
         source_agent_id = ""
@@ -5005,6 +5038,9 @@ class ZeusApp(App):
         return True
 
     def _message_dialog_block_reason(self, agent: AgentWindow) -> str | None:
+        bus_reason = self._agent_bus_unavailable_reason(agent)
+        if bus_reason:
+            return bus_reason
         if self._is_blocked(agent):
             return "Hippeus is BLOCKED by dependency; input disabled"
         return None
@@ -6704,8 +6740,12 @@ class ZeusApp(App):
     def _current_interact_block_reason(self) -> str | None:
         """Return reason text when interact input must be disabled."""
         agent = self._interact_target_agent()
-        if agent and self._is_blocked(agent):
-            return "Hippeus is BLOCKED by dependency; input disabled"
+        if agent:
+            bus_reason = self._agent_bus_unavailable_reason(agent)
+            if bus_reason:
+                return bus_reason
+            if self._is_blocked(agent):
+                return "Hippeus is BLOCKED by dependency; input disabled"
         return None
 
     @staticmethod

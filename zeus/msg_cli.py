@@ -43,10 +43,19 @@ def _resolve_agent_target(value: str) -> tuple[str, str, str]:
         a for a in agents if (a.agent_id or "").strip() == clean
     ]
     if id_matches:
+        target = id_matches[0]
+        if not bool(getattr(target, "bus_capable", True)):
+            raise ValueError(
+                f"matched agent {clean!r} is captured but not adopted for bus delivery"
+            )
         return ("agent", clean, "")
 
     name_matches = [a for a in agents if a.name.strip() == clean]
     if len(name_matches) == 1:
+        if not bool(getattr(name_matches[0], "bus_capable", True)):
+            raise ValueError(
+                f"matched agent {clean!r} is captured but not adopted for bus delivery"
+            )
         target_agent_id = (name_matches[0].agent_id or "").strip()
         if not target_agent_id:
             raise ValueError(

@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from types import SimpleNamespace
 
 import zeus.kitty as kitty
 from zeus.kitty import (
@@ -141,6 +142,9 @@ def test_discover_agents_uses_runtime_session_path_when_env_missing(monkeypatch)
     monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
     monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
     monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "list_runtime_sessions", lambda: [])
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(kitty, "write_session_adoption", lambda _path, _agent_id: True)
     monkeypatch.setattr(
         kitty,
         "read_runtime_session_path",
@@ -152,6 +156,156 @@ def test_discover_agents_uses_runtime_session_path_when_env_missing(monkeypatch)
     assert len(agents) == 1
     assert agents[0].name == "alpha"
     assert agents[0].session_path == "/tmp/runtime.jsonl"
+    assert agents[0].bus_capable is True
+
+
+def test_discover_agents_adopts_captured_agent_from_unique_runtime_session(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    session_file = tmp_path / "captured.jsonl"
+    session_file.write_text("{}")
+
+    socket = "/tmp/kitty-4242"
+    windows = [
+        {
+            "tabs": [
+                {
+                    "windows": [
+                        {
+                            "id": 1,
+                            "pid": 123,
+                            "cwd": "/tmp/project",
+                            "env": {
+                                "ZEUS_AGENT_NAME": "captured",
+                            },
+                            "cmdline": ["bash", "-lc", "pi"],
+                            "title": "π captured",
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    adopted: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket])
+    monkeypatch.setattr(
+        kitty,
+        "kitty_cmd",
+        lambda _socket, *_args, **_kwargs: json.dumps(windows),
+    )
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "generate_agent_id", lambda: "adopted-agent")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
+    monkeypatch.setattr(
+        kitty,
+        "list_runtime_sessions",
+        lambda: [
+            SimpleNamespace(
+                session_path=str(session_file),
+                session_id="sess-1",
+                cwd="/tmp/project",
+                updated_at=100.0,
+                agent_id="",
+            )
+        ],
+    )
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(
+        kitty,
+        "write_session_adoption",
+        lambda session_path, agent_id: adopted.append((session_path, agent_id)) or True,
+    )
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 1
+    assert agents[0].agent_id == "adopted-agent"
+    assert agents[0].session_path == str(session_file)
+    assert agents[0].bus_capable is True
+    assert adopted == [(str(session_file), "adopted-agent")]
+
+
+def test_discover_agents_marks_captured_agent_non_bus_capable_when_runtime_is_ambiguous(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    session_a = tmp_path / "a.jsonl"
+    session_b = tmp_path / "b.jsonl"
+    session_a.write_text("{}")
+    session_b.write_text("{}")
+
+    socket = "/tmp/kitty-4242"
+    windows = [
+        {
+            "tabs": [
+                {
+                    "windows": [
+                        {
+                            "id": 1,
+                            "pid": 123,
+                            "cwd": "/tmp/project",
+                            "env": {
+                                "ZEUS_AGENT_NAME": "captured",
+                            },
+                            "cmdline": ["bash", "-lc", "pi"],
+                            "title": "π captured",
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket])
+    monkeypatch.setattr(
+        kitty,
+        "kitty_cmd",
+        lambda _socket, *_args, **_kwargs: json.dumps(windows),
+    )
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "generate_agent_id", lambda: "generated-agent")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
+    monkeypatch.setattr(
+        kitty,
+        "list_runtime_sessions",
+        lambda: [
+            SimpleNamespace(
+                session_path=str(session_a),
+                session_id="sess-a",
+                cwd="/tmp/project",
+                updated_at=100.0,
+                agent_id="",
+            ),
+            SimpleNamespace(
+                session_path=str(session_b),
+                session_id="sess-b",
+                cwd="/tmp/project",
+                updated_at=99.0,
+                agent_id="",
+            ),
+        ],
+    )
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(
+        kitty,
+        "write_session_adoption",
+        lambda _session_path, _agent_id: (_ for _ in ()).throw(AssertionError("must not adopt ambiguous runtime")),
+    )
+    monkeypatch.setattr(kitty, "find_current_session", lambda _cwd: str(session_a))
+
+    agents = kitty.discover_agents()
+
+    assert len(agents) == 1
+    assert agents[0].agent_id == "generated-agent"
+    assert agents[0].session_path == str(session_a)
+    assert agents[0].bus_capable is False
 
 
 def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path) -> None:
@@ -331,6 +485,9 @@ def test_discover_agents_unique_auto_names_across_sockets(monkeypatch) -> None:
     monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
     monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
     monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "list_runtime_sessions", lambda: [])
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(kitty, "write_session_adoption", lambda _path, _agent_id: True)
     monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
 
     agents = kitty.discover_agents()
@@ -359,6 +516,9 @@ def test_discover_agents_override_frees_auto_name(monkeypatch) -> None:
     monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
     monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
     monkeypatch.setattr(kitty, "load_names", lambda: overrides)
+    monkeypatch.setattr(kitty, "list_runtime_sessions", lambda: [])
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(kitty, "write_session_adoption", lambda _path, _agent_id: True)
     monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
 
     agents = kitty.discover_agents()
@@ -385,6 +545,9 @@ def test_discover_agents_auto_name_skips_override_value(monkeypatch) -> None:
     monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
     monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
     monkeypatch.setattr(kitty, "load_names", lambda: overrides)
+    monkeypatch.setattr(kitty, "list_runtime_sessions", lambda: [])
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(kitty, "write_session_adoption", lambda _path, _agent_id: True)
     monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
 
     agents = kitty.discover_agents()

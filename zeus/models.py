@@ -61,6 +61,7 @@ class AgentWindow:
     session_path: str = ""
     backend: str = "kitty"  # kitty | tmux-stygian
     tmux_session: str = ""  # tmux session for non-kitty backends
+    bus_capable: bool = True  # False for captured agents lacking adopted/env bus identity
     tmux_sessions: list[TmuxSession] = field(default_factory=list)
     proc_metrics: ProcessMetrics = field(default_factory=ProcessMetrics)
     _screen_text: str = ""

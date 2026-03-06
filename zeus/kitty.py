@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 import os
 from pathlib import Path
@@ -9,12 +10,19 @@ import re
 import shlex
 import subprocess
 from glob import glob
+from typing import Any
 import uuid
 
 from .config import AGENT_IDS_FILE, NAMES_FILE
 from .models import AgentWindow
 from .sessions import find_current_session, fork_session
-from .session_runtime import read_runtime_session_path
+from .session_runtime import (
+    RuntimeSessionEntry,
+    list_runtime_sessions,
+    read_adopted_agent_id,
+    read_runtime_session_path,
+    write_session_adoption,
+)
 from .windowing import focus_pid, move_pid_to_workspace_and_focus_later
 
 
@@ -116,18 +124,49 @@ def _looks_like_pi_window(win: dict) -> bool:
     return title.startswith("π")
 
 
+def _normalize_session_path(raw: str) -> str:
+    expanded = os.path.expanduser(raw.strip())
+    if not expanded or not os.path.isabs(expanded):
+        return ""
+    if not os.path.isfile(expanded):
+        return ""
+    return expanded
+
+
+def _extract_pi_session_path(win: dict) -> str:
+    tokens = _iter_cmdline_tokens(win.get("cmdline") or [])
+    for idx, token in enumerate(tokens):
+        candidate = ""
+        if token == "--session" and idx + 1 < len(tokens):
+            candidate = tokens[idx + 1]
+        elif token.startswith("--session="):
+            candidate = token.split("=", 1)[1]
+        normalized = _normalize_session_path(candidate)
+        if normalized:
+            return normalized
+    return ""
+
+
 def discover_agents() -> list[AgentWindow]:
     agents: list[AgentWindow] = []
     ids: dict[str, str] = load_agent_ids()
     ids_changed: bool = False
     live_keys: set[str] = set()
     overrides: dict[str, str] = load_names()
+    runtime_sessions = list_runtime_sessions()
+    runtime_by_path = {entry.session_path: entry for entry in runtime_sessions}
+    runtime_by_cwd: dict[str, list[RuntimeSessionEntry]] = defaultdict(list)
+    for entry in runtime_sessions:
+        runtime_by_cwd[entry.cwd].append(entry)
+    used_runtime_session_paths: set[str] = set()
+
+    raw_windows: list[dict[str, Any]] = []
 
     # Track committed final names to prevent duplicates across kitty instances.
     # Pre-seed with override destination names so auto-naming avoids them.
-    _committed_names: set[str] = set()
-    for _ov_name in overrides.values():
-        _committed_names.add(_ov_name.strip().casefold())
+    committed_names: set[str] = set()
+    for override_name in overrides.values():
+        committed_names.add(override_name.strip().casefold())
 
     for socket in discover_sockets():
         try:
@@ -152,50 +191,156 @@ def discover_agents() -> list[AgentWindow]:
                     if not name:
                         if not _looks_like_pi_window(win):
                             continue
-                        # Auto-name: try pi-{win_id} first for backward
-                        # compat, fall back to next available pi-N on
-                        # collision (different kitty instances reuse win ids).
                         candidate = f"pi-{win_id}"
-                        if key not in overrides and candidate.casefold() in _committed_names:
+                        if key not in overrides and candidate.casefold() in committed_names:
                             n = 1
-                            while f"pi-{n}".casefold() in _committed_names:
+                            while f"pi-{n}".casefold() in committed_names:
                                 n += 1
                             candidate = f"pi-{n}"
                         name = candidate
 
-                    # Track this name if no override will replace it.
                     if key not in overrides:
-                        _committed_names.add(name.strip().casefold())
+                        committed_names.add(name.strip().casefold())
 
                     live_keys.add(key)
-                    env_agent_id = (env.get("ZEUS_AGENT_ID") or "").strip()
-                    persisted_id = (ids.get(key) or "").strip()
-                    if env_agent_id:
-                        agent_id = env_agent_id
-                    elif persisted_id:
-                        agent_id = persisted_id
-                    else:
-                        agent_id = generate_agent_id()
+                    raw_windows.append(
+                        {
+                            "socket": socket,
+                            "kitty_pid": kitty_pid,
+                            "win": win,
+                            "env": env,
+                            "key": key,
+                            "name": name,
+                            "win_id": win_id,
+                            "cwd": str(win.get("cwd", "")).strip(),
+                        }
+                    )
 
-                    if ids.get(key) != agent_id:
-                        ids[key] = agent_id
-                        ids_changed = True
+    def _build_agent(
+        item: dict[str, Any],
+        *,
+        agent_id: str,
+        session_path: str,
+        bus_capable: bool,
+    ) -> AgentWindow:
+        env = item["env"]
+        assert isinstance(env, dict)
+        win = item["win"]
+        assert isinstance(win, dict)
+        return AgentWindow(
+            kitty_id=int(item["win_id"]),
+            socket=str(item["socket"]),
+            name=str(item["name"]),
+            pid=win.get("pid", 0),
+            kitty_pid=int(item["kitty_pid"]),
+            cwd=str(item["cwd"]),
+            agent_id=agent_id,
+            parent_id=(env.get("ZEUS_PARENT_ID") or "").strip(),
+            role=(env.get("ZEUS_ROLE") or "").strip().lower(),
+            session_path=session_path,
+            bus_capable=bus_capable,
+        )
 
-                    runtime_session_path = read_runtime_session_path(agent_id)
-                    env_session_path = (env.get("ZEUS_SESSION_PATH") or "").strip()
+    unresolved: list[dict[str, Any]] = []
 
-                    agents.append(AgentWindow(
-                        kitty_id=win_id,
-                        socket=socket,
-                        name=name,
-                        pid=win.get("pid", 0),
-                        kitty_pid=kitty_pid,
-                        cwd=win.get("cwd", ""),
-                        agent_id=agent_id,
-                        parent_id=(env.get("ZEUS_PARENT_ID") or "").strip(),
-                        role=(env.get("ZEUS_ROLE") or "").strip().lower(),
-                        session_path=runtime_session_path or env_session_path,
-                    ))
+    for item in raw_windows:
+        env = item["env"]
+        assert isinstance(env, dict)
+        key = str(item["key"])
+        persisted_id = (ids.get(key) or "").strip()
+        env_agent_id = (env.get("ZEUS_AGENT_ID") or "").strip()
+        env_session_path = _normalize_session_path(env.get("ZEUS_SESSION_PATH") or "")
+        cmd_session_path = _extract_pi_session_path(item["win"])
+
+        agent_id = ""
+        session_path = ""
+        bus_capable = False
+
+        if env_agent_id:
+            agent_id = env_agent_id
+            session_path = (
+                read_runtime_session_path(agent_id)
+                or env_session_path
+                or cmd_session_path
+            )
+            bus_capable = True
+        elif persisted_id:
+            session_path = read_runtime_session_path(persisted_id) or ""
+            if session_path:
+                agent_id = persisted_id
+                bus_capable = True
+
+        if not agent_id:
+            unresolved.append(item)
+            continue
+
+        if ids.get(key) != agent_id:
+            ids[key] = agent_id
+            ids_changed = True
+
+        if session_path:
+            used_runtime_session_paths.add(session_path)
+
+        agents.append(
+            _build_agent(
+                item,
+                agent_id=agent_id,
+                session_path=session_path,
+                bus_capable=bus_capable,
+            )
+        )
+
+    for item in unresolved:
+        env = item["env"]
+        assert isinstance(env, dict)
+        key = str(item["key"])
+        cwd = str(item["cwd"])
+        persisted_id = (ids.get(key) or "").strip()
+        candidate_id = persisted_id or generate_agent_id()
+        env_session_path = _normalize_session_path(env.get("ZEUS_SESSION_PATH") or "")
+        cmd_session_path = _extract_pi_session_path(item["win"])
+
+        matched_session_path = ""
+        explicit_path = env_session_path or cmd_session_path
+        if explicit_path and explicit_path not in used_runtime_session_paths:
+            matched_session_path = explicit_path
+        else:
+            runtime_candidates = [
+                entry
+                for entry in runtime_by_cwd.get(cwd, [])
+                if entry.session_path not in used_runtime_session_paths
+            ]
+            if len(runtime_candidates) == 1:
+                matched_session_path = runtime_candidates[0].session_path
+
+        adopted_agent_id = ""
+        bus_capable = False
+        if matched_session_path:
+            runtime_entry = runtime_by_path.get(matched_session_path)
+            adopted_agent_id = read_adopted_agent_id(matched_session_path) or (
+                (runtime_entry.agent_id or "").strip() if runtime_entry is not None else ""
+            )
+            resolved_agent_id = adopted_agent_id or candidate_id
+            bus_capable = write_session_adoption(matched_session_path, resolved_agent_id)
+            if bus_capable:
+                candidate_id = resolved_agent_id
+                used_runtime_session_paths.add(matched_session_path)
+
+        session_path = matched_session_path or explicit_path or find_current_session(cwd) or ""
+        agent_id = candidate_id
+
+        if ids.get(key) != agent_id:
+            ids[key] = agent_id
+            ids_changed = True
+
+        agents.append(
+            _build_agent(
+                item,
+                agent_id=agent_id,
+                session_path=session_path,
+                bus_capable=bus_capable,
+            )
+        )
 
     stale_keys = [k for k in ids if k not in live_keys]
     if stale_keys:
@@ -206,11 +351,10 @@ def discover_agents() -> list[AgentWindow]:
     if ids_changed:
         save_agent_ids(ids)
 
-    # Apply name overrides (lineage uses parent_id, so no parent-name rewrites).
-    for a in agents:
-        agent_key: str = f"{a.socket}:{a.kitty_id}"
+    for agent in agents:
+        agent_key: str = f"{agent.socket}:{agent.kitty_id}"
         if agent_key in overrides:
-            a.name = overrides[agent_key]
+            agent.name = overrides[agent_key]
     return agents
 
 
@@ -221,8 +365,6 @@ def ensure_unique_agent_names(agents: list[AgentWindow]) -> None:
     duplicates cause mis-delivery.  Colliding names get a numeric suffix.
     Sort by agent_id for deterministic, stable disambiguation across polls.
     """
-    from collections import defaultdict
-
     groups: dict[str, list[AgentWindow]] = defaultdict(list)
     for agent in agents:
         groups[agent.name.strip().casefold()].append(agent)
@@ -232,9 +374,7 @@ def ensure_unique_agent_names(agents: list[AgentWindow]) -> None:
     for _norm, group in groups.items():
         if len(group) <= 1:
             continue
-        # Deterministic order so the same agent always keeps its name
         group.sort(key=lambda a: a.agent_id or "")
-        # First agent keeps its name; rest get suffixed
         for agent in group[1:]:
             base = agent.name
             suffix = 2

@@ -24,6 +24,7 @@ def test_agent_window_defaults():
     assert a.session_path == ""
     assert a.backend == "kitty"
     assert a.tmux_session == ""
+    assert a.bus_capable is True
     assert a.tmux_sessions == []
     assert a.proc_metrics.cpu_pct == 0.0
     assert a._screen_text == ""

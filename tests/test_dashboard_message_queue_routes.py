@@ -257,6 +257,46 @@ def test_drain_message_queue_quarantines_dead_agent_target(
     assert "Queue quarantined (24h):" in notices[-1]
 
 
+def test_drain_message_queue_quarantines_unadopted_captured_agent_target(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    _advance_clock(monkeypatch)
+
+    app = ZeusApp()
+    target = _agent("captured", 2, agent_id="agent-target")
+    target.bus_capable = False
+    app.agents = [target]
+    app._message_receipts = {}
+
+    notices: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, timeout=3: notices.append(message))
+
+    env = mq.OutboundEnvelope.new(
+        source_name="source",
+        source_agent_id="agent-source",
+        target_kind="agent",
+        target_ref="agent-target",
+        target_agent_id="agent-target",
+        message="wake-up",
+    )
+    mq.enqueue_envelope(env)
+
+    app._drain_message_queue()
+
+    assert mq.list_new_envelopes() == []
+    assert mq.list_inflight_envelopes() == []
+    quarantine_files = sorted((tmp_path / "queue" / "quarantine").glob("*.json"))
+    assert len(quarantine_files) == 1
+    payload = json.loads(quarantine_files[0].read_text())
+    quarantine = payload.get("quarantine")
+    assert isinstance(quarantine, dict)
+    assert str(quarantine.get("reason", "")).startswith("agent target not bus-addressable:")
+    assert notices
+    assert "Queue quarantined (24h):" in notices[-1]
+
+
 def test_drain_message_queue_purges_expired_quarantine_entries(
     monkeypatch,
     tmp_path: Path,

@@ -1243,6 +1243,22 @@ def test_do_queue_agent_message_reports_failure_and_keeps_draft(monkeypatch) -> 
     assert notices[-1] == "Failed to queue message: alpha"
 
 
+def test_do_send_agent_message_blocks_captured_unadopted_agent(monkeypatch) -> None:
+    app = _new_app()
+    agent = _agent("captured", 1, agent_id="a" * 32)
+    agent.bus_capable = False
+    app.agents = [agent]
+
+    notices = capture_notify(app, monkeypatch)
+
+    ok = app.do_send_agent_message(agent, "hello")
+
+    assert ok is False
+    assert notices[-1] == (
+        "Captured Pi agent has no adopted deterministic identity yet; messaging is disabled"
+    )
+
+
 def test_dispatch_tmux_text_queue_sends_followup_then_clear(monkeypatch) -> None:
     app = _new_app()
     calls: list[list[str]] = []

@@ -104,6 +104,19 @@ def test_do_enqueue_direct_unpauses_paused_target(monkeypatch) -> None:
     assert notices[-1] == "Message from source queued to target"
 
 
+def test_direct_recipients_exclude_captured_unadopted_targets() -> None:
+    app = _new_app()
+    source = _agent("source", 1)
+    unsupported = _agent("captured", 2)
+    unsupported.bus_capable = False
+    supported = _agent("active", 3)
+    app.agents = [source, unsupported, supported]
+
+    recipients = app._direct_recipients(app._agent_key(source))
+
+    assert [agent.name for agent in recipients] == ["active"]
+
+
 def test_do_enqueue_direct_skips_blocked_target(monkeypatch) -> None:
     app = _new_app()
     source = _agent("source", 1)

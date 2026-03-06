@@ -168,6 +168,25 @@ def test_msg_cli_send_rejects_ambiguous_display_name(
     assert sorted((queue_root / "new").glob("*.json")) == []
 
 
+def test_msg_cli_send_rejects_captured_unadopted_target(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    msg_root, queue_root = _prepare(monkeypatch, tmp_path)
+    payload = msg_root / "m.md"
+    payload.write_text("ping\n")
+
+    monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
+
+    captured = _agent("worker", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    captured.bus_capable = False
+    monkeypatch.setattr(msg_cli, "discover_agents", lambda: [captured])
+
+    rc = msg_cli.cmd_send(_args(to="worker", file=str(payload)))
+    assert rc == 1
+    assert sorted((queue_root / "new").glob("*.json")) == []
+
+
 def test_msg_cli_send_accepts_inline_text_payload(monkeypatch, tmp_path: Path) -> None:
     _msg_root, queue_root = _prepare(monkeypatch, tmp_path)
     monkeypatch.setenv("ZEUS_AGENT_ID", "sender-1")
