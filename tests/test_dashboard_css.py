@@ -90,9 +90,11 @@ def test_invoke_dialog_css_has_role_selector_layout() -> None:
     assert "layer: overlay;" in css.NEW_AGENT_CSS
     assert "#agent-dir-suggestions.hidden {" in css.NEW_AGENT_CSS
     assert "#new-agent-buttons {" in css.NEW_AGENT_CSS
-    assert "#new-agent-buttons-spacer {" in css.NEW_AGENT_CSS
+    assert "dock: bottom;" in css.NEW_AGENT_CSS
+    assert "#new-agent-buttons Button {" in css.NEW_AGENT_CSS
     assert "margin: 1 0;" in css.NEW_AGENT_CSS
-    assert "max-height: 42;" in css.NEW_AGENT_CSS
+    assert "height: 46;" in css.NEW_AGENT_CSS
+    assert "max-height: 46;" in css.NEW_AGENT_CSS
 
 
 def test_dependency_dialog_css_has_expected_spacing() -> None:

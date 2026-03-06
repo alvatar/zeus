@@ -263,8 +263,8 @@ NewAgentScreen {{
 
 #new-agent-dialog {{
     width: 116;
-    height: auto;
-    max-height: 42;
+    height: 46;
+    max-height: 46;
     border: thick #00d7d7;
     background: #0a0a0a;
     padding: 1 2;
@@ -272,12 +272,15 @@ NewAgentScreen {{
 }}
 
 #new-agent-buttons {{
+    dock: bottom;
     width: 100%;
-    margin: 1 0 0 0;
+    height: 3;
+    align: right middle;
+    margin: 0;
 }}
 
-#new-agent-buttons-spacer {{
-    width: 1fr;
+#new-agent-buttons Button {{
+    margin: 0;
 }}
 
 #new-agent-dialog Label {{

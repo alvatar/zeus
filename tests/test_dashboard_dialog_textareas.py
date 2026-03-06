@@ -133,6 +133,7 @@ def test_invoke_dialog_defaults_directory_and_has_role_selector() -> None:
     assert "_list_available_model_specs()" not in source
     assert "new-agent-buttons" in source
     assert 'Button("Create", variant="primary", id="create-btn")' in source
+    assert "new-agent-buttons-spacer" not in source
     assert "launch-btn" not in source
     assert "cancel-btn" not in source
     assert source.index("create-btn") > source.index("agent-dir-suggestions")

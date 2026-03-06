@@ -225,7 +225,6 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             )
             yield OptionList(id="agent-dir-suggestions", classes="hidden", compact=True)
             with Horizontal(id="new-agent-buttons"):
-                yield Label("", id="new-agent-buttons-spacer")
                 yield Button("Create", variant="primary", id="create-btn")
 
     def _initial_model_select_value(self) -> str:
