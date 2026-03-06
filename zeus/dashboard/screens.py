@@ -322,10 +322,11 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
         dialog = self.query_one("#new-agent-dialog", Vertical)
         directory_input = self.query_one("#agent-dir", Input)
 
-        rel_x = max(0, directory_input.region.x - dialog.region.x)
+        anchor_region = getattr(dialog, "content_region", dialog.region)
+        rel_x = max(0, directory_input.region.x - anchor_region.x)
         rel_y = max(
             0,
-            directory_input.region.y - dialog.region.y + directory_input.region.height,
+            directory_input.region.y - anchor_region.y + directory_input.region.height,
         )
 
         options.styles.offset = (rel_x, rel_y)

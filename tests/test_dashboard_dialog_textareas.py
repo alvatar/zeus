@@ -583,6 +583,35 @@ def test_new_agent_tab_cycles_directory_suggestions(monkeypatch) -> None:
     assert options.highlighted == 0
 
 
+
+def test_new_agent_positions_dir_suggestions_below_input_using_content_region(monkeypatch) -> None:
+    screen = NewAgentScreen()
+    options = _OptionListStub(hidden=False)
+    dialog = SimpleNamespace(
+        region=SimpleNamespace(x=10, y=20, width=116, height=46),
+        content_region=SimpleNamespace(x=12, y=21, width=112, height=42),
+    )
+    directory_input = SimpleNamespace(
+        region=SimpleNamespace(x=15, y=31, width=110, height=3),
+    )
+
+    def _query_one(selector: str, cls=None):  # noqa: ANN001
+        if selector == "#agent-dir-suggestions":
+            return options
+        if selector == "#new-agent-dialog":
+            return dialog
+        if selector == "#agent-dir":
+            return directory_input
+        raise LookupError(selector)
+
+    monkeypatch.setattr(screen, "query_one", _query_one)
+
+    screen._position_dir_suggestions()
+
+    assert options.styles.offset == (3, 13)
+    assert options.styles.width == 110
+
+
 def test_new_agent_on_key_routes_tab_to_cycle_and_leaves_shift_tab_for_focus_nav(
     monkeypatch,
 ) -> None:
@@ -746,6 +775,7 @@ class _OptionListStub:
     def __init__(self, *, hidden: bool = True) -> None:
         self.classes: set[str] = {"hidden"} if hidden else set()
         self.highlighted: int | None = None
+        self.styles = SimpleNamespace(offset=None, width=None)
 
     def add_class(self, name: str) -> None:
         self.classes.add(name)
