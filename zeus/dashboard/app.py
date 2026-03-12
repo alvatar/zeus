@@ -651,6 +651,10 @@ class ZeusApp(App):
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
     _interact_drafts: dict[str, str] = {}
+    _interact_stream_last_target: str | None = None
+    _interact_stream_last_payload: str | None = None
+    _interact_input_changed_at: float = 0.0
+    _interact_stream_pause_after_input_s: float = 0.35
     _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
@@ -3831,6 +3835,43 @@ class ZeusApp(App):
         except LookupError:
             pass
 
+    def _invalidate_interact_stream_cache(self) -> None:
+        self._interact_stream_last_target = None
+        self._interact_stream_last_payload = None
+
+    def _interact_stream_needs_render(
+        self,
+        target_key: str,
+        payload: str,
+    ) -> bool:
+        if (
+            self._interact_stream_last_target == target_key
+            and self._interact_stream_last_payload == payload
+        ):
+            return False
+
+        self._interact_stream_last_target = target_key
+        self._interact_stream_last_payload = payload
+        return True
+
+    def _typing_in_interact_input_recently(self) -> bool:
+        if self._interact_input_changed_at <= 0:
+            return False
+
+        try:
+            focused = self.focused
+        except Exception:
+            return False
+
+        if not isinstance(focused, ZeusTextArea):
+            return False
+        if getattr(focused, "id", "") != "interact-input":
+            return False
+
+        return (
+            time.time() - self._interact_input_changed_at
+        ) < self._interact_stream_pause_after_input_s
+
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
         old_agent_key = self._interact_agent_key
@@ -3850,6 +3891,7 @@ class ZeusApp(App):
             if target_changed:
                 self._save_interact_draft()
                 self._reset_history_nav()
+                self._invalidate_interact_stream_cache()
             self._interact_agent_key = None
             self._interact_tmux_name = tmux.name
             self._update_interact_stream()
@@ -3860,6 +3902,7 @@ class ZeusApp(App):
         if not agent:
             self._set_interact_target_name("—")
             self._set_interact_editable(True)
+            self._invalidate_interact_stream_cache()
             return
         self._set_interact_target_name(agent.name)
         self._set_interact_editable(not self._is_blocked(agent))
@@ -3871,6 +3914,7 @@ class ZeusApp(App):
         if target_changed:
             self._save_interact_draft()
             self._reset_history_nav()
+            self._invalidate_interact_stream_cache()
         self._interact_agent_key = key
         self._interact_tmux_name = None
         self._update_interact_stream()
@@ -4434,6 +4478,7 @@ class ZeusApp(App):
         ta = event.text_area
         if ta.id != "interact-input":
             return
+        self._interact_input_changed_at = time.time()
         self._resize_interact_input(ta)
 
     def on_data_table_row_highlighted(
@@ -6591,6 +6636,7 @@ class ZeusApp(App):
             self._set_interact_target_name("—")
             self._set_interact_editable(True)
             self._reset_history_nav()
+            self._invalidate_interact_stream_cache()
             panel.remove_class("visible")
             self.query_one("#agent-table", DataTable).focus()
         else:
@@ -6653,6 +6699,8 @@ class ZeusApp(App):
         """Kick off background fetch for interact stream."""
         if not self._interact_visible:
             return
+        if self._typing_in_interact_input_recently():
+            return
         if self._interact_tmux_name:
             self._fetch_interact_tmux_stream(self._interact_tmux_name)
             return
@@ -6681,12 +6729,20 @@ class ZeusApp(App):
             return
         if requested_name != self._interact_tmux_name:
             return
+
+        target_key = f"tmux:{requested_name}"
         stream = self.query_one("#interact-stream", RichLog)
         content = trim_trailing_blank_lines(screen_text)
+
+        payload = content if content.strip() else ""
+        if not self._interact_stream_needs_render(target_key, payload):
+            return
+
         if not content.strip():
             stream.clear()
             stream.write(f"  [tmux:{requested_name}] (no output)")
             return
+
         raw = kitty_ansi_to_standard(content)
         stream.clear()
         stream.write(_linkify_rich_text(Text.from_ansi(raw)))
@@ -6715,8 +6771,14 @@ class ZeusApp(App):
         if requested_agent_key != self._interact_agent_key:
             return
 
+        target_key = f"agent:{requested_agent_key}"
         stream = self.query_one("#interact-stream", RichLog)
         content = trim_trailing_blank_lines(strip_pi_input_chrome(screen_text))
+
+        payload = content if content.strip() else ""
+        if not self._interact_stream_needs_render(target_key, payload):
+            return
+
         if not content.strip():
             stream.clear()
             stream.write(f"  [{name}] (no output)")
