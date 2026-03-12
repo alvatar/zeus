@@ -22,6 +22,23 @@ from .input_trace import (
     write_input_trace_record,
 )
 
+_KITTY_KEYBOARD_PROTOCOL_ENABLE = "\x1b[>1u"
+_KITTY_KEYBOARD_PROTOCOL_DISABLE = "\x1b[<u"
+_ENV_TRUE = {"1", "true", "yes", "on"}
+
+
+def kitty_keyboard_protocol_enabled() -> bool:
+    raw = (os.environ.get("ZEUS_DISABLE_KITTY_KEYBOARD_PROTOCOL") or "").strip().lower()
+    return raw not in _ENV_TRUE
+
+
+def _remap_keyboard_protocol_write(data: str) -> tuple[str, str | None]:
+    if kitty_keyboard_protocol_enabled():
+        return data, None
+    if data == _KITTY_KEYBOARD_PROTOCOL_ENABLE:
+        return _KITTY_KEYBOARD_PROTOCOL_DISABLE, "force_legacy"
+    return data, None
+
 
 def _message_trace_fields(message: Message) -> dict[str, object]:
     fields: dict[str, object] = {
@@ -58,7 +75,23 @@ def _message_trace_fields(message: Message) -> dict[str, object]:
     return fields
 
 
-class TracingLinuxDriver(LinuxDriver):
+class ZeusLinuxDriver(LinuxDriver):
+    """Linux driver with optional legacy keyboard-mode fallback for Zeus."""
+
+    def write(self, data: str) -> None:
+        mapped_data, reason = _remap_keyboard_protocol_write(data)
+        if reason is not None:
+            write_input_trace_record(
+                "driver.protocol_override",
+                driver_class=type(self).__name__,
+                reason=reason,
+                original=input_trace_repr(data),
+                mapped=input_trace_repr(mapped_data),
+            )
+        super().write(mapped_data)
+
+
+class TracingLinuxDriver(ZeusLinuxDriver):
     """Linux driver variant that traces raw terminal input below ``on_key``."""
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003

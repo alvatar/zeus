@@ -126,7 +126,7 @@ from ..snapshots import (
 from ..worktree import build_worktree_review
 
 from .css import APP_CSS
-from .input_driver import TracingLinuxDriver
+from .input_driver import TracingLinuxDriver, ZeusLinuxDriver, kitty_keyboard_protocol_enabled
 from .input_trace import (
     input_trace_enabled as _shared_input_trace_enabled,
     input_trace_path as _shared_input_trace_path,
@@ -797,8 +797,8 @@ class ZeusApp(App):
 
     def get_driver_class(self) -> type[Driver]:
         driver_class = super().get_driver_class()
-        if self._input_trace_enabled() and issubclass(driver_class, LinuxDriver):
-            return TracingLinuxDriver
+        if driver_class is LinuxDriver:
+            return TracingLinuxDriver if self._input_trace_enabled() else ZeusLinuxDriver
         return driver_class
 
     def on_mount(self) -> None:
@@ -827,6 +827,9 @@ class ZeusApp(App):
             "mount",
             poll_interval=SETTINGS.poll_interval,
             input_trace_path=self._input_trace_path(),
+            kitty_keyboard_protocol=(
+                "enabled" if kitty_keyboard_protocol_enabled() else "legacy"
+            ),
         )
         if self._input_trace_enabled():
             self.notify(
