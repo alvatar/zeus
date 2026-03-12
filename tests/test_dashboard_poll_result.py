@@ -68,6 +68,53 @@ def test_apply_poll_result_skips_pulse_when_render_short_circuits(monkeypatch) -
     assert calls == []
 
 
+def test_apply_poll_result_defers_passive_refresh_while_text_input_focused(monkeypatch) -> None:
+    app = ZeusApp()
+    result = _empty_result()
+    calls: list[str] = []
+
+    monkeypatch.setattr(app, "_commit_poll_state", lambda r: calls.append("commit"))
+    monkeypatch.setattr(app, "_any_agent_state_changed", lambda old: calls.append("changed") or True)
+    monkeypatch.setattr(app, "_update_action_needed", lambda old: calls.append("action-needed"))
+    monkeypatch.setattr(app, "_process_aegis_state_transitions", lambda old: calls.append("aegis"))
+    monkeypatch.setattr(app, "_collect_sparkline_samples", lambda: calls.append("sparkline"))
+    monkeypatch.setattr(app, "_refresh_interact_if_state_changed", lambda old: calls.append("refresh-interact"))
+    monkeypatch.setattr(app, "_update_usage_bars", lambda usage, openai: calls.append("usage"))
+    monkeypatch.setattr(app, "_play_state_transition_alarms", lambda old: calls.append("alarm"))
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: calls.append("render") or True)
+    monkeypatch.setattr(app, "_pulse_agent_table", lambda: calls.append("pulse"))
+    monkeypatch.setattr(app, "_should_defer_passive_ui_refresh", lambda: True)
+
+    app._apply_poll_result(result)
+
+    assert app._passive_ui_refresh_pending is True
+    assert calls == [
+        "commit",
+        "changed",
+        "action-needed",
+        "aegis",
+        "sparkline",
+        "usage",
+        "alarm",
+    ]
+
+
+def test_flush_deferred_passive_ui_refresh_renders_once(monkeypatch) -> None:
+    app = ZeusApp()
+    app._passive_ui_refresh_pending = True
+    app._interact_visible = True
+    calls: list[str] = []
+
+    monkeypatch.setattr(app, "_should_defer_passive_ui_refresh", lambda: False)
+    monkeypatch.setattr(app, "_render_agent_table_and_status", lambda: calls.append("render") or True)
+    monkeypatch.setattr(app, "_refresh_interact_panel", lambda: calls.append("interact"))
+
+    app._flush_deferred_passive_ui_refresh()
+
+    assert app._passive_ui_refresh_pending is False
+    assert calls == ["render", "interact"]
+
+
 def test_play_state_transition_alarms_only_for_working_to_non_working(monkeypatch) -> None:
     app = ZeusApp()
     agent = AgentWindow(

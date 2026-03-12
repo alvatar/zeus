@@ -656,6 +656,7 @@ class ZeusApp(App):
     _interact_stream_observed_target: str | None = None
     _interact_stream_observed_sig: str | None = None
     _interact_input_height: int = 3
+    _passive_ui_refresh_pending: bool = False
     _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
@@ -1228,10 +1229,16 @@ class ZeusApp(App):
         self._update_action_needed(old_states)
         self._process_aegis_state_transitions(old_states)
         self._collect_sparkline_samples()
+
+        if self._should_defer_passive_ui_refresh():
+            self._update_usage_bars(r.usage, r.openai)
+            self._play_state_transition_alarms(old_states)
+            self._passive_ui_refresh_pending = True
+            return
+
         self._refresh_interact_if_state_changed(old_states)
         self._update_usage_bars(r.usage, r.openai)
         self._play_state_transition_alarms(old_states)
-
         if not self._render_agent_table_and_status():
             return
 
@@ -4364,6 +4371,21 @@ class ZeusApp(App):
             return False
         return isinstance(focused, (Input, TextArea, ZeusTextArea))
 
+    def _should_defer_passive_ui_refresh(self) -> bool:
+        return self._is_text_input_focused()
+
+    def _flush_deferred_passive_ui_refresh(self) -> None:
+        if not self._passive_ui_refresh_pending:
+            return
+        if self._should_defer_passive_ui_refresh():
+            return
+
+        self._passive_ui_refresh_pending = False
+        if not self._render_agent_table_and_status():
+            return
+        if self._interact_visible:
+            self._refresh_interact_panel()
+
     def _has_modal_open(self) -> bool:
         return len(self.screen_stack) > 1
 
@@ -4451,6 +4473,12 @@ class ZeusApp(App):
             self.query_one("#agent-table", DataTable).focus()
         except LookupError:
             return
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        self._flush_deferred_passive_ui_refresh()
+
+    def on_descendant_blur(self, event: events.DescendantBlur) -> None:
+        self.set_timer(0, self._flush_deferred_passive_ui_refresh)
 
     def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
