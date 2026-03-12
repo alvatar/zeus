@@ -48,12 +48,13 @@ from ..dependencies import load_agent_dependencies, save_agent_dependencies
 from ..settings import SETTINGS
 from ..models import (
     AgentWindow, TmuxSession, State, UsageData, OpenAIUsageData,
+    ProcessMetrics,
 )
 from ..input_history import append_history, load_history, prune_histories
-from ..process import fmt_bytes, read_process_metrics
+from ..process import fmt_bytes, read_process_metrics_batch
 from ..kitty import (
     discover_agents, ensure_unique_agent_names,
-    get_screen_text, focus_window, close_window,
+    get_screen_text, get_screen_texts, focus_window, close_window,
     resolve_agent_session_path,
     resolve_agent_session_path_with_source,
     spawn_subagent, load_names, save_names, kitty_cmd,
@@ -778,9 +779,9 @@ class ZeusApp(App):
             widths = self._COL_WIDTHS_SPLIT if self._split_mode else self._COL_WIDTHS
             w = widths.get(col)
             if w is not None:
-                table.add_column(col, width=w)
+                table.add_column(col, key=col, width=w)
             else:
-                table.add_column(col)
+                table.add_column(col, key=col)
 
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
@@ -1130,12 +1131,11 @@ class ZeusApp(App):
         # Activity fallback: if content keeps changing without spinner,
         # treat as WORKING until output stabilizes.
         screen_activity_sig = dict(self._screen_activity_sig)
+        screen_texts = self._read_agent_screen_texts(agents, full=True)
 
         for a in agents:
             agent_key = self._agent_key(a)
-            # Use full extent so state detection isn't affected by manual
-            # scrolling/focus changes in the terminal viewport.
-            screen: str = self._read_agent_screen_text(a, full=True)
+            screen = screen_texts.get(agent_key, "")
             a._screen_text = screen
 
             coarse = detect_state(screen)
@@ -1157,16 +1157,29 @@ class ZeusApp(App):
                 screen
             )
             a.workspace = pid_ws.get(a.kitty_pid, "?")
-            metrics_root_pid = a.pid if a.pid > 0 else a.kitty_pid
-            a.proc_metrics = read_process_metrics(metrics_root_pid)
 
         # Read tmux pane metrics in the worker too
         match_tmux_to_agents(agents, visible_tmux_sessions)
         backfill_tmux_owner_options(agents)
+
+        metric_roots: list[int] = []
+        agent_metric_roots: dict[str, int] = {}
+        tmux_metric_roots: list[tuple[TmuxSession, int]] = []
         for a in agents:
+            metrics_root_pid = a.pid if a.pid > 0 else a.kitty_pid
+            agent_metric_roots[self._agent_key(a)] = metrics_root_pid
+            metric_roots.append(metrics_root_pid)
             for sess in a.tmux_sessions:
                 if sess.pane_pid:
-                    sess._proc_metrics = read_process_metrics(sess.pane_pid)
+                    tmux_metric_roots.append((sess, sess.pane_pid))
+                    metric_roots.append(sess.pane_pid)
+
+        metrics_by_pid = read_process_metrics_batch(metric_roots)
+        for a in agents:
+            metrics_root_pid = agent_metric_roots[self._agent_key(a)]
+            a.proc_metrics = metrics_by_pid.get(metrics_root_pid, ProcessMetrics())
+        for sess, pane_pid in tmux_metric_roots:
+            sess._proc_metrics = metrics_by_pid.get(pane_pid, ProcessMetrics())
 
         # Compute state tracking (uses mutable app state, but exclusive
         # guarantees only one worker touches these at a time)
@@ -2334,6 +2347,32 @@ class ZeusApp(App):
         if ansi:
             return get_screen_text(agent, full=full, ansi=True)
         return get_screen_text(agent, full=full)
+
+    def _read_agent_screen_texts(
+        self,
+        agents: list[AgentWindow],
+        *,
+        full: bool = False,
+        ansi: bool = False,
+    ) -> dict[str, str]:
+        screens: dict[str, str] = {}
+        kitty_agents: list[AgentWindow] = []
+        for agent in agents:
+            agent_key = self._agent_key(agent)
+            if self._is_stygian_agent(agent):
+                screens[agent_key] = capture_stygian_screen_text(
+                    agent.tmux_session,
+                    full=full,
+                    ansi=ansi,
+                )
+                continue
+            kitty_agents.append(agent)
+
+        kitty_screens = get_screen_texts(kitty_agents, full=full, ansi=ansi)
+        for agent in kitty_agents:
+            agent_key = self._agent_key(agent)
+            screens[agent_key] = kitty_screens.get(agent_key, "")
+        return screens
 
     # ── Actions ───────────────────────────────────────────────────────
 

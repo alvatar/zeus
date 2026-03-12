@@ -540,6 +540,68 @@ def test_discover_agents_unique_auto_names_across_sockets(monkeypatch) -> None:
     assert other[0].startswith("pi-")
 
 
+def test_discover_agents_auto_names_are_deterministic_for_unsorted_sockets(
+    monkeypatch,
+) -> None:
+    socket_a = "/tmp/kitty-1000"
+    socket_b = "/tmp/kitty-2000"
+
+    monkeypatch.setattr(kitty, "discover_sockets", lambda: [socket_b, socket_a])
+    monkeypatch.setattr(
+        kitty,
+        "kitty_cmd",
+        lambda _socket, *_args, **_kwargs: json.dumps(_make_kitty_windows(1)),
+    )
+    monkeypatch.setattr(kitty, "load_agent_ids", lambda: {})
+    monkeypatch.setattr(kitty, "save_agent_ids", lambda _ids: None)
+    monkeypatch.setattr(kitty, "load_names", lambda: {})
+    monkeypatch.setattr(kitty, "list_runtime_sessions", lambda: [])
+    monkeypatch.setattr(kitty, "read_adopted_agent_id", lambda _path: None)
+    monkeypatch.setattr(kitty, "write_session_adoption", lambda _path, _agent_id: True)
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _id: None)
+
+    agents = kitty.discover_agents()
+
+    assert {agent.socket: agent.name for agent in agents} == {
+        socket_a: "pi-1",
+        socket_b: "pi-2",
+    }
+
+
+def test_get_screen_texts_returns_results_keyed_by_window(monkeypatch) -> None:
+    agent_a = _make_agent("alpha", "id-a")
+    agent_b = _make_agent("beta", "id-b")
+    agent_a.socket = "/tmp/kitty-10"
+    agent_a.kitty_id = 10
+    agent_b.socket = "/tmp/kitty-20"
+    agent_b.kitty_id = 20
+
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def fake_kitty_cmd(socket: str, *args: str, **_kwargs) -> str:
+        calls.append((socket, args))
+        return f"screen:{socket}:{args[-1]}"
+
+    monkeypatch.setattr(kitty, "kitty_cmd", fake_kitty_cmd)
+
+    screens = kitty.get_screen_texts([agent_a, agent_b], full=True, ansi=True)
+
+    assert screens == {
+        "/tmp/kitty-10:10": "screen:/tmp/kitty-10:--ansi",
+        "/tmp/kitty-20:20": "screen:/tmp/kitty-20:--ansi",
+    }
+    assert calls == [
+        (
+            "/tmp/kitty-10",
+            ("get-text", "--match", "id:10", "--extent", "all", "--ansi"),
+        ),
+        (
+            "/tmp/kitty-20",
+            ("get-text", "--match", "id:20", "--extent", "all", "--ansi"),
+        ),
+    ]
+
+
 def test_discover_agents_override_frees_auto_name(monkeypatch) -> None:
     """If socket_a:1 is overridden to 'worker', socket_b:1 can use pi-1."""
     socket_a = "/tmp/kitty-1000"

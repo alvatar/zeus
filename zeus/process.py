@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 import os
 import socket
 import struct
 import subprocess
+import threading
 import time
 
 from .models import ProcessMetrics
@@ -21,6 +25,19 @@ _gpu_pmon_ts: float = 0.0
 
 # tcp_diag availability: None = untested, True/False = cached result
 _tcp_diag_available: bool | None = None
+
+_MAX_PROCESS_METRIC_WORKERS = 16
+_METRICS_STATE_LOCK = threading.Lock()
+
+
+@dataclass(slots=True)
+class _ProcessMetricSnapshot:
+    root_pid: int
+    root_starttime: int | None
+    ticks: float = 0.0
+    ram_mb: float = 0.0
+    pid_set: set[int] = field(default_factory=set)
+    net_totals: tuple[float, float] | None = None
 
 # ---------------------------------------------------------------------------
 # Netlink SOCK_DIAG constants
@@ -55,6 +72,10 @@ def fmt_bytes(bps: float) -> str:
 
 # Backward-compatible alias for older imports.
 _fmt_bytes = fmt_bytes
+
+
+def _process_metric_worker_count(item_count: int) -> int:
+    return max(1, min(_MAX_PROCESS_METRIC_WORKERS, item_count))
 
 
 def _read_proc_stat_fields(pid: int) -> tuple[int, int, int, int] | None:
@@ -175,8 +196,9 @@ def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
     """Read nvidia-smi pmon, return {pid: (sm%, mem_mb)}. Cached per second."""
     global _gpu_pmon_cache, _gpu_pmon_ts
     now: float = time.time()
-    if _gpu_pmon_cache is not None and now - _gpu_pmon_ts < 1.5:
-        return _gpu_pmon_cache
+    with _METRICS_STATE_LOCK:
+        if _gpu_pmon_cache is not None and now - _gpu_pmon_ts < 1.5:
+            return _gpu_pmon_cache
     result: dict[int, tuple[float, float]] = {}
     try:
         r = subprocess.run(
@@ -211,8 +233,9 @@ def _read_gpu_pmon() -> dict[int, tuple[float, float]]:
                         pass
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
-    _gpu_pmon_cache = result
-    _gpu_pmon_ts = now
+    with _METRICS_STATE_LOCK:
+        _gpu_pmon_cache = result
+        _gpu_pmon_ts = now
     return result
 
 
@@ -270,8 +293,9 @@ def _query_tcp_bytes() -> dict[int, tuple[int, int]]:
     Requires the ``tcp_diag`` kernel module.  Returns empty dict on failure.
     """
     global _tcp_diag_available
-    if _tcp_diag_available is False:
-        return {}
+    with _METRICS_STATE_LOCK:
+        if _tcp_diag_available is False:
+            return {}
 
     results: dict[int, tuple[int, int]] = {}
     try:
@@ -280,7 +304,8 @@ def _query_tcp_bytes() -> dict[int, tuple[int, int]]:
         sock.settimeout(1.0)
         sock.bind((0, 0))
     except OSError:
-        _tcp_diag_available = False
+        with _METRICS_STATE_LOCK:
+            _tcp_diag_available = False
         return {}
 
     try:
@@ -316,7 +341,8 @@ def _query_tcp_bytes() -> dict[int, tuple[int, int]]:
                         break
                     if nl_type == _NLMSG_ERROR:
                         # tcp_diag not available
-                        _tcp_diag_available = False
+                        with _METRICS_STATE_LOCK:
+                            _tcp_diag_available = False
                         sock.close()
                         return {}
                     if nl_len < 16:
@@ -346,9 +372,11 @@ def _query_tcp_bytes() -> dict[int, tuple[int, int]]:
                                 results[inode] = (br, ba)
                             attr_off += (al + 3) & ~3
                     off += (nl_len + 3) & ~3
-        _tcp_diag_available = True
+        with _METRICS_STATE_LOCK:
+            _tcp_diag_available = True
     except OSError:
-        _tcp_diag_available = False
+        with _METRICS_STATE_LOCK:
+            _tcp_diag_available = False
         results = {}
     finally:
         sock.close()
@@ -407,66 +435,131 @@ def _net_io_rchar_fallback(pids: list[int]) -> tuple[float, float]:
     return (net_rchar, net_wchar)
 
 
+def _collect_process_metric_snapshot(
+    item: tuple[int, dict[int, tuple[int, int]] | None],
+) -> _ProcessMetricSnapshot:
+    root_pid, tcp_map = item
+    pids = _get_process_tree(root_pid)
+    if not pids:
+        return _ProcessMetricSnapshot(root_pid=root_pid, root_starttime=None)
+
+    root_stat = _read_proc_stat_fields(root_pid)
+    if root_stat is None:
+        return _ProcessMetricSnapshot(root_pid=root_pid, root_starttime=None)
+
+    net_totals: tuple[float, float] | None = None
+    if tcp_map:
+        inodes = _get_socket_inodes(pids)
+        if not inodes:
+            net_totals = (0.0, 0.0)
+        else:
+            total_recv = 0.0
+            total_sent = 0.0
+            for inode in inodes:
+                entry = tcp_map.get(inode)
+                if entry is None:
+                    continue
+                total_recv += entry[0]
+                total_sent += entry[1]
+            net_totals = (total_recv, total_sent)
+
+    return _ProcessMetricSnapshot(
+        root_pid=root_pid,
+        root_starttime=root_stat[3],
+        ticks=_read_proc_cpu(pids),
+        ram_mb=_read_proc_ram(pids),
+        pid_set=set(pids),
+        net_totals=net_totals,
+    )
+
+
+def read_process_metrics_batch(root_pids: Iterable[int]) -> dict[int, ProcessMetrics]:
+    """Read process metrics for many roots with shared system snapshots."""
+    ordered_root_pids: list[int] = []
+    seen: set[int] = set()
+    for root_pid in root_pids:
+        if root_pid in seen:
+            continue
+        seen.add(root_pid)
+        ordered_root_pids.append(root_pid)
+
+    if not ordered_root_pids:
+        return {}
+
+    results: dict[int, ProcessMetrics] = {
+        root_pid: ProcessMetrics()
+        for root_pid in ordered_root_pids
+        if root_pid <= 0
+    }
+    valid_root_pids = [root_pid for root_pid in ordered_root_pids if root_pid > 0]
+    if not valid_root_pids:
+        return results
+
+    gpu_data = _read_gpu_pmon()
+    tcp_map = _query_tcp_bytes() or None
+    snapshot_inputs = [(root_pid, tcp_map) for root_pid in valid_root_pids]
+    if len(snapshot_inputs) <= 1:
+        snapshots = [_collect_process_metric_snapshot(snapshot_inputs[0])]
+    else:
+        with ThreadPoolExecutor(
+            max_workers=_process_metric_worker_count(len(snapshot_inputs)),
+            thread_name_prefix="zeus-proc-metrics",
+        ) as executor:
+            snapshots = list(executor.map(_collect_process_metric_snapshot, snapshot_inputs))
+
+    now = time.time()
+    with _METRICS_STATE_LOCK:
+        for snapshot in snapshots:
+            root_pid = snapshot.root_pid
+            root_starttime = snapshot.root_starttime
+            if root_starttime is None:
+                _prev_proc_cpu.pop(root_pid, None)
+                _prev_proc_io.pop(root_pid, None)
+                results[root_pid] = ProcessMetrics()
+                continue
+
+            cpu_pct = 0.0
+            prev_cpu = _prev_proc_cpu.get(root_pid)
+            if prev_cpu is not None and prev_cpu[2] == root_starttime:
+                dt = now - prev_cpu[1]
+                if dt > 0:
+                    cpu_pct = max(
+                        0.0,
+                        ((snapshot.ticks - prev_cpu[0]) / _CLK_TCK / dt) * 100,
+                    )
+            _prev_proc_cpu[root_pid] = (snapshot.ticks, now, root_starttime)
+
+            gpu_pct = 0.0
+            gpu_mem = 0.0
+            for pid, (sm, mem) in gpu_data.items():
+                if pid in snapshot.pid_set:
+                    gpu_pct += sm
+                    gpu_mem += mem
+
+            io_read = 0.0
+            io_write = 0.0
+            if snapshot.net_totals is not None:
+                net_recv, net_sent = snapshot.net_totals
+                prev_io = _prev_proc_io.get(root_pid)
+                if prev_io is not None and prev_io[3] == root_starttime:
+                    dt = now - prev_io[2]
+                    if dt > 0:
+                        io_read = max(0.0, (net_recv - prev_io[0]) / dt)
+                        io_write = max(0.0, (net_sent - prev_io[1]) / dt)
+                _prev_proc_io[root_pid] = (net_recv, net_sent, now, root_starttime)
+
+            results[root_pid] = ProcessMetrics(
+                cpu_pct=cpu_pct,
+                ram_mb=snapshot.ram_mb,
+                gpu_pct=gpu_pct,
+                gpu_mem_mb=gpu_mem,
+                io_read_bps=io_read,
+                io_write_bps=io_write,
+            )
+
+    return results
+
+
 def read_process_metrics(kitty_pid: int) -> ProcessMetrics:
     """Read CPU%, RAM, GPU% for an agent's process tree."""
-    global _prev_proc_cpu, _prev_proc_io
-
-    pids: list[int] = _get_process_tree(kitty_pid)
-    if not pids:
-        _prev_proc_cpu.pop(kitty_pid, None)
-        _prev_proc_io.pop(kitty_pid, None)
-        return ProcessMetrics()
-
-    root_stat = _read_proc_stat_fields(kitty_pid)
-    if root_stat is None:
-        _prev_proc_cpu.pop(kitty_pid, None)
-        _prev_proc_io.pop(kitty_pid, None)
-        return ProcessMetrics()
-    root_starttime = root_stat[3]
-
-    now: float = time.time()
-
-    # CPU: delta-based and reset-safe across PID reuse / exec churn.
-    ticks: float = _read_proc_cpu(pids)
-    cpu_pct: float = 0.0
-    prev = _prev_proc_cpu.get(kitty_pid)
-    if prev is not None and prev[2] == root_starttime:
-        dt: float = now - prev[1]
-        if dt > 0:
-            cpu_pct = max(0.0, ((ticks - prev[0]) / _CLK_TCK / dt) * 100)
-    _prev_proc_cpu[kitty_pid] = (ticks, now, root_starttime)
-
-    # RAM
-    ram_mb: float = _read_proc_ram(pids)
-
-    # GPU: match any PID in tree
-    gpu_data: dict[int, tuple[float, float]] = _read_gpu_pmon()
-    gpu_pct: float = 0.0
-    gpu_mem: float = 0.0
-    pid_set: set[int] = set(pids)
-    for pid, (sm, mem) in gpu_data.items():
-        if pid in pid_set:
-            gpu_pct += sm
-            gpu_mem += mem
-
-    # Network I/O: delta-based via tcp_diag (accurate per-socket counters).
-    # If tcp_diag is unavailable, leave at 0 — the rchar heuristic is too
-    # inaccurate for processes doing heavy disk/pipe work.
-    io_read: float = 0.0
-    io_write: float = 0.0
-    diag: tuple[float, float] | None = _net_io_tcp_diag(pids)
-    if diag is not None:
-        net_recv, net_sent = diag
-        prev_io = _prev_proc_io.get(kitty_pid)
-        if prev_io is not None and prev_io[3] == root_starttime:
-            dt = now - prev_io[2]
-            if dt > 0:
-                io_read = max(0.0, (net_recv - prev_io[0]) / dt)
-                io_write = max(0.0, (net_sent - prev_io[1]) / dt)
-        _prev_proc_io[kitty_pid] = (net_recv, net_sent, now, root_starttime)
-
-    return ProcessMetrics(
-        cpu_pct=cpu_pct, ram_mb=ram_mb,
-        gpu_pct=gpu_pct, gpu_mem_mb=gpu_mem,
-        io_read_bps=io_read, io_write_bps=io_write,
-    )
+    return read_process_metrics_batch([kitty_pid]).get(kitty_pid, ProcessMetrics())

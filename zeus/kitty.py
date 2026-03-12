@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -88,7 +89,44 @@ def discover_sockets() -> list[str]:
     return glob("/tmp/kitty-*")
 
 
+_MAX_KITTY_REMOTE_WORKERS = 16
 _PI_WORD_RE = re.compile(r"(?:^|\s)pi(?:\s|$)")
+
+
+def _kitty_remote_worker_count(item_count: int) -> int:
+    return max(1, min(_MAX_KITTY_REMOTE_WORKERS, item_count))
+
+
+def _socket_kitty_pid(socket: str) -> int:
+    try:
+        return int(socket.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def _load_socket_windows(socket: str) -> tuple[str, int, list[dict[str, Any]]]:
+    kitty_pid = _socket_kitty_pid(socket)
+    raw = kitty_cmd(socket, "ls")
+    if not raw:
+        return socket, kitty_pid, []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return socket, kitty_pid, []
+    if not isinstance(parsed, list):
+        return socket, kitty_pid, []
+    return socket, kitty_pid, [item for item in parsed if isinstance(item, dict)]
+
+
+def _list_socket_windows(sockets: list[str]) -> list[tuple[str, int, list[dict[str, Any]]]]:
+    ordered_sockets = sorted(sockets)
+    if len(ordered_sockets) <= 1:
+        return [_load_socket_windows(socket) for socket in ordered_sockets]
+    with ThreadPoolExecutor(
+        max_workers=_kitty_remote_worker_count(len(ordered_sockets)),
+        thread_name_prefix="zeus-kitty-ls",
+    ) as executor:
+        return list(executor.map(_load_socket_windows, ordered_sockets))
 
 
 def _iter_cmdline_tokens(cmdline: list[object]) -> list[str]:
@@ -168,18 +206,7 @@ def discover_agents() -> list[AgentWindow]:
     for override_name in overrides.values():
         committed_names.add(override_name.strip().casefold())
 
-    for socket in discover_sockets():
-        try:
-            kitty_pid = int(socket.rsplit("-", 1)[1])
-        except (IndexError, ValueError):
-            kitty_pid = 0
-        raw: str | None = kitty_cmd(socket, "ls")
-        if not raw:
-            continue
-        try:
-            os_windows: list[dict] = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
+    for socket, kitty_pid, os_windows in _list_socket_windows(discover_sockets()):
         for os_win in os_windows:
             for tab in os_win.get("tabs", []):
                 for win in tab.get("windows", []):
@@ -384,15 +411,61 @@ def ensure_unique_agent_names(agents: list[AgentWindow]) -> None:
             all_used.add(agent.name.strip().casefold())
 
 
-def get_screen_text(
-    agent: AgentWindow, full: bool = False, ansi: bool = False,
-) -> str:
+def _screen_text_args(
+    agent: AgentWindow,
+    *,
+    full: bool = False,
+    ansi: bool = False,
+) -> list[str]:
     args = ["get-text", "--match", f"id:{agent.kitty_id}"]
     if full:
         args.extend(["--extent", "all"])
     if ansi:
         args.append("--ansi")
-    text: str | None = kitty_cmd(agent.socket, *args)
+    return args
+
+
+def _fetch_agent_screen_text(
+    item: tuple[str, str, list[str]],
+) -> tuple[str, str]:
+    key, socket, args = item
+    text = kitty_cmd(socket, *args)
+    return key, (text or "")
+
+
+def get_screen_texts(
+    agents: list[AgentWindow],
+    *,
+    full: bool = False,
+    ansi: bool = False,
+) -> dict[str, str]:
+    tasks = [
+        (
+            f"{agent.socket}:{agent.kitty_id}",
+            agent.socket,
+            _screen_text_args(agent, full=full, ansi=ansi),
+        )
+        for agent in agents
+    ]
+    if not tasks:
+        return {}
+    if len(tasks) == 1:
+        key, socket, args = tasks[0]
+        return {key: (kitty_cmd(socket, *args) or "")}
+    with ThreadPoolExecutor(
+        max_workers=_kitty_remote_worker_count(len(tasks)),
+        thread_name_prefix="zeus-kitty-text",
+    ) as executor:
+        return dict(executor.map(_fetch_agent_screen_text, tasks))
+
+
+def get_screen_text(
+    agent: AgentWindow, full: bool = False, ansi: bool = False,
+) -> str:
+    text: str | None = kitty_cmd(
+        agent.socket,
+        *_screen_text_args(agent, full=full, ansi=ansi),
+    )
     return text or ""
 
 

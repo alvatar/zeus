@@ -90,3 +90,35 @@ def test_read_process_metrics_clears_cache_when_root_is_missing(monkeypatch) -> 
     assert metrics == ProcessMetrics()
     assert process._prev_proc_cpu == {}
     assert process._prev_proc_io == {}
+
+
+def test_read_process_metrics_batch_shares_expensive_snapshots(monkeypatch) -> None:
+    calls = {"gpu": 0, "tcp": 0}
+
+    monkeypatch.setattr(process, "_prev_proc_cpu", {})
+    monkeypatch.setattr(process, "_prev_proc_io", {})
+    monkeypatch.setattr(process, "_get_process_tree", lambda pid: [pid, pid + 1000])
+    monkeypatch.setattr(process, "_read_proc_stat_fields", lambda pid: (1, 0, 0, pid + 10))
+    monkeypatch.setattr(process, "_read_proc_cpu", lambda pids: float(sum(pids)))
+    monkeypatch.setattr(process, "_read_proc_ram", lambda pids: float(len(pids) * 128))
+    monkeypatch.setattr(
+        process,
+        "_read_gpu_pmon",
+        lambda: calls.__setitem__("gpu", calls["gpu"] + 1) or {1001: (25.0, 256.0)},
+    )
+    monkeypatch.setattr(
+        process,
+        "_query_tcp_bytes",
+        lambda: calls.__setitem__("tcp", calls["tcp"] + 1) or {5001: (1000, 2000)},
+    )
+    monkeypatch.setattr(process, "_get_socket_inodes", lambda pids: {5000 + pids[0]})
+    monkeypatch.setattr(process.time, "time", lambda: 10.0)
+
+    metrics = process.read_process_metrics_batch([1, 2])
+
+    assert calls == {"gpu": 1, "tcp": 1}
+    assert metrics[1].ram_mb == 256.0
+    assert metrics[1].gpu_pct == 25.0
+    assert metrics[1].gpu_mem_mb == 256.0
+    assert metrics[2].ram_mb == 256.0
+    assert metrics[2].gpu_pct == 0.0
