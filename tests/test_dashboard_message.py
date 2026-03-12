@@ -1743,6 +1743,7 @@ def test_message_screen_loads_four_presets_on_init() -> None:
 def test_message_screen_compose_includes_preset_buttons() -> None:
     source = inspect.getsource(AgentMessageScreen.compose)
     assert "agent-message-preset-" in source
+    assert "agent-message-review-preset-5" in source
     assert 'variant="warning"' in source
 
 
@@ -1752,6 +1753,7 @@ def test_message_screen_preset_bindings() -> None:
     assert bindings["alt+2"].action == "preset_2"
     assert bindings["alt+3"].action == "preset_3"
     assert bindings["alt+4"].action == "preset_4"
+    assert bindings["alt+5"].action == "preset_5"
 
 
 def test_message_screen_preset_actions_exist() -> None:
@@ -1759,6 +1761,7 @@ def test_message_screen_preset_actions_exist() -> None:
     assert callable(getattr(AgentMessageScreen, "action_preset_2", None))
     assert callable(getattr(AgentMessageScreen, "action_preset_3", None))
     assert callable(getattr(AgentMessageScreen, "action_preset_4", None))
+    assert callable(getattr(AgentMessageScreen, "action_preset_5", None))
 
 
 def test_message_screen_apply_preset_replaces_text() -> None:
@@ -1787,3 +1790,17 @@ def test_message_screen_apply_preset_ignores_out_of_range() -> None:
 
     screen._apply_preset(-1)
     ta.clear.assert_not_called()
+
+
+def test_message_screen_apply_review_preset_replaces_text() -> None:
+    from unittest.mock import MagicMock
+
+    screen = AgentMessageScreen(_agent("alpha", 1))
+    ta = MagicMock()
+    screen.query_one = lambda selector, cls=None: ta  # type: ignore[assignment]
+
+    screen._apply_review_preset()
+
+    ta.clear.assert_called_once()
+    ta.insert.assert_called_once_with(screen.REVIEW_PRESET_TEXT)
+    ta.focus.assert_called_once()

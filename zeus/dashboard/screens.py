@@ -748,9 +748,23 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         Binding("alt+2", "preset_2", "Preset 2", show=False),
         Binding("alt+3", "preset_3", "Preset 3", show=False),
         Binding("alt+4", "preset_4", "Preset 4", show=False),
+        Binding("alt+5", "preset_5", "Preset 5", show=False),
     ]
 
     MESSAGE_PRESETS: list[tuple[str, str]] = []  # loaded at __init__ time
+    REVIEW_PRESET_TEXT = (
+        "Review the changes in this branch vs main. Compare the intended changes "
+        "with the actual implementation.\n"
+        "Identify:\n\n"
+        "- Are nasty hacks introduced?\n"
+        "- Is the architecture sound and elegant? Did the changes introduce "
+        "changes in the architecture that are incorrect or unjustified?\n"
+        "- Is separation of concerns properly maintained?\n"
+        "- Does the code respect DRY?\n"
+        "- Is the new code introducing new performance bottlenecks?\n"
+        "- Is the code elegant?\n"
+        "- Is this the best way to implement it?"
+    )
 
     def __init__(
         self,
@@ -769,14 +783,20 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
         if self.compact_for_expanded_output:
             self.add_class("from-expanded-output")
 
-    def _apply_preset(self, index: int) -> None:
-        if index < 0 or index >= len(self.MESSAGE_PRESETS):
-            return
-        _title, text = self.MESSAGE_PRESETS[index]
+    def _set_message_text(self, text: str) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)
         ta.clear()
         ta.insert(text)
         ta.focus()
+
+    def _apply_preset(self, index: int) -> None:
+        if index < 0 or index >= len(self.MESSAGE_PRESETS):
+            return
+        _title, text = self.MESSAGE_PRESETS[index]
+        self._set_message_text(text)
+
+    def _apply_review_preset(self) -> None:
+        self._set_message_text(self.REVIEW_PRESET_TEXT)
 
     def compose(self) -> ComposeResult:
         dialog_classes = "from-expanded-output" if self.compact_for_expanded_output else ""
@@ -808,6 +828,11 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
                             variant="warning",
                             id=f"agent-message-preset-{idx}",
                         )
+                    yield Button(
+                        "Review (5)",
+                        variant="warning",
+                        id="agent-message-review-preset-5",
+                    )
 
     def on_mount(self) -> None:
         ta = self.query_one("#agent-message-input", ZeusTextArea)
@@ -819,6 +844,8 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
             self.action_add_task()
         elif event.button.id == "agent-message-add-task-first-btn":
             self.action_add_task_first()
+        elif event.button.id == "agent-message-review-preset-5":
+            self._apply_review_preset()
         elif (event.button.id or "").startswith("agent-message-preset-"):
             try:
                 idx = int(event.button.id.rsplit("-", 1)[-1])
@@ -838,6 +865,9 @@ class AgentMessageScreen(_ZeusScreenMixin, ModalScreen):
 
     def action_preset_4(self) -> None:
         self._apply_preset(3)
+
+    def action_preset_5(self) -> None:
+        self._apply_review_preset()
 
     def action_send(self) -> None:
         text = self.query_one("#agent-message-input", ZeusTextArea).text
@@ -2523,7 +2553,7 @@ _HELP_BINDINGS: list[tuple[str, str]] = [
     ("Ctrl+s (tasks)", "Save tasks"),
     ("Ctrl+s (message)", "Send in Message / Preset dialog"),
     ("Ctrl+w (message)", "Queue in Message / Preset dialog"),
-    ("Alt+1–4 (message)", "Apply quick preset"),
+    ("Alt+1–5 (message)", "Apply quick preset"),
     ("y / n / Enter (kill)", "Confirm or cancel kill"),
     ("", "─── Panels & Settings ───"),
     ("1", "Toggle interact input area"),

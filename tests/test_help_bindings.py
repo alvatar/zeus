@@ -156,7 +156,7 @@ def test_help_lists_dialog_bindings() -> None:
     assert "Ctrl+s (tasks)" in entries
     assert "Ctrl+s (message)" in entries
     assert "Ctrl+w (message)" in entries
-    assert "Alt+1–4 (message)" in entries
+    assert "Alt+1–5 (message)" in entries
     assert "y / n / Enter (kill)" in entries
 
 
