@@ -7,6 +7,7 @@ import json
 from types import SimpleNamespace
 
 from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.widgets_text import ZeusTextArea
 
 
 class _DummyInteractInput:
@@ -119,5 +120,53 @@ def test_input_trace_logs_row_selection_events(monkeypatch, tmp_path) -> None:
         record["kind"] == "row_highlighted"
         and record["row_key"] == "row-7"
         and record["cursor_row"] == 7
+        for record in records
+    )
+
+
+def test_input_trace_logs_modal_text_area_changes(monkeypatch, tmp_path) -> None:
+    app = ZeusApp()
+    trace_path = tmp_path / "input-trace.jsonl"
+    input_widget = _DummyInteractInput("draft body")
+    input_widget.id = "agent-message-input"
+
+    monkeypatch.setenv("ZEUS_INPUT_TRACE", "1")
+    monkeypatch.setenv("ZEUS_INPUT_TRACE_FILE", str(trace_path))
+
+    app.on_text_area_changed(SimpleNamespace(text_area=input_widget))
+
+    records = _read_trace(trace_path)
+    assert any(
+        record["kind"] == "text_area_changed"
+        and record["text_area_id"] == "agent-message-input"
+        and record["text_preview"] == "draft body"
+        for record in records
+    )
+
+
+def test_input_trace_logs_zeus_text_area_key_events(monkeypatch, tmp_path) -> None:
+    app = ZeusApp()
+    trace_path = tmp_path / "input-trace.jsonl"
+
+    class _TraceTextArea(ZeusTextArea):
+        def __init__(self, trace_app: ZeusApp) -> None:
+            super().__init__("", id="agent-message-input")
+            self._trace_app = trace_app
+
+        @property
+        def app(self):  # noqa: ANN201
+            return self._trace_app
+
+    monkeypatch.setenv("ZEUS_INPUT_TRACE", "1")
+    monkeypatch.setenv("ZEUS_INPUT_TRACE_FILE", str(trace_path))
+
+    ta = _TraceTextArea(app)
+    ta.on_key(_DummyKeyEvent("x", character="x", printable=True))
+
+    records = _read_trace(trace_path)
+    assert any(
+        record["kind"] == "textarea.key"
+        and record["widget_id"] == "agent-message-input"
+        and record["key"] == "x"
         for record in records
     )

@@ -4810,15 +4810,17 @@ class ZeusApp(App):
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Resize interact input to fit content (1 line min, 8 max)."""
         ta = event.text_area
+        text = getattr(ta, "text", "") or ""
+        self._input_trace(
+            "text_area_changed",
+            text_area_id=getattr(ta, "id", None),
+            text_len=len(text),
+            text_preview=self._input_trace_preview(text),
+        )
         if ta.id != "interact-input":
             return
         self._resize_interact_input(ta)
         self._save_interact_draft()
-        self._input_trace(
-            "text_area_changed",
-            text_len=len(getattr(ta, "text", "") or ""),
-            text_preview=self._input_trace_preview(getattr(ta, "text", "") or ""),
-        )
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
