@@ -649,9 +649,12 @@ class ZeusApp(App):
     _split_mode: bool = True
     _interact_visible: bool = True
     _highlight_timer: Timer | None = None
+    _selected_row_key: str | None = None
     _interact_agent_key: str | None = None
     _interact_tmux_name: str | None = None
     _interact_drafts: dict[str, str] = {}
+    _interact_input_target_key: str | None = None
+    _interact_input_programmatic_update: bool = False
     _interact_stream_last_target: str | None = None
     _interact_stream_last_sig: str | None = None
     _interact_stream_observed_target: str | None = None
@@ -1549,6 +1552,7 @@ class ZeusApp(App):
         table.clear()
 
         if not self.agents:
+            self._selected_row_key = None
             status = self.query_one("#status-line", Static)
             status.update(
                 "  No tracked Hippeis — press [bold]z[/] to invoke one, "
@@ -1929,10 +1933,15 @@ class ZeusApp(App):
             if self._agent_key(a) not in rendered_agents:
                 _render_agent_branch(a)
 
-        # Restore selected row
-        if _saved_key:
-            for idx, row_key in enumerate(table.rows):
-                if row_key.value == _saved_key:
+        # Restore selected row from app-owned state.
+        row_keys = self._table_row_key_values(table)
+        target_key = _saved_key if _saved_key in row_keys else None
+        if target_key is None and row_keys:
+            target_key = row_keys[0]
+        self._selected_row_key = target_key
+        if target_key is not None and hasattr(table, "move_cursor"):
+            for idx, row_key in enumerate(row_keys):
+                if row_key == target_key:
                     table.move_cursor(row=idx)
                     break
 
@@ -2257,24 +2266,62 @@ class ZeusApp(App):
         self._mark_celebration_cooldown()
         return True
 
+    @staticmethod
+    def _row_key_value(row_key: object) -> str:
+        return str(getattr(row_key, "value", row_key))
+
+    def _table_row_key_values(self, table: DataTable) -> list[str]:
+        rows = getattr(table, "rows", None)
+        if rows is None:
+            return []
+        if isinstance(rows, dict):
+            return [self._row_key_value(row_key) for row_key in rows]
+        return [self._row_key_value(row_key) for row_key in rows]
+
+    def _select_row_key(
+        self,
+        row_key: str | None,
+        *,
+        refresh_interact: bool = False,
+    ) -> bool:
+        self._selected_row_key = row_key
+        if not row_key:
+            return False
+        try:
+            table = self.query_one("#agent-table", DataTable)
+        except LookupError:
+            if refresh_interact and self._interact_visible:
+                self._refresh_interact_panel()
+            return False
+
+        row_keys = self._table_row_key_values(table)
+        for idx, candidate in enumerate(row_keys):
+            if candidate != row_key:
+                continue
+            table.move_cursor(row=idx)
+            if refresh_interact and self._interact_visible:
+                self._refresh_interact_panel()
+            return True
+        return False
+
     def action_select_minimap(self, index: int) -> None:
         """Select an agent by mini-map click index."""
         if index < 0 or index >= len(self._minimap_agents):
             return
         name = self._minimap_agents[index]
         table = self.query_one("#agent-table", DataTable)
-        for idx, row_key in enumerate(table.rows):
-            agent = self._get_agent_by_key(row_key.value)
+        for row_key in self._table_row_key_values(table):
+            agent = self._get_agent_by_key(row_key)
             if agent and agent.name == name:
-                table.move_cursor(row=idx)
+                self._select_row_key(row_key, refresh_interact=True)
                 table.focus()
-                if self._interact_visible:
-                    self._refresh_interact_panel()
                 break
 
     # ── Selection helpers ─────────────────────────────────────────────
 
     def _get_selected_row_key(self) -> str | None:
+        if self._selected_row_key is not None:
+            return self._selected_row_key
         table = self.query_one("#agent-table", DataTable)
         if table.row_count == 0:
             return None
@@ -2282,7 +2329,9 @@ class ZeusApp(App):
             row_key, _ = table.coordinate_to_cell_key(
                 table.cursor_coordinate
             )
-            return row_key.value
+            resolved = self._row_key_value(row_key)
+            self._selected_row_key = resolved
+            return resolved
         except (KeyError, IndexError, LookupError):
             return None
 
@@ -3812,17 +3861,24 @@ class ZeusApp(App):
             return f"tmux:{self._interact_tmux_name}"
         return None
 
-    def _save_interact_draft(self) -> None:
-        """Stash current input text for the current target."""
-        key = self._interact_draft_key()
+    def _set_interact_draft(self, key: str | None, text: str) -> None:
         if key is None:
             return
-        ta = self.query_one("#interact-input", ZeusTextArea)
-        text = ta.text
         if text.strip():
             self._interact_drafts[key] = text
         else:
             self._interact_drafts.pop(key, None)
+
+    def _save_interact_draft(self) -> None:
+        """Persist the active widget text into app-owned draft state."""
+        if self._interact_input_programmatic_update:
+            return
+        key = self._interact_draft_key()
+        if key is None:
+            return
+        ta = self.query_one("#interact-input", ZeusTextArea)
+        self._set_interact_draft(key, ta.text)
+        self._interact_input_target_key = key
 
     @staticmethod
     def _visual_line_count(ta: TextArea) -> int:
@@ -3872,13 +3928,11 @@ class ZeusApp(App):
         self._set_interact_input_height(ta, max(1, min(8, lines)) + 2)
 
     def _restore_interact_draft(self) -> None:
-        """Restore stashed input text for the current target."""
-        key = self._interact_draft_key()
-        ta = self.query_one("#interact-input", ZeusTextArea)
-        draft = self._interact_drafts.get(key or "", "")
-        ta.load_text(draft)
-        ta.move_cursor(ta.document.end)
-        self._resize_interact_input(ta)
+        """Restore app-owned draft text for the current target into the widget."""
+        self._set_interact_input_text(
+            self._interact_drafts.get(self._interact_draft_key() or "", ""),
+            cursor_end=True,
+        )
 
     def _set_interact_target_name(self, name: str) -> None:
         try:
@@ -3937,52 +3991,45 @@ class ZeusApp(App):
 
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
-        old_agent_key = self._interact_agent_key
-        old_tmux_name = self._interact_tmux_name
+        previous_target_key = self._interact_draft_key()
 
         tmux = self._get_selected_tmux()
-        if tmux:
-            self._set_interact_target_name(tmux.name)
+        selected_agent = self._get_selected_agent() if tmux is None else None
+
+        next_agent_key: str | None = None
+        next_tmux_name: str | None = None
+        target_name = "—"
+        editable = True
+
+        if tmux is not None:
+            next_tmux_name = tmux.name
+            target_name = tmux.name
             parent = self._find_agent_for_tmux(tmux)
-            self._set_interact_editable(
-                not (parent is not None and self._is_blocked(parent))
-            )
-            target_changed = (
-                old_agent_key is not None
-                or old_tmux_name != tmux.name
-            )
-            if target_changed:
-                self._save_interact_draft()
-                self._reset_history_nav()
-                self._invalidate_interact_stream_cache()
-            self._interact_agent_key = None
-            self._interact_tmux_name = tmux.name
-            self._update_interact_stream()
-            if target_changed:
-                self._restore_interact_draft()
-            return
-        agent = self._get_selected_agent()
-        if not agent:
-            self._set_interact_target_name("—")
-            self._set_interact_editable(True)
-            self._invalidate_interact_stream_cache()
-            return
-        self._set_interact_target_name(agent.name)
-        self._set_interact_editable(not self._is_blocked(agent))
-        key = self._agent_key(agent)
-        target_changed = (
-            old_agent_key != key
-            or old_tmux_name is not None
-        )
+            editable = not (parent is not None and self._is_blocked(parent))
+        elif selected_agent is not None:
+            next_agent_key = self._agent_key(selected_agent)
+            target_name = selected_agent.name
+            editable = not self._is_blocked(selected_agent)
+
+        self._interact_agent_key = next_agent_key
+        self._interact_tmux_name = next_tmux_name
+        self._set_interact_target_name(target_name)
+        self._set_interact_editable(editable)
+
+        current_target_key = self._interact_draft_key()
+        target_changed = previous_target_key != current_target_key
         if target_changed:
-            self._save_interact_draft()
             self._reset_history_nav()
             self._invalidate_interact_stream_cache()
-        self._interact_agent_key = key
-        self._interact_tmux_name = None
-        self._update_interact_stream()
-        if target_changed:
+
+        if target_changed or self._interact_input_target_key != current_target_key:
             self._restore_interact_draft()
+
+        if current_target_key is None:
+            self._invalidate_interact_stream_cache()
+            return
+
+        self._update_interact_stream()
 
     def _get_tmux_client_pid(self, sess_name: str) -> int | None:
         """Return PID of first attached tmux client for a session."""
@@ -4063,13 +4110,29 @@ class ZeusApp(App):
 
     def _set_interact_input_text(self, text: str, *, cursor_end: bool = False) -> None:
         ta = self.query_one("#interact-input", ZeusTextArea)
-        if text:
-            ta.load_text(text)
-        else:
-            ta.clear()
-        if cursor_end:
-            ta.move_cursor(ta.document.end)
-        self._resize_interact_input(ta)
+        target_key = self._interact_draft_key()
+        self._interact_input_programmatic_update = True
+        try:
+            if text:
+                if hasattr(ta, "load_text"):
+                    ta.load_text(text)
+                else:
+                    ta.text = text
+            else:
+                if hasattr(ta, "clear"):
+                    ta.clear()
+                elif hasattr(ta, "load_text"):
+                    ta.load_text("")
+                else:
+                    ta.text = ""
+            if cursor_end and hasattr(ta, "move_cursor") and hasattr(ta, "document"):
+                ta.move_cursor(ta.document.end)
+            if hasattr(ta, "size"):
+                self._resize_interact_input(ta)
+        finally:
+            self._interact_input_programmatic_update = False
+        self._interact_input_target_key = target_key
+        self._set_interact_draft(target_key, getattr(ta, "text", text))
 
     def _handle_interact_history_nav(self, key: str) -> bool:
         """Handle Up/Down history traversal for interact input.
@@ -4563,10 +4626,12 @@ class ZeusApp(App):
         if ta.id != "interact-input":
             return
         self._resize_interact_input(ta)
+        self._save_interact_draft()
 
     def on_data_table_row_highlighted(
         self, event: DataTable.RowHighlighted
     ) -> None:
+        self._selected_row_key = self._row_key_value(event.row_key)
         # Cancel previous timer
         if self._highlight_timer is not None:
             self._highlight_timer.stop()
@@ -4584,6 +4649,7 @@ class ZeusApp(App):
     def on_data_table_row_selected(
         self, event: DataTable.RowSelected
     ) -> None:
+        self._selected_row_key = self._row_key_value(event.row_key)
         # Click/Enter: immediate refresh + focus input
         if self._interact_visible:
             self._refresh_interact_panel()
@@ -6770,6 +6836,7 @@ class ZeusApp(App):
             self._interact_visible = False
             self._interact_agent_key = None
             self._interact_tmux_name = None
+            self._interact_input_target_key = None
             self._set_interact_target_name("—")
             self._set_interact_editable(True)
             self._reset_history_nav()
@@ -7068,7 +7135,7 @@ class ZeusApp(App):
 
         if self._interact_tmux_name:
             self._dispatch_tmux_text(self._interact_tmux_name, text, queue=False)
-            ta.clear()
+            self._set_interact_input_text("")
             self._set_interact_input_height(ta, 3)
             self._reset_history_nav()
             return
@@ -7089,7 +7156,7 @@ class ZeusApp(App):
             return
 
         self._drain_message_queue()
-        ta.clear()
+        self._set_interact_input_text("")
         self._set_interact_input_height(ta, 3)
         self._reset_history_nav()
 
@@ -7124,7 +7191,7 @@ class ZeusApp(App):
                     timeout=3,
                 )
                 return
-            ta.clear()
+            self._set_interact_input_text("")
             self._set_interact_input_height(ta, 3)
             self._reset_history_nav()
             return
@@ -7145,7 +7212,7 @@ class ZeusApp(App):
             return
 
         self._drain_message_queue()
-        ta.clear()
+        self._set_interact_input_text("")
         self._set_interact_input_height(ta, 3)
         self._reset_history_nav()
 
