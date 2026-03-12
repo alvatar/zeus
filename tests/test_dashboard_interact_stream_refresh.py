@@ -116,3 +116,32 @@ def test_apply_tmux_stream_skips_duplicate_render(monkeypatch) -> None:
 
     assert stream.clear_calls == 2
     assert len(stream.writes) == 2
+
+
+def test_update_interact_stream_skips_when_text_input_focused(monkeypatch) -> None:
+    app = ZeusApp()
+    agent = _agent()
+    agent_key = app._agent_key(agent)
+
+    app.agents = [agent]
+    app._interact_visible = True
+    app._interact_agent_key = agent_key
+
+    fetched: list[AgentWindow] = []
+    monkeypatch.setattr(app, "_is_text_input_focused", lambda: True)
+    monkeypatch.setattr(app, "_fetch_interact_stream", lambda target: fetched.append(target))
+
+    app._update_interact_stream()
+
+    assert fetched == []
+
+
+def test_tick_message_queue_runs_drain(monkeypatch) -> None:
+    app = ZeusApp()
+
+    drained: list[bool] = []
+    monkeypatch.setattr(app, "_drain_message_queue", lambda: drained.append(True))
+
+    app._tick_message_queue()
+
+    assert drained == [True]

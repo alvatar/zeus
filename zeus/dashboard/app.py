@@ -655,6 +655,7 @@ class ZeusApp(App):
     _interact_stream_last_sig: str | None = None
     _interact_stream_observed_target: str | None = None
     _interact_stream_observed_sig: str | None = None
+    _interact_input_height: int = 3
     _action_check_pending: set[str] = set()
     _action_needed: set[str] = set()
     _dopamine_armed: bool = True
@@ -806,7 +807,7 @@ class ZeusApp(App):
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
         self.set_interval(1.0, self._update_interact_stream)
-        self.set_interval(1.0, self._drain_message_queue)
+        self.set_interval(1.0, self._tick_message_queue)
 
     def on_unmount(self, event: events.Unmount) -> None:
         self._stop_message_queue_watcher()
@@ -884,7 +885,7 @@ class ZeusApp(App):
             for _line in out:
                 if stop_event.is_set():
                     break
-                self.call_from_thread(self._drain_message_queue)
+                self.call_from_thread(self._tick_message_queue)
         finally:
             if proc.poll() is None:
                 try:
@@ -3442,6 +3443,10 @@ class ZeusApp(App):
         append_history(self._history_key_for_agent(target), clean)
         return True
 
+    def _tick_message_queue(self) -> None:
+        """Periodic queue tick."""
+        self._drain_message_queue()
+
     def _drain_message_queue(self) -> None:
         if self._message_queue_draining:
             return
@@ -3808,10 +3813,17 @@ class ZeusApp(App):
 
         return (cur, max(1, total))
 
+    def _set_interact_input_height(self, ta: TextArea, height: int) -> None:
+        clamped = max(3, min(10, int(height)))
+        if self._interact_input_height == clamped:
+            return
+        self._interact_input_height = clamped
+        ta.styles.height = clamped
+
     def _resize_interact_input(self, ta: TextArea) -> None:
         """Resize interact input to fit visual content (1–8 lines)."""
         lines = self._visual_line_count(ta)
-        ta.styles.height = max(1, min(8, lines)) + 2
+        self._set_interact_input_height(ta, max(1, min(8, lines)) + 2)
 
     def _restore_interact_draft(self) -> None:
         """Restore stashed input text for the current target."""
@@ -6757,6 +6769,8 @@ class ZeusApp(App):
         """Kick off background fetch for interact stream."""
         if not self._interact_visible:
             return
+        if self._is_text_input_focused():
+            return
         if self._interact_tmux_name:
             self._fetch_interact_tmux_stream(self._interact_tmux_name)
             return
@@ -6988,7 +7002,7 @@ class ZeusApp(App):
         if self._interact_tmux_name:
             self._dispatch_tmux_text(self._interact_tmux_name, text, queue=False)
             ta.clear()
-            ta.styles.height = 3
+            self._set_interact_input_height(ta, 3)
             self._reset_history_nav()
             return
 
@@ -7009,7 +7023,7 @@ class ZeusApp(App):
 
         self._drain_message_queue()
         ta.clear()
-        ta.styles.height = 3
+        self._set_interact_input_height(ta, 3)
         self._reset_history_nav()
 
     def action_queue_interact(self) -> None:
@@ -7044,7 +7058,7 @@ class ZeusApp(App):
                 )
                 return
             ta.clear()
-            ta.styles.height = 3
+            self._set_interact_input_height(ta, 3)
             self._reset_history_nav()
             return
 
@@ -7065,7 +7079,7 @@ class ZeusApp(App):
 
         self._drain_message_queue()
         ta.clear()
-        ta.styles.height = 3
+        self._set_interact_input_height(ta, 3)
         self._reset_history_nav()
 
     def action_refresh(self) -> None:
