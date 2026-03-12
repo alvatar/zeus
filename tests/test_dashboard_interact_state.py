@@ -119,6 +119,7 @@ def test_on_text_area_changed_updates_app_owned_interact_draft(monkeypatch) -> N
     agent_key = app._agent_key(agent)
     input_widget = _DummyInteractInput("hello world")
 
+    app._interact_drafts = {}
     app._interact_agent_key = agent_key
 
     monkeypatch.setattr(app, "query_one", lambda selector, cls=None: input_widget)
