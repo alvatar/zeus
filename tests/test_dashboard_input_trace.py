@@ -6,7 +6,13 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+from textual import events
+from textual.app import App
+from textual.drivers.linux_driver import LinuxDriver
+
 from zeus.dashboard.app import ZeusApp
+from zeus.dashboard.input_driver import TracingLinuxDriver, _message_trace_fields
+from zeus.dashboard.input_trace import write_input_trace_record
 from zeus.dashboard.widgets_text import ZeusTextArea
 
 
@@ -170,3 +176,44 @@ def test_input_trace_logs_zeus_text_area_key_events(monkeypatch, tmp_path) -> No
         and record["key"] == "x"
         for record in records
     )
+
+
+def test_low_level_input_trace_writer_logs_records(monkeypatch, tmp_path) -> None:
+    trace_path = tmp_path / "input-trace.jsonl"
+
+    monkeypatch.setenv("ZEUS_INPUT_TRACE", "1")
+    monkeypatch.setenv("ZEUS_INPUT_TRACE_FILE", str(trace_path))
+
+    write_input_trace_record(
+        "driver.read",
+        driver_seq=7,
+        raw_len=5,
+        raw_hex="1b5b6a",
+    )
+
+    records = _read_trace(trace_path)
+    assert any(
+        record["kind"] == "driver.read"
+        and record["driver_seq"] == 7
+        and record["raw_len"] == 5
+        and record["raw_hex"] == "1b5b6a"
+        for record in records
+    )
+
+
+def test_message_trace_fields_include_key_details() -> None:
+    fields = _message_trace_fields(events.Key("escape", "\x1b"))
+
+    assert fields["message_type"] == "Key"
+    assert fields["key"] == "escape"
+    assert fields["character"] == "\x1b"
+    assert fields["printable"] is False
+
+
+def test_input_trace_uses_tracing_linux_driver(monkeypatch) -> None:
+    monkeypatch.setenv("ZEUS_INPUT_TRACE", "1")
+    monkeypatch.setattr(App, "get_driver_class", lambda self: LinuxDriver)
+
+    app = ZeusApp()
+
+    assert app.driver_class is TracingLinuxDriver

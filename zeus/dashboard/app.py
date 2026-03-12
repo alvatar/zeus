@@ -23,6 +23,8 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.driver import Driver
+from textual.drivers.linux_driver import LinuxDriver
 from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
 from textual.timer import Timer
@@ -124,6 +126,13 @@ from ..snapshots import (
 from ..worktree import build_worktree_review
 
 from .css import APP_CSS
+from .input_driver import TracingLinuxDriver
+from .input_trace import (
+    input_trace_enabled as _shared_input_trace_enabled,
+    input_trace_path as _shared_input_trace_path,
+    input_trace_preview as _shared_input_trace_preview,
+    write_input_trace_record,
+)
 from .stream import (
     kitty_ansi_to_standard,
     strip_pi_input_chrome,
@@ -501,8 +510,6 @@ def _with_tasks_column(order: tuple[str, ...]) -> tuple[str, ...]:
 
 _WT_LOG = "/tmp/zeus-workdir-spawn.log"
 _CONS_LOG = "/tmp/zeus-consolidation.log"
-_INPUT_TRACE_ENV_TRUE = {"1", "true", "yes", "on"}
-_INPUT_TRACE_PREVIEW_MAX = 160
 
 def _wt_log(msg: str) -> None:
     """Write workdir spawn trace to a file for debugging."""
@@ -788,6 +795,12 @@ class ZeusApp(App):
             else:
                 table.add_column(col, key=col)
 
+    def get_driver_class(self) -> type[Driver]:
+        driver_class = super().get_driver_class()
+        if self._input_trace_enabled() and issubclass(driver_class, LinuxDriver):
+            return TracingLinuxDriver
+        return driver_class
+
     def on_mount(self) -> None:
         ensure_tmux_update_environment()
         ensure_tmux_update_environment("ZEUS_ROLE")
@@ -996,23 +1009,15 @@ class ZeusApp(App):
 
     @staticmethod
     def _input_trace_enabled() -> bool:
-        raw = (os.environ.get("ZEUS_INPUT_TRACE") or "").strip().lower()
-        return raw in _INPUT_TRACE_ENV_TRUE
+        return _shared_input_trace_enabled()
 
     @staticmethod
     def _input_trace_path() -> str:
-        configured = (os.environ.get("ZEUS_INPUT_TRACE_FILE") or "").strip()
-        if configured:
-            return os.path.expanduser(configured)
-        return f"/tmp/zeus-input-trace-{os.getpid()}.jsonl"
+        return _shared_input_trace_path()
 
     @staticmethod
-    def _input_trace_preview(text: str, max_len: int = _INPUT_TRACE_PREVIEW_MAX) -> str:
-        if len(text) <= max_len:
-            return text
-        head = max_len // 2
-        tail = max_len - head - 1
-        return f"{text[:head]}…{text[-tail:]}"
+    def _input_trace_preview(text: str) -> str:
+        return _shared_input_trace_preview(text)
 
     def _input_trace_focus_label(self) -> str:
         try:
@@ -1053,21 +1058,11 @@ class ZeusApp(App):
         }
 
     def _input_trace(self, kind: str, **fields: object) -> None:
-        if not self._input_trace_enabled():
-            return
-        record: dict[str, object] = {
-            "ts": time.time(),
-            "kind": kind,
-            "thread": threading.current_thread().name,
-        }
-        record.update(self._input_trace_state())
-        record.update(fields)
-        try:
-            with open(self._input_trace_path(), "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
-                f.write("\n")
-        except OSError:
-            pass
+        write_input_trace_record(
+            kind,
+            state=self._input_trace_state(),
+            **fields,
+        )
 
     async def run_action(
         self,
