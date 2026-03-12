@@ -725,6 +725,11 @@ SubAgentScreen {{
     margin: 0 0 1 0;
 }}
 
+#subagent-dialog Select {{
+    width: 100%;
+    margin: 0 0 1 0;
+}}
+
 #subagent-mode {{
     width: 100%;
     margin: 0 0 1 0;

@@ -341,6 +341,49 @@ def test_do_spawn_subagent_reports_missing_parent_agent_id(monkeypatch) -> None:
     assert notices[-1] == "Cannot spawn sub-Hippeus from parent: missing parent agent id"
 
 
+def test_do_spawn_subagent_forwards_model_spec(monkeypatch) -> None:
+    app = ZeusApp()
+    parent = _agent("parent")
+    parent.agent_id = "parent-1"
+
+    saved_models: list[str] = []
+    notices: list[str] = []
+    timers: list[float] = []
+    spawn_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(app, "_is_agent_name_taken", lambda _name: False)
+    monkeypatch.setattr(app, "do_set_last_invoke_model_spec", lambda model: saved_models.append(model))
+    monkeypatch.setattr(app, "notify", lambda msg, timeout=3: notices.append(msg))
+    monkeypatch.setattr(app, "set_timer", lambda delay, _cb: timers.append(delay))
+
+    def _spawn_ok(agent, name, workspace="", *, model_spec=""):  # noqa: ANN001
+        spawn_calls.append(
+            {
+                "agent": agent,
+                "name": name,
+                "workspace": workspace,
+                "model_spec": model_spec,
+            }
+        )
+        return "/tmp/child.jsonl"
+
+    monkeypatch.setattr("zeus.dashboard.app.spawn_subagent", _spawn_ok)
+
+    app.do_spawn_subagent(parent, "child", model_spec="openai/gpt-4o")
+
+    assert saved_models == ["openai/gpt-4o"]
+    assert spawn_calls == [
+        {
+            "agent": parent,
+            "name": "child",
+            "workspace": parent.workspace,
+            "model_spec": "openai/gpt-4o",
+        }
+    ]
+    assert notices[-1] == "🧬 Spawned: child"
+    assert timers == [1.5]
+
+
 def test_name_uniqueness_checks_are_case_insensitive() -> None:
     app = ZeusApp()
     app.agents = [

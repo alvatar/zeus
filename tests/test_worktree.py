@@ -467,6 +467,51 @@ def test_spawn_workdir_blocking_creates_worktree_and_launches(
     remove_worktree(git_repo, "test-agent")
 
 
+def test_spawn_workdir_blocking_with_model_appends_model_flag(
+    git_repo: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zeus.dashboard.app import ZeusApp
+
+    zeus_home = str(tmp_path / "zeus")
+    os.makedirs(zeus_home, exist_ok=True)
+    (Path(zeus_home) / "workdir-agent.md").write_text("prompt for <agent_name>")
+    monkeypatch.setenv("ZEUS_HOME", zeus_home)
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 12345
+    real_popen = subprocess.Popen
+    mock_popen = MagicMock(return_value=mock_proc)
+
+    def selective_popen(cmd, **kwargs):
+        if cmd and cmd[0] == "kitty":
+            return mock_popen(cmd, **kwargs)
+        return real_popen(cmd, **kwargs)
+
+    monkeypatch.setattr("subprocess.Popen", selective_popen)
+    monkeypatch.setattr("zeus.dashboard.app.enqueue_envelope", MagicMock())
+
+    agent = MagicMock()
+    agent.cwd = git_repo
+    agent.agent_id = "parent-id-123"
+    agent.workspace = ""
+
+    app = ZeusApp.__new__(ZeusApp)
+    result = app._spawn_workdir_blocking(
+        agent,
+        "test-agent-model",
+        model_spec="openai/gpt-4o",
+    )
+
+    assert result is True
+
+    cmd = mock_popen.call_args[0][0]
+    bash_cmd = cmd[-1]
+    assert "pi --session" in bash_cmd
+    assert "--model openai/gpt-4o" in bash_cmd
+
+    remove_worktree(git_repo, "test-agent-model")
+
+
 def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
     git_repo: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -479,14 +524,16 @@ def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
     source_dir = Path(git_repo) / "nested" / "dir"
     source_dir.mkdir(parents=True)
 
-    spawn_calls: list[tuple[object | None, str, str | None]] = []
+    spawn_calls: list[tuple[object | None, str, str | None, str]] = []
     notices: list[str] = []
 
     monkeypatch.setattr(app, "_is_agent_name_taken", lambda _name: False)
     monkeypatch.setattr(
         app,
         "_do_spawn_workdir",
-        lambda agent, name, *, repo_root=None: spawn_calls.append((agent, name, repo_root)),
+        lambda agent, name, *, repo_root=None, model_spec="": spawn_calls.append(
+            (agent, name, repo_root, model_spec)
+        ),
     )
     monkeypatch.setattr(app_mod.asyncio, "ensure_future", lambda _task: None)
     monkeypatch.setattr(app, "notify_force", lambda message, timeout=3: notices.append(message))
@@ -494,7 +541,7 @@ def test_do_spawn_workdir_agent_uses_source_directory_repo_root(
     app.do_spawn_workdir_agent(None, "from-dialog", source_directory=str(source_dir))
 
     assert notices == []
-    assert spawn_calls == [(None, "from-dialog", git_repo)]
+    assert spawn_calls == [(None, "from-dialog", git_repo, "")]
 
 
 def test_do_spawn_workdir_agent_rejects_non_git_source_directory(

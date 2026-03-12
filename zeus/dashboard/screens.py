@@ -590,6 +590,7 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
                 name,
                 dismiss_screen=self,
                 source_directory=directory,
+                model_spec=model_spec,
             )
             return
 
@@ -1461,9 +1462,19 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
     CSS = SUBAGENT_CSS
     BINDINGS = [Binding("escape", "dismiss", "Cancel", show=False)]
 
-    def __init__(self, agent: AgentWindow) -> None:
+    def __init__(
+        self,
+        agent: AgentWindow,
+        *,
+        preferred_model_spec: str = "",
+        available_model_specs: list[str] | None = None,
+        model_specs_loaded: bool = False,
+    ) -> None:
         super().__init__()
         self.agent = agent
+        self._available_model_specs: list[str] = list(available_model_specs or [])
+        self._model_specs_loaded: bool = model_specs_loaded
+        self._preferred_model_spec: str = preferred_model_spec.strip()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="subagent-dialog"):
@@ -1478,6 +1489,13 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
                 id="subagent-mode",
                 compact=False,
             )
+            yield Label("Model:")
+            yield Select(
+                self._model_select_options(),
+                value=self._initial_model_select_value(),
+                id="subagent-model",
+                allow_blank=False,
+            )
             yield Label("Name:")
             yield Input(
                 placeholder=f"e.g. {self.agent.name}-sub",
@@ -1487,6 +1505,61 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
             with Horizontal(id="subagent-buttons"):
                 yield Button("Create", variant="primary", id="create-btn")
 
+    def _initial_model_select_value(self) -> str:
+        preferred = self._preferred_model_spec.strip()
+        if preferred and preferred in self._available_model_specs:
+            return preferred
+        if self._available_model_specs:
+            return self._available_model_specs[0]
+        return "__default__"
+
+    def _model_select_options(self) -> list[tuple[str, str]]:
+        if self._available_model_specs:
+            return [(spec, spec) for spec in self._available_model_specs]
+        return [("Default (auto)", "__default__")]
+
+    def _apply_available_model_specs(self, specs: list[str]) -> None:
+        if not self.is_attached:
+            return
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for raw in specs:
+            spec = (raw or "").strip()
+            if not spec or spec in seen:
+                continue
+            seen.add(spec)
+            deduped.append(spec)
+
+        self._available_model_specs = deduped
+        self._model_specs_loaded = True
+
+        if hasattr(self.zeus, "do_set_invoke_model_specs"):
+            self.zeus.do_set_invoke_model_specs(deduped)
+
+        model_select = self.query_one("#subagent-model", Select)
+        model_select.set_options(self._model_select_options())
+        model_select.value = self._initial_model_select_value()
+
+    @work(thread=True, exclusive=True, group="subagent_models")
+    def _fetch_available_model_specs(self) -> None:
+        self.call_from_thread(
+            self._apply_available_model_specs,
+            _list_available_model_specs(),
+        )
+
+    def on_mount(self) -> None:
+        if (
+            hasattr(self.zeus, "do_has_loaded_invoke_model_specs")
+            and self.zeus.do_has_loaded_invoke_model_specs()
+            and hasattr(self.zeus, "do_get_invoke_model_specs")
+        ):
+            self._apply_available_model_specs(self.zeus.do_get_invoke_model_specs())
+            return
+
+        if not self._model_specs_loaded:
+            self._fetch_available_model_specs()
+
     def _selected_mode(self) -> str:
         """Return 'clone' or 'workdir'."""
         radio = self.query_one("#subagent-mode", RadioSet)
@@ -1494,6 +1567,14 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
         if idx == 1:
             return "workdir"
         return "clone"
+
+    def _selected_model_spec(self) -> str:
+        raw_model = self.query_one("#subagent-model", Select).value
+        model_spec = raw_model if isinstance(raw_model, str) else ""
+        model_spec = model_spec.strip()
+        if model_spec == "__default__":
+            return ""
+        return model_spec
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create-btn":
@@ -1507,13 +1588,25 @@ class SubAgentScreen(_ZeusScreenMixin, ModalScreen):
         if not name:
             self.query_one("#subagent-name", Input).focus()
             return
+
         mode = self._selected_mode()
+        model_spec = self._selected_model_spec()
+
         if mode == "workdir":
             # Dismiss handled inside do_spawn_workdir_agent after worktree check
-            self.zeus.do_spawn_workdir_agent(self.agent, name, dismiss_screen=self)
+            self.zeus.do_spawn_workdir_agent(
+                self.agent,
+                name,
+                dismiss_screen=self,
+                model_spec=model_spec,
+            )
         else:
             self.dismiss()
-            self.zeus.do_spawn_subagent(self.agent, name)
+            self.zeus.do_spawn_subagent(
+                self.agent,
+                name,
+                model_spec=model_spec,
+            )
 
 
 # ── Confirm worktree replace ──────────────────────────────────────────

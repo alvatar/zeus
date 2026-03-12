@@ -907,7 +907,7 @@ def test_invoke_launch_workdir_does_not_require_selected_source_agent(monkeypatc
 
     monkeypatch.setattr(screen, "query_one", _query_one)
 
-    workdir_calls: list[tuple[object | None, str, object, str | None]] = []
+    workdir_calls: list[tuple[object | None, str, object, str | None, str]] = []
 
     class _ZeusStub:
         def _is_agent_name_taken(self, _name: str, **_kwargs) -> bool:  # noqa: ANN003
@@ -925,8 +925,10 @@ def test_invoke_launch_workdir_does_not_require_selected_source_agent(monkeypatc
             name: str,
             dismiss_screen=None,
             source_directory: str | None = None,
+            *,
+            model_spec: str = "",
         ) -> bool:  # noqa: ANN001
-            workdir_calls.append((agent, name, dismiss_screen, source_directory))
+            workdir_calls.append((agent, name, dismiss_screen, source_directory, model_spec))
             return True
 
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
@@ -945,6 +947,7 @@ def test_invoke_launch_workdir_does_not_require_selected_source_agent(monkeypatc
     assert workdir_calls[0][1] == "wt-alpha"
     assert workdir_calls[0][2] is screen
     assert workdir_calls[0][3] == os.path.expanduser("~/code")
+    assert workdir_calls[0][4] == ""
 
 
 def test_invoke_launch_workdir_ignores_selected_source_agent(monkeypatch) -> None:
@@ -966,7 +969,7 @@ def test_invoke_launch_workdir_ignores_selected_source_agent(monkeypatch) -> Non
 
     monkeypatch.setattr(screen, "query_one", _query_one)
 
-    workdir_calls: list[tuple[object, str, object, str | None]] = []
+    workdir_calls: list[tuple[object, str, object, str | None, str]] = []
     saved_models: list[str] = []
 
     class _ZeusStub:
@@ -985,8 +988,10 @@ def test_invoke_launch_workdir_ignores_selected_source_agent(monkeypatch) -> Non
             name: str,
             dismiss_screen=None,
             source_directory: str | None = None,
+            *,
+            model_spec: str = "",
         ) -> bool:  # noqa: ANN001
-            workdir_calls.append((agent, name, dismiss_screen, source_directory))
+            workdir_calls.append((agent, name, dismiss_screen, source_directory, model_spec))
             return True
 
     monkeypatch.setattr(NewAgentScreen, "zeus", property(lambda self: _ZeusStub()))
@@ -1006,6 +1011,7 @@ def test_invoke_launch_workdir_ignores_selected_source_agent(monkeypatch) -> Non
     assert workdir_calls[0][1] == "wt-alpha"
     assert workdir_calls[0][2] is screen
     assert workdir_calls[0][3] == os.path.expanduser("~/code")
+    assert workdir_calls[0][4] == "openai/gpt-4o"
 
 
 def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:

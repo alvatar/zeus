@@ -350,6 +350,44 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     assert popen_env["ZEUS_ROLE"] == "hippeus"
 
 
+def test_spawn_subagent_with_model_appends_model_flag(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "parent.jsonl"
+    source.write_text('{"type":"session"}\n')
+
+    agent = _agent(session_path=str(source))
+
+    def fake_fork_session(_src: str, _target_cwd: str) -> str | None:
+        child = tmp_path / "child.jsonl"
+        child.write_text('{"type":"session"}\n')
+        return str(child)
+
+    popen_calls: list[list[str]] = []
+
+    class DummyProc:
+        pid = 123
+
+    def fake_popen(cmd: list[str], **_kwargs):
+        popen_calls.append(cmd)
+        return DummyProc()
+
+    monkeypatch.setattr(kitty, "fork_session", fake_fork_session)
+    monkeypatch.setattr(kitty.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(kitty, "generate_agent_id", lambda: "agent-id")
+    monkeypatch.setattr(kitty, "read_runtime_session_path", lambda _agent_id: None)
+
+    result = kitty.spawn_subagent(
+        agent,
+        "child",
+        workspace="",
+        model_spec="openai/gpt-4o",
+    )
+
+    assert result is not None
+    assert popen_calls
+    assert "--session" in popen_calls[0][-1]
+    assert "--model openai/gpt-4o" in popen_calls[0][-1]
+
+
 def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:
     source = tmp_path / "parent.jsonl"
     source.write_text('{"type":"session"}\n')

@@ -443,7 +443,11 @@ def resolve_agent_session_path(agent: AgentWindow) -> str | None:
 
 
 def spawn_subagent(
-    agent: AgentWindow, name: str, workspace: str = ""
+    agent: AgentWindow,
+    name: str,
+    workspace: str = "",
+    *,
+    model_spec: str = "",
 ) -> str | None:
     """Fork the agent's session and launch a sub-agent in a new kitty window."""
     cwd: str = agent.cwd
@@ -457,17 +461,25 @@ def spawn_subagent(
     if not parent_id:
         return None
 
+    clean_model = (model_spec or "").strip()
+
     env: dict[str, str] = os.environ.copy()
     env["ZEUS_AGENT_NAME"] = name
     env["ZEUS_PARENT_ID"] = parent_id
     env["ZEUS_AGENT_ID"] = generate_agent_id()
     env["ZEUS_ROLE"] = "hippeus"
     env["ZEUS_SESSION_PATH"] = forked
+
+    pi_cmd = f"pi --session {shlex.quote(forked)}"
+    if clean_model:
+        pi_cmd += f" --model {shlex.quote(clean_model)}"
+
     proc = subprocess.Popen(
-        ["kitty", "--directory", cwd, "--hold",
-         "bash", "-lc", f"pi --session {shlex.quote(forked)}"],
-        env=env, start_new_session=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ["kitty", "--directory", cwd, "--hold", "bash", "-lc", pi_cmd],
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     if workspace and workspace != "?":
         move_pid_to_workspace_and_focus_later(proc.pid, workspace, delay=0.5)
