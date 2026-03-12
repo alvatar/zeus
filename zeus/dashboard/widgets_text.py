@@ -10,7 +10,6 @@ import threading
 import time
 from typing import ClassVar, cast
 
-from textual import events
 from textual.binding import Binding
 from textual.widgets import DataTable, TextArea
 
@@ -42,22 +41,6 @@ _IMAGE_CLIPBOARD_MIME_TO_EXT: dict[str, str] = {
     "image/gif": "gif",
     "image/bmp": "bmp",
 }
-
-
-def _emit_widget_input_trace(widget: TextArea, kind: str, **fields: object) -> None:
-    try:
-        app = widget.app
-    except Exception:
-        return
-    tracer = getattr(app, "_input_trace", None)
-    if not callable(tracer):
-        return
-    tracer(
-        kind,
-        widget_type=type(widget).__name__,
-        widget_id=(getattr(widget, "id", "") or None),
-        **fields,
-    )
 
 
 class ZeusDataTable(DataTable):
@@ -93,16 +76,6 @@ class ZeusDataTable(DataTable):
 
 class ZeusTextArea(TextArea):
     """TextArea with emacs-style keybindings and kill/yank clipboard support."""
-
-    def on_key(self, event: events.Key) -> None:
-        _emit_widget_input_trace(
-            self,
-            "textarea.key",
-            key=getattr(event, "key", None),
-            character=getattr(event, "character", None),
-            printable=getattr(event, "is_printable", False),
-            text_len=len(getattr(self, "text", "") or ""),
-        )
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = cast(
         list[Binding | tuple[str, str] | tuple[str, str, str]],

@@ -126,13 +126,7 @@ from ..snapshots import (
 from ..worktree import build_worktree_review
 
 from .css import APP_CSS
-from .input_driver import TracingLinuxDriver, ZeusLinuxDriver, kitty_keyboard_protocol_enabled
-from .input_trace import (
-    input_trace_enabled as _shared_input_trace_enabled,
-    input_trace_path as _shared_input_trace_path,
-    input_trace_preview as _shared_input_trace_preview,
-    write_input_trace_record,
-)
+from .input_driver import ZeusLinuxDriver, kitty_keyboard_protocol_enabled
 from .stream import (
     kitty_ansi_to_standard,
     strip_pi_input_chrome,
@@ -798,7 +792,7 @@ class ZeusApp(App):
     def get_driver_class(self) -> type[Driver]:
         driver_class = super().get_driver_class()
         if driver_class is LinuxDriver:
-            return TracingLinuxDriver if self._input_trace_enabled() else ZeusLinuxDriver
+            return ZeusLinuxDriver
         return driver_class
 
     def on_mount(self) -> None:
@@ -823,19 +817,6 @@ class ZeusApp(App):
         self._message_receipts = load_message_receipts()
         self._drain_message_queue()
         self._start_message_queue_watcher()
-        self._input_trace(
-            "mount",
-            poll_interval=SETTINGS.poll_interval,
-            input_trace_path=self._input_trace_path(),
-            kitty_keyboard_protocol=(
-                "enabled" if kitty_keyboard_protocol_enabled() else "legacy"
-            ),
-        )
-        if self._input_trace_enabled():
-            self.notify(
-                f"Input trace → {self._input_trace_path()}",
-                timeout=4,
-            )
         self.poll_and_update()
         self.set_interval(SETTINGS.poll_interval, self.poll_and_update)
         self.set_interval(1.0, self.update_clock)
@@ -843,7 +824,6 @@ class ZeusApp(App):
         self.set_interval(1.0, self._tick_message_queue)
 
     def on_unmount(self, event: events.Unmount) -> None:
-        self._input_trace("unmount")
         self._stop_message_queue_watcher()
 
     def _start_message_queue_watcher(self) -> None:
@@ -1009,90 +989,6 @@ class ZeusApp(App):
             severity=severity,
             markup=markup,
         )
-
-    @staticmethod
-    def _input_trace_enabled() -> bool:
-        return _shared_input_trace_enabled()
-
-    @staticmethod
-    def _input_trace_path() -> str:
-        return _shared_input_trace_path()
-
-    @staticmethod
-    def _input_trace_preview(text: str) -> str:
-        return _shared_input_trace_preview(text)
-
-    def _input_trace_focus_label(self) -> str:
-        try:
-            focused = self.focused
-        except Exception:
-            return "<unavailable>"
-        if focused is None:
-            return "<none>"
-        widget_id = getattr(focused, "id", "") or ""
-        type_name = type(focused).__name__
-        return f"{type_name}#{widget_id}" if widget_id else type_name
-
-    def _input_trace_state(self) -> dict[str, object]:
-        interact_text = ""
-        interact_len = 0
-        try:
-            ta = self.query_one("#interact-input", ZeusTextArea)
-        except Exception:
-            ta = None
-        if ta is not None:
-            interact_text = getattr(ta, "text", "") or ""
-            interact_len = len(interact_text)
-
-        try:
-            screen_name = type(self.screen).__name__
-        except Exception:
-            screen_name = "<unavailable>"
-
-        return {
-            "focused": self._input_trace_focus_label(),
-            "screen": screen_name,
-            "selected_row_key": self._selected_row_key,
-            "interact_target_key": self._interact_draft_key(),
-            "interact_input_target_key": self._interact_input_target_key,
-            "interact_text_len": interact_len,
-            "interact_text_preview": self._input_trace_preview(interact_text),
-            "interact_programmatic": self._interact_input_programmatic_update,
-        }
-
-    def _input_trace(self, kind: str, **fields: object) -> None:
-        write_input_trace_record(
-            kind,
-            state=self._input_trace_state(),
-            **fields,
-        )
-
-    async def run_action(
-        self,
-        action: str | object,
-        default_namespace: object | None = None,
-        namespaces: Mapping[str, object] | None = None,
-    ) -> bool:
-        self._input_trace(
-            "run_action.before",
-            action=str(action),
-            default_namespace=(
-                type(default_namespace).__name__
-                if default_namespace is not None
-                else None
-            ),
-        )
-        handled = await super().run_action(
-            action,
-            default_namespace=default_namespace,  # type: ignore[arg-type]
-            namespaces=namespaces,  # type: ignore[arg-type]
-        )
-        self._input_trace(
-            "run_action.after",
-            action=str(action),
-            handled=handled,
-        )
-        return handled
 
     @staticmethod
     def _alarm_sound_path() -> str:
@@ -1348,7 +1244,6 @@ class ZeusApp(App):
 
     def _apply_poll_result(self, r: PollResult) -> None:
         """Apply gathered data to the UI (runs on the main thread)."""
-        self._input_trace("apply_poll_result.start", agent_count=len(r.agents))
         old_states = self.prev_states
         self._commit_poll_state(r)
         self._check_consolidation_done()
@@ -1364,28 +1259,16 @@ class ZeusApp(App):
             self._update_usage_bars(r.usage, r.openai)
             self._play_state_transition_alarms(old_states)
             self._passive_ui_refresh_pending = True
-            self._input_trace(
-                "apply_poll_result.deferred",
-                state_changed_any=state_changed_any,
-            )
             return
 
         self._refresh_interact_if_state_changed(old_states)
         self._update_usage_bars(r.usage, r.openai)
         self._play_state_transition_alarms(old_states)
         if not self._render_agent_table_and_status():
-            self._input_trace(
-                "apply_poll_result.short_circuit",
-                state_changed_any=state_changed_any,
-            )
             return
 
         if state_changed_any:
             self._pulse_agent_table()
-        self._input_trace(
-            "apply_poll_result.end",
-            state_changed_any=state_changed_any,
-        )
 
 
     def _commit_poll_state(self, result: PollResult) -> None:
@@ -2093,11 +1976,6 @@ class ZeusApp(App):
             f"Poll: {SETTINGS.poll_interval}s"
         )
 
-        self._input_trace(
-            "render_agent_table",
-            row_count=len(row_keys),
-            restored_selected_row=target_key,
-        )
         return True
 
 
@@ -4125,10 +4003,6 @@ class ZeusApp(App):
     def _refresh_interact_panel(self) -> None:
         """Refresh the interact panel for the currently selected item."""
         previous_target_key = self._interact_draft_key()
-        self._input_trace(
-            "refresh_interact_panel.start",
-            previous_target_key=previous_target_key,
-        )
 
         tmux = self._get_selected_tmux()
         selected_agent = self._get_selected_agent() if tmux is None else None
@@ -4164,20 +4038,9 @@ class ZeusApp(App):
 
         if current_target_key is None:
             self._invalidate_interact_stream_cache()
-            self._input_trace(
-                "refresh_interact_panel.empty",
-                target_changed=target_changed,
-                current_target_key=current_target_key,
-            )
             return
 
         self._update_interact_stream()
-        self._input_trace(
-            "refresh_interact_panel.end",
-            previous_target_key=previous_target_key,
-            current_target_key=current_target_key,
-            target_changed=target_changed,
-        )
 
     def _get_tmux_client_pid(self, sess_name: str) -> int | None:
         """Return PID of first attached tmux client for a session."""
@@ -4259,13 +4122,6 @@ class ZeusApp(App):
     def _set_interact_input_text(self, text: str, *, cursor_end: bool = False) -> None:
         ta = self.query_one("#interact-input", ZeusTextArea)
         target_key = self._interact_draft_key()
-        self._input_trace(
-            "set_interact_input_text.before",
-            target_key=target_key,
-            cursor_end=cursor_end,
-            text_len=len(text),
-            text_preview=self._input_trace_preview(text),
-        )
         self._interact_input_programmatic_update = True
         try:
             if text:
@@ -4288,12 +4144,6 @@ class ZeusApp(App):
             self._interact_input_programmatic_update = False
         self._interact_input_target_key = target_key
         self._set_interact_draft(target_key, getattr(ta, "text", text))
-        self._input_trace(
-            "set_interact_input_text.after",
-            target_key=target_key,
-            text_len=len(getattr(ta, "text", text)),
-            text_preview=self._input_trace_preview(getattr(ta, "text", text)),
-        )
 
     def _handle_interact_history_nav(self, key: str) -> bool:
         """Handle Up/Down history traversal for interact input.
@@ -4749,21 +4599,12 @@ class ZeusApp(App):
 
     def on_key(self, event: events.Key) -> None:
         """Intercept special keys."""
-        self._input_trace(
-            "key",
-            phase="start",
-            key=getattr(event, "key", None),
-            character=getattr(event, "character", None),
-            printable=getattr(event, "is_printable", False),
-        )
         if self._dismiss_splash():
-            self._input_trace("key", phase="handled", key=event.key, reason="dismiss_splash")
             event.prevent_default()
             event.stop()
             return
 
         if self._dismiss_celebration():
-            self._input_trace("key", phase="handled", key=event.key, reason="dismiss_celebration")
             event.prevent_default()
             event.stop()
             return
@@ -4774,7 +4615,6 @@ class ZeusApp(App):
             focused = None
 
         if event.key == "enter" and isinstance(focused, DataTable):
-            self._input_trace("key", phase="handled", key=event.key, reason="enter_on_table")
             event.prevent_default()
             event.stop()
             # Focus interact input when available; otherwise open message dialog.
@@ -4785,7 +4625,6 @@ class ZeusApp(App):
             return
 
         if event.key in {"j", "k"} and isinstance(focused, DataTable):
-            self._input_trace("key", phase="handled", key=event.key, reason="vim_table_nav")
             event.prevent_default()
             event.stop()
             table = cast(DataTable, focused)
@@ -4798,23 +4637,15 @@ class ZeusApp(App):
         if event.key in {"up", "down"} and isinstance(focused, ZeusTextArea):
             ta = self.query_one("#interact-input", ZeusTextArea)
             if focused is ta and self._handle_interact_history_nav(event.key):
-                self._input_trace("key", phase="handled", key=event.key, reason="interact_history_nav")
                 event.prevent_default()
                 event.stop()
                 return
 
-        self._input_trace("key", phase="pass", key=event.key)
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Resize interact input to fit content (1 line min, 8 max)."""
         ta = event.text_area
         text = getattr(ta, "text", "") or ""
-        self._input_trace(
-            "text_area_changed",
-            text_area_id=getattr(ta, "id", None),
-            text_len=len(text),
-            text_preview=self._input_trace_preview(text),
-        )
         if ta.id != "interact-input":
             return
         self._resize_interact_input(ta)
@@ -4824,11 +4655,6 @@ class ZeusApp(App):
         self, event: DataTable.RowHighlighted
     ) -> None:
         self._selected_row_key = self._row_key_value(event.row_key)
-        self._input_trace(
-            "row_highlighted",
-            row_key=self._selected_row_key,
-            cursor_row=getattr(event, "cursor_row", None),
-        )
         # Cancel previous timer
         if self._highlight_timer is not None:
             self._highlight_timer.stop()
@@ -4847,11 +4673,6 @@ class ZeusApp(App):
         self, event: DataTable.RowSelected
     ) -> None:
         self._selected_row_key = self._row_key_value(event.row_key)
-        self._input_trace(
-            "row_selected",
-            row_key=self._selected_row_key,
-            cursor_row=getattr(event, "cursor_row", None),
-        )
         # Click/Enter: immediate refresh + focus input
         if self._interact_visible:
             self._refresh_interact_panel()
