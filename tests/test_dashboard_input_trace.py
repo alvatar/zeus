@@ -1,4 +1,4 @@
-"""Tests for dashboard input driver selection and legacy keyboard mode."""
+"""Tests for dashboard input driver selection and keyboard protocol behavior."""
 
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ def test_kitty_keyboard_protocol_enabled_by_default(monkeypatch) -> None:
     monkeypatch.delenv("ZEUS_DISABLE_KITTY_KEYBOARD_PROTOCOL", raising=False)
 
     assert kitty_keyboard_protocol_enabled() is True
-    assert _remap_keyboard_protocol_write("\x1b[>1u") == "\x1b[>1u"
+    assert _remap_keyboard_protocol_write("\x1b[>1u") == "\x1b[>1u\x1b[=1;1u"
+    assert _remap_keyboard_protocol_write("plain-text") == "plain-text"
 
 
 def test_kitty_keyboard_protocol_can_be_forced_to_legacy(monkeypatch) -> None:
