@@ -323,6 +323,12 @@ bwrap_ro() {
     fi
 }
 
+bwrap_dev() {
+    local path="\$1"
+    [ -e "\$path" ] || return 0
+    BWRAP_ARGS+=("--dev-bind" "\$path" "\$path")
+}
+
 path_is_mounted_dir() {
     local target="\$1"
     for dir in "\${MOUNT_DIRS[@]}"; do
@@ -355,7 +361,7 @@ for d in "\${HOME}" \
 done
 
 # Core system mounts (read-only)
-for p in /usr /lib /lib64 /bin /sbin /etc /run; do
+for p in /usr /lib /lib64 /bin /sbin /etc /run /sys; do
     bwrap_ro "\$p"
 done
 
@@ -370,6 +376,17 @@ bwrap_bind "\${HOME}/.rustup"
 bwrap_bind "\${HOME}/.codex"
 bwrap_bind "\${HOME}/.claude"
 bwrap_ro "\${HOME}/.gitconfig"
+
+# GPU device support (DRM/Mesa for AMD/Intel; NVIDIA)
+bwrap_dev /dev/dri
+bwrap_dev /dev/nvidiactl
+bwrap_dev /dev/nvidia0
+bwrap_dev /dev/nvidia1
+bwrap_dev /dev/nvidia-modeset
+bwrap_dev /dev/nvidia-uvm
+bwrap_dev /dev/nvidia-uvm-tools
+bwrap_dev /dev/nvidia-caps
+bwrap_bind /dev/shm
 
 # User writable paths from sandbox-paths.conf allowlist.
 if [ -f "\$SANDBOX_CONF" ]; then
