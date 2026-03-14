@@ -247,7 +247,7 @@ zeus_sync_pi_provider_env() {
     command -v python3 >/dev/null 2>&1 || return 0
 
     local exports=""
-    if exports=$(PYTHONPATH="\${ZEUS_PYTHONPATH}\${PYTHONPATH:+:\${PYTHONPATH}}" \
+    if exports=\$(PYTHONPATH="\${ZEUS_PYTHONPATH}\${PYTHONPATH:+:\${PYTHONPATH}}" \
         python3 -m zeus.pi_wrapper_env 2>/dev/null); then
         [ -z "\$exports" ] || eval "\$exports"
     fi

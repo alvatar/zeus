@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 import json
 import os
 from pathlib import Path
@@ -68,6 +68,59 @@ def shell_login_argv(command: str, *, env: Mapping[str, str] | None = None) -> l
 def missing_provider_env_vars(env: Mapping[str, str] | None = None) -> list[str]:
     source = env if env is not None else os.environ
     return [key for key in PI_PROVIDER_ENV_VARS if not str(source.get(key) or "").strip()]
+
+
+def _read_proc_environ(pid: int) -> dict[str, str]:
+    try:
+        raw = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return {}
+
+    result: dict[str, str] = {}
+    for item in raw.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        result[key.decode("utf-8", "replace")] = value.decode("utf-8", "replace")
+    return result
+
+
+def _read_parent_pid(pid: int) -> int:
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("PPid:"):
+                return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return 0
+    return 0
+
+
+def fetch_provider_env_from_process_tree(
+    missing_keys: Iterable[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+    start_pid: int | None = None,
+    environ_reader: Callable[[int], Mapping[str, str]] = _read_proc_environ,
+    parent_reader: Callable[[int], int] = _read_parent_pid,
+) -> dict[str, str]:
+    source = dict(env if env is not None else os.environ)
+    pending = [key for key in (missing_keys if missing_keys is not None else missing_provider_env_vars(source))]
+    if not pending:
+        return {}
+
+    result: dict[str, str] = {}
+    pid = os.getppid() if start_pid is None else start_pid
+    seen: set[int] = set()
+    while pid > 1 and pid not in seen and pending:
+        seen.add(pid)
+        proc_env = environ_reader(pid)
+        for key in list(pending):
+            value = str(proc_env.get(key) or "").strip()
+            if value:
+                result[key] = value
+                pending.remove(key)
+        pid = parent_reader(pid)
+    return result
 
 
 def _dump_command(keys: Sequence[str]) -> str:
@@ -136,7 +189,12 @@ def shell_export_lines(env_updates: Mapping[str, str]) -> str:
 
 
 def main() -> int:
-    updates = fetch_provider_env_from_shell()
+    updates = fetch_provider_env_from_process_tree()
+    remaining = [key for key in missing_provider_env_vars() if key not in updates]
+    if remaining:
+        merged_env = dict(os.environ)
+        merged_env.update(updates)
+        updates.update(fetch_provider_env_from_shell(remaining, env=merged_env))
     output = shell_export_lines(updates)
     if output:
         print(output)

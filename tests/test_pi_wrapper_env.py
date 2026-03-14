@@ -6,6 +6,7 @@ import subprocess
 
 from zeus.pi_wrapper_env import (
     PI_PROVIDER_ENV_VARS,
+    fetch_provider_env_from_process_tree,
     fetch_provider_env_from_shell,
     missing_provider_env_vars,
     resolve_user_shell,
@@ -51,6 +52,26 @@ def test_missing_provider_env_vars_only_returns_unset(monkeypatch) -> None:
     assert "OPENROUTER_API_KEY" not in missing
     assert "OPENAI_API_KEY" in missing
     assert set(missing).issubset(set(PI_PROVIDER_ENV_VARS))
+
+
+def test_fetch_provider_env_from_process_tree_walks_ancestors() -> None:
+    envs = {
+        200: {"SHELL": "/bin/bash"},
+        100: {"OPENROUTER_API_KEY": "sk-or", "OPENAI_API_KEY": "sk-oa"},
+    }
+    parents = {200: 100, 100: 1}
+
+    updates = fetch_provider_env_from_process_tree(
+        ["OPENROUTER_API_KEY", "OPENAI_API_KEY"],
+        start_pid=200,
+        environ_reader=lambda pid: envs.get(pid, {}),
+        parent_reader=lambda pid: parents.get(pid, 0),
+    )
+
+    assert updates == {
+        "OPENROUTER_API_KEY": "sk-or",
+        "OPENAI_API_KEY": "sk-oa",
+    }
 
 
 def test_fetch_provider_env_from_shell_parses_marker(monkeypatch) -> None:
