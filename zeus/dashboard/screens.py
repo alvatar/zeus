@@ -37,7 +37,6 @@ from ..stygian_hippeus import launch_stygian_hippeus
 from ..models import AgentWindow, TmuxSession
 from ..notes import clear_done_tasks
 from ..sessions import make_new_session_path
-from ..spawn_shell import kitty_hold_command_argv
 from .css import (
     NEW_AGENT_CSS,
     AGENT_TASKS_CSS,
@@ -648,7 +647,15 @@ class NewAgentScreen(_ZeusScreenMixin, ModalScreen):
             pi_cmd += f" --model {shlex.quote(model_spec)}"
 
         subprocess.Popen(
-            kitty_hold_command_argv(directory, f"exec {pi_cmd}", env=env),
+            [
+                "kitty",
+                "--directory",
+                directory,
+                "--hold",
+                "bash",
+                "-lc",
+                pi_cmd,
+            ],
             env=env,
             start_new_session=True,
             stdout=subprocess.DEVNULL,

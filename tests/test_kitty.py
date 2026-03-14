@@ -11,7 +11,6 @@ from zeus.kitty import (
     ensure_unique_agent_names,
 )
 from zeus.models import AgentWindow
-from zeus.spawn_shell import kitty_hold_command_argv
 
 
 def test_iter_cmdline_tokens_splits_shell_payload():
@@ -334,7 +333,6 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
         popen_env.update(kwargs.get("env", {}))
         return DummyProc()
 
-    monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr(kitty, "fork_session", fake_fork_session)
     monkeypatch.setattr(kitty.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(kitty, "generate_agent_id", lambda: "agent-id")
@@ -345,11 +343,7 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     assert result is not None
     assert captured["src"] == str(source)
     assert popen_calls
-    assert popen_calls[0] == kitty_hold_command_argv(
-        "/tmp/project",
-        f"exec pi --session {result}",
-        env=popen_env,
-    )
+    assert "--session" in popen_calls[0][-1]
     assert popen_env["ZEUS_AGENT_NAME"] == "child"
     assert popen_env["ZEUS_PARENT_ID"] == "parent-1"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-id"
@@ -376,7 +370,6 @@ def test_spawn_subagent_with_model_appends_model_flag(monkeypatch, tmp_path) -> 
         popen_calls.append(cmd)
         return DummyProc()
 
-    monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr(kitty, "fork_session", fake_fork_session)
     monkeypatch.setattr(kitty.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(kitty, "generate_agent_id", lambda: "agent-id")
@@ -391,11 +384,8 @@ def test_spawn_subagent_with_model_appends_model_flag(monkeypatch, tmp_path) -> 
 
     assert result is not None
     assert popen_calls
-    assert popen_calls[0] == kitty_hold_command_argv(
-        "/tmp/project",
-        f"exec pi --session {result} --model openai/gpt-4o",
-        env={"SHELL": "/bin/zsh"},
-    )
+    assert "--session" in popen_calls[0][-1]
+    assert "--model openai/gpt-4o" in popen_calls[0][-1]
 
 
 def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:

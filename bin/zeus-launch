@@ -13,37 +13,10 @@ import uuid
 print(uuid.uuid4().hex)
 PY
 )
-    shell_path=$(python3 - <<'PY'
-import os
-import pwd
-from pathlib import Path
-candidate = (os.environ.get("SHELL") or "").strip()
-if candidate:
-    path = Path(candidate).expanduser()
-    if path.is_absolute() and path.exists():
-        print(path)
-        raise SystemExit(0)
-try:
-    fallback = (pwd.getpwuid(os.getuid()).pw_shell or "").strip()
-except (KeyError, OSError):
-    fallback = ""
-if fallback:
-    path = Path(fallback).expanduser()
-    if path.is_absolute() and path.exists():
-        print(path)
-        raise SystemExit(0)
-print("/bin/sh")
-PY
-)
-    shell_name=$(basename "$shell_path")
     # Ensure tmux server propagates Zeus identity/role when sessions are created.
     tmux set -ga update-environment ZEUS_AGENT_ID >/dev/null 2>&1 || true
     tmux set -ga update-environment ZEUS_ROLE >/dev/null 2>&1 || true
-    if [ "$shell_name" = "fish" ]; then
-        ZEUS_AGENT_NAME="$name" ZEUS_AGENT_ID="$agent_id" ZEUS_ROLE="hippeus" kitty --hold "$shell_path" -i -l -c "exec pi"
-    else
-        ZEUS_AGENT_NAME="$name" ZEUS_AGENT_ID="$agent_id" ZEUS_ROLE="hippeus" kitty --hold "$shell_path" -ilc "exec pi"
-    fi
+    ZEUS_AGENT_NAME="$name" ZEUS_AGENT_ID="$agent_id" ZEUS_ROLE="hippeus" kitty --hold bash -lc "pi"
 else
     kitty
 fi

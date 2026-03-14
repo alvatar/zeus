@@ -84,7 +84,6 @@ from ..message_receipts import (
     record_message_receipt,
     save_message_receipts,
 )
-from ..spawn_shell import kitty_hold_command_argv, user_shell_command_string
 from ..sway import build_pid_workspace_map
 from ..tmux import (
     backfill_tmux_owner_options,
@@ -5668,11 +5667,15 @@ class ZeusApp(App):
 
         try:
             proc = subprocess.Popen(
-                kitty_hold_command_argv(
+                [
+                    "kitty",
+                    "--directory",
                     agent.cwd,
-                    f"exec pi --session {shlex.quote(session_path)}",
-                    env=env,
-                ),
+                    "--hold",
+                    "bash",
+                    "-lc",
+                    f"pi --session {shlex.quote(session_path)}",
+                ],
                 env=env,
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
@@ -5753,11 +5756,15 @@ class ZeusApp(App):
 
         try:
             proc = subprocess.Popen(
-                kitty_hold_command_argv(
+                [
+                    "kitty",
+                    "--directory",
                     agent.cwd,
-                    f"exec pi --session {shlex.quote(session_path)}",
-                    env=env,
-                ),
+                    "--hold",
+                    "bash",
+                    "-lc",
+                    f"pi --session {shlex.quote(session_path)}",
+                ],
                 env=env,
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
@@ -6101,7 +6108,8 @@ class ZeusApp(App):
             pi_cmd += f" --model {shlex.quote(clean_model)}"
 
         proc = subprocess.Popen(
-            kitty_hold_command_argv(wt_path, f"exec {pi_cmd}", env=env),
+            ["kitty", "--directory", wt_path, "--hold",
+             "bash", "-lc", pi_cmd],
             env=env, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -6714,19 +6722,16 @@ class ZeusApp(App):
         session_name = f"zeus-cons-{agent_id[:8]}"
 
         clean_model = (model_spec or "").strip()
-        inner_command = (
-            f"exec pi --session {shlex.quote(session_path)}"
-            f" @{shlex.quote(prompt_file.name)}"
-        )
-        if clean_model:
-            inner_command += f" --model {shlex.quote(clean_model)}"
         start_command = (
             f"ZEUS_AGENT_NAME={shlex.quote(agent_name)} "
             f"ZEUS_AGENT_ID={shlex.quote(agent_id)} "
             "ZEUS_ROLE=hoplite "
             f"ZEUS_SESSION_PATH={shlex.quote(session_path)} "
-            f"{user_shell_command_string(inner_command)}"
+            f"exec pi --session {shlex.quote(session_path)}"
+            f" @{shlex.quote(prompt_file.name)}"
         )
+        if clean_model:
+            start_command += f" --model {shlex.quote(clean_model)}"
 
         subprocess.run(
             ["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, start_command],
