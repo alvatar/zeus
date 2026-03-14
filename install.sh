@@ -65,11 +65,8 @@ if $DEV_MODE; then
     # Symlink entry points — they auto-detect ../zeus/ in repo
     ln -sf "$SCRIPT_DIR/bin/zeus" "$BIN_DIR/zeus"
     ln -sf "$SCRIPT_DIR/bin/zeus-msg" "$BIN_DIR/zeus-msg"
-    mkdir -p "$LIB_DIR"
-    ln -sfn "$SCRIPT_DIR/zeus" "$LIB_DIR/zeus"
     echo "✓ Symlinked $BIN_DIR/zeus → $SCRIPT_DIR/bin/zeus"
     echo "✓ Symlinked $BIN_DIR/zeus-msg → $SCRIPT_DIR/bin/zeus-msg"
-    echo "✓ Symlinked $LIB_DIR/zeus → $SCRIPT_DIR/zeus"
 else
     # Copy entry points and package
     cp "$SCRIPT_DIR/bin/zeus" "$BIN_DIR/zeus"
@@ -204,10 +201,6 @@ if $WRAP_PI; then
             if $NO_BWRAP; then
                 WRAPPER_BWRAP_ENABLED=0
             fi
-            WRAPPER_ZEUS_PYTHONPATH="$LIB_DIR"
-            if $DEV_MODE; then
-                WRAPPER_ZEUS_PYTHONPATH="$SCRIPT_DIR"
-            fi
 
             if [ "$WRAPPER_BWRAP_ENABLED" = "1" ]; then
                 ZEUS_HOME_DIR="${HOME}/.zeus"
@@ -239,21 +232,7 @@ set -euo pipefail
 
 PI_REAL="$PI_ORIG"
 WRAPPER_BWRAP_ENABLED="$WRAPPER_BWRAP_ENABLED"
-ZEUS_PYTHONPATH="$WRAPPER_ZEUS_PYTHONPATH"
 SANDBOX_CONF="\${HOME}/.zeus/sandbox-paths.conf"
-
-zeus_sync_pi_provider_env() {
-    [ "\${ZEUS_PI_DISABLE_AUTH_ENV_SYNC:-}" = "1" ] && return 0
-    command -v python3 >/dev/null 2>&1 || return 0
-
-    local exports=""
-    if exports=\$(PYTHONPATH="\${ZEUS_PYTHONPATH}\${PYTHONPATH:+:\${PYTHONPATH}}" \
-        python3 -m zeus.pi_wrapper_env 2>/dev/null); then
-        [ -z "\$exports" ] || eval "\$exports"
-    fi
-}
-
-zeus_sync_pi_provider_env
 
 if [ -z "\${ZEUS_AGENT_ID:-}" ]; then
     ZEUS_AGENT_ID=\$(python3 - <<'PY'
@@ -390,7 +369,6 @@ done
 bwrap_bind "\${HOME}/.zeus"
 bwrap_bind "\${HOME}/.pi"
 bwrap_bind "\${HOME}/.local/bin"
-bwrap_bind "\${HOME}/.local/lib/zeus"
 bwrap_bind "\${HOME}/.local/lib/node_modules"
 bwrap_bind "\${HOME}/.npm"
 bwrap_bind "\${HOME}/.cargo"
