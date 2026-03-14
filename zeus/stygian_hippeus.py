@@ -10,6 +10,7 @@ import subprocess
 
 from .models import AgentWindow, TmuxSession
 from .sessions import make_new_session_path
+from .spawn_shell import user_shell_command_string
 
 STYGIAN_AGENT_BACKEND = "tmux-stygian"
 STYGIAN_TMUX_BACKEND_TAG = "stygian-hippeus"
@@ -108,16 +109,17 @@ def launch_stygian_hippeus(
     session_path = make_new_session_path(cwd)
 
     clean_model = model_spec.strip()
+    inner_command = f"exec pi --session {shlex.quote(session_path)}"
+    if clean_model:
+        inner_command += f" --model {shlex.quote(clean_model)}"
 
     start_command = (
         f"ZEUS_AGENT_NAME={shlex.quote(clean_name)} "
         f"ZEUS_AGENT_ID={shlex.quote(clean_id)} "
         "ZEUS_ROLE=hippeus "
         f"ZEUS_SESSION_PATH={shlex.quote(session_path)} "
-        f"exec pi --session {shlex.quote(session_path)}"
+        f"{user_shell_command_string(inner_command)}"
     )
-    if clean_model:
-        start_command += f" --model {shlex.quote(clean_model)}"
 
     created = _run_tmux(
         [

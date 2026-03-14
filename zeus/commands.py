@@ -18,6 +18,7 @@ from .kitty import (
 from .state import detect_state, parse_footer
 from .sway import build_pid_workspace_map
 from .sessions import make_new_session_path
+from .spawn_shell import kitty_hold_command_argv
 from .tmux import ensure_tmux_update_environment
 
 
@@ -34,15 +35,11 @@ def cmd_new(args: argparse.Namespace) -> None:
     session_path = make_new_session_path(directory)
     env["ZEUS_SESSION_PATH"] = session_path
 
-    cmd: list[str] = [
-        "kitty",
-        "--directory",
+    cmd: list[str] = kitty_hold_command_argv(
         directory,
-        "--hold",
-        "bash",
-        "-lc",
-        f"pi --session {shlex.quote(session_path)}",
-    ]
+        f"exec pi --session {shlex.quote(session_path)}",
+        env=env,
+    )
     subprocess.Popen(
         cmd, env=env, start_new_session=True,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

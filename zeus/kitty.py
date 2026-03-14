@@ -24,6 +24,7 @@ from .session_runtime import (
     read_runtime_session_path,
     write_session_adoption,
 )
+from .spawn_shell import kitty_hold_command_argv
 from .windowing import focus_pid, move_pid_to_workspace_and_focus_later
 
 
@@ -548,7 +549,7 @@ def spawn_subagent(
         pi_cmd += f" --model {shlex.quote(clean_model)}"
 
     proc = subprocess.Popen(
-        ["kitty", "--directory", cwd, "--hold", "bash", "-lc", pi_cmd],
+        kitty_hold_command_argv(cwd, f"exec {pi_cmd}", env=env),
         env=env,
         start_new_session=True,
         stdout=subprocess.DEVNULL,

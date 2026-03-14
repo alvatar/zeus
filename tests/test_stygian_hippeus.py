@@ -9,6 +9,7 @@ from rich.text import Text
 import zeus.stygian_hippeus as stygian_backend
 from zeus.dashboard.app import ZeusApp
 from zeus.models import AgentWindow, State, TmuxSession
+from zeus.spawn_shell import user_shell_command_string
 
 
 class _RowKey:
@@ -86,6 +87,7 @@ def test_launch_stygian_hippeus_creates_tmux_session_and_sets_metadata(monkeypat
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
+    monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr(stygian_backend.subprocess, "run", _run)
     monkeypatch.setattr(
         stygian_backend,
@@ -114,6 +116,9 @@ def test_launch_stygian_hippeus_creates_tmux_session_and_sets_metadata(monkeypat
     assert "ZEUS_AGENT_ID=agent-1234" in commands[0][7]
     assert "ZEUS_ROLE=hippeus" in commands[0][7]
     assert "ZEUS_SESSION_PATH=/tmp/stygian-session.jsonl" in commands[0][7]
+    assert commands[0][7].endswith(
+        user_shell_command_string("exec pi --session /tmp/stygian-session.jsonl", env={"SHELL": "/bin/zsh"})
+    )
 
     option_commands = [cmd for cmd in commands[1:] if cmd[:3] == ["tmux", "set-option", "-t"]]
     assert [cmd[4] for cmd in option_commands] == [

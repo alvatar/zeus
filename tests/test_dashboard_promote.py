@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from zeus.dashboard.app import ZeusApp
 from zeus.dashboard.screens import ConfirmPromoteScreen
 from zeus.models import AgentWindow, TmuxSession
+from zeus.spawn_shell import kitty_hold_command_argv
 
 
 def _agent(
@@ -144,6 +145,7 @@ def test_do_promote_sub_hippeus_relaunches_as_top_level_hippeus(monkeypatch) -> 
         popen_calls.append((list(cmd), dict(kwargs["env"])))
         return SimpleNamespace(pid=999)
 
+    monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", _popen)
     monkeypatch.setattr(
         "zeus.dashboard.app.move_pid_to_workspace_and_focus_later",
@@ -157,7 +159,11 @@ def test_do_promote_sub_hippeus_relaunches_as_top_level_hippeus(monkeypatch) -> 
 
     assert popen_calls
     cmd, env = popen_calls[-1]
-    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert cmd == kitty_hold_command_argv(
+        "/tmp/project",
+        "exec pi --session /tmp/child-session.jsonl",
+        env={"SHELL": "/bin/zsh"},
+    )
     assert env["ZEUS_AGENT_NAME"] == "child"
     assert env["ZEUS_AGENT_ID"] == "child-1"
     assert env["ZEUS_ROLE"] == "hippeus"
@@ -231,6 +237,7 @@ def test_do_promote_hippeus_to_polemarch_relaunches_with_confirmation_target(
         popen_calls.append((list(cmd), dict(kwargs["env"])))
         return SimpleNamespace(pid=1234)
 
+    monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr("zeus.dashboard.app.subprocess.Popen", _popen)
     monkeypatch.setattr(
         "zeus.dashboard.app.move_pid_to_workspace_and_focus_later",
@@ -249,7 +256,11 @@ def test_do_promote_hippeus_to_polemarch_relaunches_with_confirmation_target(
 
     assert popen_calls
     cmd, env = popen_calls[-1]
-    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert cmd == kitty_hold_command_argv(
+        "/tmp/project",
+        "exec pi --session /tmp/top-session.jsonl",
+        env={"SHELL": "/bin/zsh"},
+    )
     assert env["ZEUS_AGENT_NAME"] == "top"
     assert env["ZEUS_AGENT_ID"] == "top-1"
     assert env["ZEUS_ROLE"] == "polemarch"

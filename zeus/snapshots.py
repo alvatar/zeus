@@ -17,6 +17,7 @@ from .config import STATE_DIR
 from .kitty import close_window, discover_agents, resolve_agent_session_path_with_source
 from .models import AgentWindow, State, TmuxSession
 from .session_runtime import read_runtime_session_path
+from .spawn_shell import kitty_hold_command_argv, user_shell_command_string
 from .stygian_hippeus import (
     STYGIAN_AGENT_BACKEND,
     STYGIAN_TMUX_BACKEND_TAG,
@@ -566,15 +567,11 @@ def _restore_kitty_entry(entry: dict[str, Any], *, workspace_mode: str) -> tuple
 
     try:
         proc = subprocess.Popen(
-            [
-                "kitty",
-                "--directory",
+            kitty_hold_command_argv(
                 cwd,
-                "--hold",
-                "bash",
-                "-lc",
-                f"pi --session {shlex.quote(session_path)}",
-            ],
+                f"exec pi --session {shlex.quote(session_path)}",
+                env=env,
+            ),
             env=env,
             start_new_session=True,
             stdout=subprocess.DEVNULL,
@@ -614,7 +611,10 @@ def _restore_tmux_entry(entry: dict[str, Any]) -> tuple[bool, str]:
         env_parts.append(f"ZEUS_PHALANX_ID={shlex.quote(phalanx_id)}")
 
     env_parts.append(f"ZEUS_SESSION_PATH={shlex.quote(session_path)}")
-    start_command = " ".join(env_parts + [f"exec pi --session {shlex.quote(session_path)}"])
+    start_command = " ".join(
+        env_parts
+        + [user_shell_command_string(f"exec pi --session {shlex.quote(session_path)}")]
+    )
 
     created = _run_tmux(
         ["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, start_command],
