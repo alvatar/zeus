@@ -38,18 +38,19 @@ _DEFAULT_SHELL = "/bin/sh"
 
 def resolve_user_shell(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
-    candidate = str(source.get("SHELL") or "").strip()
-    if candidate:
-        path = Path(candidate).expanduser()
+
+    try:
+        passwd_shell = (pwd.getpwuid(os.getuid()).pw_shell or "").strip()
+    except (KeyError, OSError):
+        passwd_shell = ""
+    if passwd_shell:
+        path = Path(passwd_shell).expanduser()
         if path.is_absolute() and path.exists():
             return str(path)
 
-    try:
-        fallback = (pwd.getpwuid(os.getuid()).pw_shell or "").strip()
-    except (KeyError, OSError):
-        fallback = ""
-    if fallback:
-        path = Path(fallback).expanduser()
+    candidate = str(source.get("SHELL") or "").strip()
+    if candidate:
+        path = Path(candidate).expanduser()
         if path.is_absolute() and path.exists():
             return str(path)
 
@@ -92,8 +93,9 @@ def fetch_provider_env_from_shell(
         return {}
 
     argv = shell_login_argv(_dump_command(keys), env=source)
+    resolved_shell = resolve_user_shell(source)
     child_env = source.copy()
-    child_env.setdefault("SHELL", resolve_user_shell(source))
+    child_env["SHELL"] = resolved_shell
     child_env["ZEUS_PI_WRAPPER_ENV_SYNC"] = "1"
     try:
         result = runner(

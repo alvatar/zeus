@@ -14,14 +14,24 @@ from zeus.pi_wrapper_env import (
 )
 
 
-def test_resolve_user_shell_prefers_env(monkeypatch) -> None:
-    monkeypatch.setenv("SHELL", "/bin/zsh")
+def test_resolve_user_shell_prefers_passwd_over_intermediary_shell(monkeypatch) -> None:
+    monkeypatch.setenv("SHELL", "/bin/bash")
+
+    class _Pw:
+        pw_shell = "/bin/zsh"
+
+    monkeypatch.setattr("zeus.pi_wrapper_env.pwd.getpwuid", lambda _uid: _Pw())
 
     assert resolve_user_shell() == "/bin/zsh"
 
 
 def test_shell_login_argv_uses_interactive_login_shell(monkeypatch) -> None:
-    monkeypatch.setenv("SHELL", "/bin/zsh")
+    monkeypatch.setenv("SHELL", "/bin/bash")
+
+    class _Pw:
+        pw_shell = "/bin/zsh"
+
+    monkeypatch.setattr("zeus.pi_wrapper_env.pwd.getpwuid", lambda _uid: _Pw())
 
     assert shell_login_argv("printf ok") == ["/bin/zsh", "-ilc", "printf ok"]
 
@@ -44,7 +54,12 @@ def test_missing_provider_env_vars_only_returns_unset(monkeypatch) -> None:
 
 
 def test_fetch_provider_env_from_shell_parses_marker(monkeypatch) -> None:
-    monkeypatch.setenv("SHELL", "/bin/zsh")
+    monkeypatch.setenv("SHELL", "/bin/bash")
+
+    class _Pw:
+        pw_shell = "/bin/zsh"
+
+    monkeypatch.setattr("zeus.pi_wrapper_env.pwd.getpwuid", lambda _uid: _Pw())
 
     calls: list[tuple[list[str], dict[str, str]]] = []
 
@@ -64,6 +79,7 @@ def test_fetch_provider_env_from_shell_parses_marker(monkeypatch) -> None:
         "OPENAI_API_KEY": "sk-oa",
     }
     assert calls[0][0][:2] == ["/bin/zsh", "-ilc"]
+    assert calls[0][1]["SHELL"] == "/bin/zsh"
     assert calls[0][1]["ZEUS_PI_WRAPPER_ENV_SYNC"] == "1"
 
 
