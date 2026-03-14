@@ -211,6 +211,7 @@ def test_consolidation_blocking_runs_in_thread(
     # Verify the tmux command uses Stygian pattern: exec pi --session + @file
     new_session_cmd = captured_cmds[0]
     shell_cmd = new_session_cmd[-1]
+    assert "exec zsh -ilc" in shell_cmd, f"Must use zsh login shell, got: {shell_cmd}"
     assert "exec pi --session" in shell_cmd, f"Must use exec pi --session, got: {shell_cmd}"
     assert "@" in shell_cmd, f"Must use @file syntax: {shell_cmd}"
     assert "| pi" not in shell_cmd, f"Must not pipe stdin: {shell_cmd}"
@@ -252,6 +253,7 @@ def test_consolidation_with_model_spec(
     assert "--model" in shell_cmd
     assert "anthropic/claude-opus-4-6" in shell_cmd
     assert "@" in shell_cmd, f"Must use @file syntax: {shell_cmd}"
+    assert "exec zsh -ilc" in shell_cmd
     assert "exec pi --session" in shell_cmd
 
 

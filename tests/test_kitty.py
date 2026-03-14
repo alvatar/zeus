@@ -343,7 +343,8 @@ def test_spawn_subagent_uses_explicit_parent_session_path(monkeypatch, tmp_path)
     assert result is not None
     assert captured["src"] == str(source)
     assert popen_calls
-    assert "--session" in popen_calls[0][-1]
+    assert popen_calls[0][:6] == ["kitty", "--directory", "/tmp/project", "--hold", "zsh", "-ilc"]
+    assert popen_calls[0][-1] == f"exec pi --session {result}"
     assert popen_env["ZEUS_AGENT_NAME"] == "child"
     assert popen_env["ZEUS_PARENT_ID"] == "parent-1"
     assert popen_env["ZEUS_AGENT_ID"] == "agent-id"
@@ -384,8 +385,8 @@ def test_spawn_subagent_with_model_appends_model_flag(monkeypatch, tmp_path) -> 
 
     assert result is not None
     assert popen_calls
-    assert "--session" in popen_calls[0][-1]
-    assert "--model openai/gpt-4o" in popen_calls[0][-1]
+    assert popen_calls[0][:6] == ["kitty", "--directory", "/tmp/project", "--hold", "zsh", "-ilc"]
+    assert popen_calls[0][-1] == f"exec pi --session {result} --model openai/gpt-4o"
 
 
 def test_spawn_subagent_requires_parent_agent_id(monkeypatch, tmp_path) -> None:

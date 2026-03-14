@@ -199,6 +199,8 @@ def test_restore_snapshot_kitty_current_workspace_skips_move(
     assert result.restored_count == 1
     assert moved == []
     assert popen_calls
+    assert popen_calls[0][:6] == ["kitty", "--directory", "/tmp/project", "--hold", "zsh", "-ilc"]
+    assert popen_calls[0][-1] == f"exec pi --session {session_file}"
 
 
 def test_restore_snapshot_hoplite_sets_tmux_metadata(
@@ -251,6 +253,7 @@ def test_restore_snapshot_hoplite_sets_tmux_metadata(
     assert result.ok is True
     assert result.restored_count == 1
     assert any(call[:3] == ["tmux", "new-session", "-d"] for call in tmux_calls)
+    assert any("exec zsh -ilc 'exec pi --session" in call[-1] for call in tmux_calls if call[:3] == ["tmux", "new-session", "-d"])
     assert any(
         call[:5] == ["tmux", "set-option", "-t", "hoplite-1", "@zeus_owner"]
         and call[5] == "polemarch-1"

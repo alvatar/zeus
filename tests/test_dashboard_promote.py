@@ -157,7 +157,8 @@ def test_do_promote_sub_hippeus_relaunches_as_top_level_hippeus(monkeypatch) -> 
 
     assert popen_calls
     cmd, env = popen_calls[-1]
-    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert cmd[:6] == ["kitty", "--directory", "/tmp/project", "--hold", "zsh", "-ilc"]
+    assert cmd[-1] == "exec pi --session /tmp/child-session.jsonl"
     assert env["ZEUS_AGENT_NAME"] == "child"
     assert env["ZEUS_AGENT_ID"] == "child-1"
     assert env["ZEUS_ROLE"] == "hippeus"
@@ -249,7 +250,8 @@ def test_do_promote_hippeus_to_polemarch_relaunches_with_confirmation_target(
 
     assert popen_calls
     cmd, env = popen_calls[-1]
-    assert cmd[:5] == ["kitty", "--directory", "/tmp/project", "--hold", "bash"]
+    assert cmd[:6] == ["kitty", "--directory", "/tmp/project", "--hold", "zsh", "-ilc"]
+    assert cmd[-1] == "exec pi --session /tmp/top-session.jsonl"
     assert env["ZEUS_AGENT_NAME"] == "top"
     assert env["ZEUS_AGENT_ID"] == "top-1"
     assert env["ZEUS_ROLE"] == "polemarch"

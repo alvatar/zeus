@@ -548,7 +548,7 @@ def spawn_subagent(
         pi_cmd += f" --model {shlex.quote(clean_model)}"
 
     proc = subprocess.Popen(
-        ["kitty", "--directory", cwd, "--hold", "bash", "-lc", pi_cmd],
+        ["kitty", "--directory", cwd, "--hold", "zsh", "-ilc", f"exec {pi_cmd}"],
         env=env,
         start_new_session=True,
         stdout=subprocess.DEVNULL,

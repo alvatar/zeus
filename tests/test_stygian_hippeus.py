@@ -114,6 +114,7 @@ def test_launch_stygian_hippeus_creates_tmux_session_and_sets_metadata(monkeypat
     assert "ZEUS_AGENT_ID=agent-1234" in commands[0][7]
     assert "ZEUS_ROLE=hippeus" in commands[0][7]
     assert "ZEUS_SESSION_PATH=/tmp/stygian-session.jsonl" in commands[0][7]
+    assert "exec zsh -ilc 'exec pi --session /tmp/stygian-session.jsonl'" in commands[0][7]
 
     option_commands = [cmd for cmd in commands[1:] if cmd[:3] == ["tmux", "set-option", "-t"]]
     assert [cmd[4] for cmd in option_commands] == [

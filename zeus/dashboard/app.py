@@ -4899,7 +4899,7 @@ class ZeusApp(App):
             HOPLITE_NAME="hoplite-${{HOPLITE_ID:0:4}}"
 
             tmux new-session -d -s "$SESSION" -c "$PWD" \
-              "ZEUS_AGENT_NAME=$HOPLITE_NAME ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite ZEUS_STATE_DIR={state_dir_hint} exec pi"
+              "ZEUS_AGENT_NAME=$HOPLITE_NAME ZEUS_AGENT_ID=$HOPLITE_ID ZEUS_PARENT_ID=$POLEMARCH_ID ZEUS_PHALANX_ID=$PHALANX_ID ZEUS_ROLE=hoplite ZEUS_STATE_DIR={state_dir_hint} exec zsh -ilc 'exec pi'"
 
             tmux set-option -t "$SESSION" @zeus_owner "$POLEMARCH_ID"
             tmux set-option -t "$SESSION" @zeus_agent "$HOPLITE_ID"
@@ -5672,9 +5672,9 @@ class ZeusApp(App):
                     "--directory",
                     agent.cwd,
                     "--hold",
-                    "bash",
-                    "-lc",
-                    f"pi --session {shlex.quote(session_path)}",
+                    "zsh",
+                    "-ilc",
+                    f"exec pi --session {shlex.quote(session_path)}",
                 ],
                 env=env,
                 start_new_session=True,
@@ -5761,9 +5761,9 @@ class ZeusApp(App):
                     "--directory",
                     agent.cwd,
                     "--hold",
-                    "bash",
-                    "-lc",
-                    f"pi --session {shlex.quote(session_path)}",
+                    "zsh",
+                    "-ilc",
+                    f"exec pi --session {shlex.quote(session_path)}",
                 ],
                 env=env,
                 start_new_session=True,
@@ -6109,7 +6109,7 @@ class ZeusApp(App):
 
         proc = subprocess.Popen(
             ["kitty", "--directory", wt_path, "--hold",
-             "bash", "-lc", pi_cmd],
+             "zsh", "-ilc", f"exec {pi_cmd}"],
             env=env, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -6722,16 +6722,19 @@ class ZeusApp(App):
         session_name = f"zeus-cons-{agent_id[:8]}"
 
         clean_model = (model_spec or "").strip()
+        inner_command = (
+            f"exec pi --session {shlex.quote(session_path)}"
+            f" @{shlex.quote(prompt_file.name)}"
+        )
+        if clean_model:
+            inner_command += f" --model {shlex.quote(clean_model)}"
         start_command = (
             f"ZEUS_AGENT_NAME={shlex.quote(agent_name)} "
             f"ZEUS_AGENT_ID={shlex.quote(agent_id)} "
             "ZEUS_ROLE=hoplite "
             f"ZEUS_SESSION_PATH={shlex.quote(session_path)} "
-            f"exec pi --session {shlex.quote(session_path)}"
-            f" @{shlex.quote(prompt_file.name)}"
+            f"exec zsh -ilc {shlex.quote(inner_command)}"
         )
-        if clean_model:
-            start_command += f" --model {shlex.quote(clean_model)}"
 
         subprocess.run(
             ["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, start_command],

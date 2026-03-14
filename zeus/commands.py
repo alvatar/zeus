@@ -39,9 +39,9 @@ def cmd_new(args: argparse.Namespace) -> None:
         "--directory",
         directory,
         "--hold",
-        "bash",
-        "-lc",
-        f"pi --session {shlex.quote(session_path)}",
+        "zsh",
+        "-ilc",
+        f"exec pi --session {shlex.quote(session_path)}",
     ]
     subprocess.Popen(
         cmd, env=env, start_new_session=True,

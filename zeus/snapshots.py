@@ -571,9 +571,9 @@ def _restore_kitty_entry(entry: dict[str, Any], *, workspace_mode: str) -> tuple
                 "--directory",
                 cwd,
                 "--hold",
-                "bash",
-                "-lc",
-                f"pi --session {shlex.quote(session_path)}",
+                "zsh",
+                "-ilc",
+                f"exec pi --session {shlex.quote(session_path)}",
             ],
             env=env,
             start_new_session=True,
@@ -614,7 +614,8 @@ def _restore_tmux_entry(entry: dict[str, Any]) -> tuple[bool, str]:
         env_parts.append(f"ZEUS_PHALANX_ID={shlex.quote(phalanx_id)}")
 
     env_parts.append(f"ZEUS_SESSION_PATH={shlex.quote(session_path)}")
-    start_command = " ".join(env_parts + [f"exec pi --session {shlex.quote(session_path)}"])
+    inner_command = f"exec pi --session {shlex.quote(session_path)}"
+    start_command = " ".join(env_parts + [f"exec zsh -ilc {shlex.quote(inner_command)}"])
 
     created = _run_tmux(
         ["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, start_command],

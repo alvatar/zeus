@@ -1086,7 +1086,8 @@ def test_invoke_launch_sets_hippeus_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_ROLE"] == "hippeus"
     assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-1.jsonl"
     assert "ZEUS_PHALANX_ID" not in popen_env
-    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-1.jsonl --model openai/gpt-4o"
+    assert popen_cmd[:6] == ["kitty", "--directory", os.path.expanduser("~/code"), "--hold", "zsh", "-ilc"]
+    assert popen_cmd[-1] == "exec pi --session /tmp/invoke-agent-1.jsonl --model openai/gpt-4o"
     assert schedule_calls == []
     assert notices[-1] == "Invoked Hippeus: alpha"
     assert timers == [1.5]
@@ -1159,7 +1160,8 @@ def test_invoke_launch_sets_polemarch_role_env(monkeypatch) -> None:
     assert popen_env["ZEUS_ROLE"] == "polemarch"
     assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-2.jsonl"
     assert popen_env["ZEUS_PHALANX_ID"] == "phalanx-agent-2"
-    assert popen_cmd[-1] == "pi --session /tmp/invoke-agent-2.jsonl --model anthropic/claude-sonnet-4-5"
+    assert popen_cmd[:6] == ["kitty", "--directory", os.path.expanduser("~/code"), "--hold", "zsh", "-ilc"]
+    assert popen_cmd[-1] == "exec pi --session /tmp/invoke-agent-2.jsonl --model anthropic/claude-sonnet-4-5"
     assert schedule_calls == [("agent-2", "planner")]
     assert notices[-1] == "Invoked Polemarch: planner"
 
@@ -1233,7 +1235,8 @@ def test_invoke_launch_sets_god_role_env_and_uses_direct_pi(monkeypatch) -> None
     assert popen_env["ZEUS_ROLE"] == "god"
     assert popen_env["ZEUS_SESSION_PATH"] == "/tmp/invoke-agent-god.jsonl"
     assert "ZEUS_PHALANX_ID" not in popen_env
-    assert popen_cmd[-1] == "/opt/pi-direct --session /tmp/invoke-agent-god.jsonl --model openai/gpt-4o"
+    assert popen_cmd[:6] == ["kitty", "--directory", os.path.expanduser("~/code"), "--hold", "zsh", "-ilc"]
+    assert popen_cmd[-1] == "exec /opt/pi-direct --session /tmp/invoke-agent-god.jsonl --model openai/gpt-4o"
     assert schedule_calls == []
     assert notices[-1] == "Invoked God: oracle"
 
